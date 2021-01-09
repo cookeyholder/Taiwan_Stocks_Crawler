@@ -10,8 +10,8 @@ class TransactionRecords:
     def __init__(self, stock_no: str):
         yahoo_prefix = 'https://tw.stock.yahoo.com/q/bc?s='
         goodinfo_prefix = 'https://goodinfo.tw/StockInfo/StockDetail.asp?STOCK_ID='
-        self.serial = datetime.datetime.now().strftime('%Y%m%d%H%M%S') + \
-            str(next(self._ids)).zfill(6)
+        self.serial = datetime.datetime.now().strftime('%Y%m%d') + \
+            str(next(self._ids)).zfill(4)
         self.stock_no = stock_no
         self.stock_name = ''
         self.buy_date = ''
