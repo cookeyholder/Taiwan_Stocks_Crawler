@@ -32,7 +32,8 @@ env.bak/
 venv.bak/
 
 # IDE
-.vscode/
+.vscode/settings.json
+.vscode/.ropeproject/
 .idea/
 *.swp
 *.swo
