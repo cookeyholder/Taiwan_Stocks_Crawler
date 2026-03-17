@@ -1,0 +1,1 @@
+http://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_download.php?l=zh-tw&o=csv&d=107/02/09&s=0,asc,0
