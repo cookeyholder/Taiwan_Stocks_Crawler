@@ -7,6 +7,8 @@
 - **Python**: 3.10
 - **套件管理器**: [uv](https://github.com/astral-sh/uv) - 快速、安全的 Python 套件管理器
 - **程式碼格式化**: [ruff](https://github.com/astral-sh/ruff) - 超快速的 Python linter/formatter
+- **Docker**: 內建 Docker-in-Docker 支援，可在容器內執行 Docker 命令
+- **Docker Compose**: 已安裝最新版本
 - **容器映像**: `mcr.microsoft.com/devcontainers/python:3.10-bullseye`
 
 ## 快速開始
@@ -73,6 +75,35 @@ jupyter lab --ip=0.0.0.0 --allow-root
 
 # 然後在 VS Code 中存取 http://localhost:8888
 ```
+
+### Docker-in-Docker (🐳)
+
+Dev Container 已內建 Docker-in-Docker 支援，可以直接在容器內執行 Docker 命令。
+
+```bash
+# 檢查 Docker 版本
+docker --version
+
+# 列出執行中的容器
+docker ps
+
+# 構建 Docker 映像
+docker build -t myapp:latest .
+
+# 執行容器
+docker run -d myapp:latest
+
+# 查看 Docker 磁碟空間
+docker system df
+
+# 清理未使用的資源
+docker system prune
+```
+
+**注意**: 
+- Docker socket 通過掛載自動連接
+- `vscode` 使用者已新增到 `docker` group
+- 無需使用 `sudo docker` 命令
 
 ### Git 與 Pre-commit
 
@@ -145,6 +176,30 @@ Dev Container 會自動配置:
 - 確保 ruff 已安裝: `uv pip list | grep ruff`
 - 檢查 VS Code 中的 ruff 擴充套件狀態
 
+### Docker 相關問題
+
+#### Docker 命令無法執行
+```bash
+# 檢查 Docker daemon 是否運行
+docker ps
+
+# 檢查 docker socket 權限
+ls -la /var/run/docker.sock
+
+# 重建容器
+# Dev Containers: Rebuild Container (F1)
+```
+
+#### "permission denied while trying to connect to Docker daemon"
+- 確保 `vscode` 使用者在 `docker` group 中
+- 重新開啟終端或 Dev Container
+- 如需要，執行: `newgrp docker`
+
+#### Docker 映像無法構建
+- 檢查磁碟空間: `docker system df`
+- 清理未使用的資源: `docker system prune -a`
+- 確保有足夠的系統資源
+
 ## 更新機制
 
 使用 uv 的優勢:
@@ -156,6 +211,8 @@ Dev Container 會自動配置:
 
 - [uv 文檔](https://github.com/astral-sh/uv)
 - [ruff 文檔](https://docs.astral.sh/ruff/)
+- [Docker 官方文檔](https://docs.docker.com/)
+- [Docker-in-Docker 指南](https://github.com/devcontainers/features/tree/main/src/docker-in-docker)
 - [VS Code Dev Containers](https://code.visualstudio.com/docs/devcontainers/containers)
 - [Python 3.10 文檔](https://docs.python.org/3.10/)
 

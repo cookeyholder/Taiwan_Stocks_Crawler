@@ -4,7 +4,12 @@
 
     "features": {
         "ghcr.io/devcontainers/features/git:1": {},
-        "ghcr.io/devcontainers/features/github-cli:1": {}
+        "ghcr.io/devcontainers/features/github-cli:1": {},
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {
+            "version": "latest",
+            "moby": true,
+            "dockerDashComposeVersion": "latest"
+        }
     },
 
     "remoteEnv": {
@@ -23,7 +28,13 @@
                 "ms-jupyter.jupyter",
                 "ms-jupyter.vscode-jupyter-slideshow",
                 "ms-jupyter.vscode-jupyter-cell-tags",
-                "mhutchie.git-graph"
+                "mhutchie.git-graph",
+                "formulahendry.auto-rename-tag",
+                "streetsidesoftware.code-spell-checker",
+                "ms-azuretools.vscode-containers",
+                "ReprEng.csv",
+                "SeyyedKhandon.firacode",
+                "GitHub.vscode-pull-request-github"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/usr/local/bin/python",

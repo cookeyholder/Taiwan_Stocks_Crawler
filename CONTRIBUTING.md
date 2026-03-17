@@ -129,6 +129,43 @@ uv pip list
 uv tree
 ```
 
+## Docker-in-Docker 開發
+
+Dev Container 內建 Docker-in-Docker 支援，可以直接構建和執行 Docker 映像。
+
+### 常見 Docker 操作
+
+```bash
+# 檢查 Docker 安裝
+docker --version
+
+# 構建映像
+docker build -t myapp:latest .
+
+# 執行容器
+docker run -d -p 8000:8000 myapp:latest
+
+# 查看執行中的容器
+docker ps
+
+# 檢查日誌
+docker logs <container_id>
+
+# 停止容器
+docker stop <container_id>
+
+# 使用 Docker Compose
+docker-compose up -d
+docker-compose down
+```
+
+### Docker 在 CI/CD 中的應用
+
+- 本地測試容器化應用
+- 構建和推送映像到 Registry
+- 使用 Docker Compose 管理相依服務
+- 測試多容器應用部署
+
 ## 常用命令速查
 
 | 命令               | 說明                     |

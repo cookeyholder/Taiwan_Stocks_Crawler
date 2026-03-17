@@ -1,4 +1,4 @@
-.PHONY: help install dev-install format check test lint clean jupyter
+.PHONY: help install dev-install format check test lint clean jupyter docker-help docker-version docker-ps docker-clean
 
 help:
 	@echo "🚀 Stock Trading System - Available commands:"
@@ -19,6 +19,12 @@ help:
 	@echo ""
 	@echo "Jupyter:"
 	@echo "  make jupyter      - Start Jupyter Lab"
+	@echo ""
+	@echo "Docker:"
+	@echo "  make docker-help  - Show Docker help"
+	@echo "  make docker-version - Check Docker version"
+	@echo "  make docker-ps    - List running containers"
+	@echo "  make docker-clean - Clean up unused Docker resources"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean        - Remove cache and temporary files"
@@ -75,5 +81,33 @@ jupyter:
 pre-commit:
 	@echo "🔍 Running pre-commit checks..."
 	pre-commit run --all-files
+
+docker-help:
+	@echo "🐳 Docker-in-Docker Commands:"
+	@echo ""
+	@echo "  docker --version       - Check Docker version"
+	@echo "  docker ps              - List running containers"
+	@echo "  docker images          - List Docker images"
+	@echo "  docker build -t <name> - Build an image"
+	@echo "  docker run <image>     - Run a container"
+	@echo "  docker-compose up      - Start services"
+	@echo "  docker-compose down    - Stop services"
+	@echo "  docker system df       - Show disk usage"
+	@echo "  docker system prune    - Clean up resources"
+	@echo ""
+
+docker-version:
+	@echo "🐳 Docker version:"
+	docker --version
+	docker-compose --version 2>/dev/null || echo "docker-compose not found"
+
+docker-ps:
+	@echo "🐳 Running Docker containers:"
+	docker ps
+
+docker-clean:
+	@echo "🐳 Cleaning up Docker resources..."
+	docker system prune -f
+	@echo "✅ Docker cleanup complete!"
 
 .DEFAULT_GOAL := help
