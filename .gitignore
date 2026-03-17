@@ -56,9 +56,6 @@ venv.bak/
 .coverage
 htmlcov/
 
-# Dev container
-.devcontainer/
-
 # uv
 .uv/
 uv.lock
