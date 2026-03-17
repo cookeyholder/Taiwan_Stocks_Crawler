@@ -4,12 +4,13 @@
 
 ## 環境配置
 
-- **Python**: 3.10
+- **Python**: 3.13
+- **作業系統**: Debian Trixie
 - **套件管理器**: [uv](https://github.com/astral-sh/uv) - 快速、安全的 Python 套件管理器
 - **程式碼格式化**: [ruff](https://github.com/astral-sh/ruff) - 超快速的 Python linter/formatter
 - **Docker**: 內建 Docker-in-Docker 支援，可在容器內執行 Docker 命令
 - **Docker Compose**: 已安裝最新版本
-- **容器映像**: `mcr.microsoft.com/devcontainers/python:3.10-bullseye`
+- **容器映像**: `mcr.microsoft.com/devcontainers/python:3.13-trixie`
 
 ## 快速開始
 
