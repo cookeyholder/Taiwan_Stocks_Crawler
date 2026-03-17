@@ -1,6 +1,6 @@
 {
     "name": "Stock Trading Dev Environment",
-    "image": "mcr.microsoft.com/devcontainers/python:3.10-bullseye",
+    "image": "mcr.microsoft.com/devcontainers/python:3.13-trixie",
 
     "features": {
         "ghcr.io/devcontainers/features/git:1": {},
