@@ -1,0 +1,92 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "🔧 ruff: Check & Fix",
+      "type": "shell",
+      "command": "ruff",
+      "args": ["check", ".", "--fix"],
+      "problemMatcher": "$ruff",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "✨ ruff: Format",
+      "type": "shell",
+      "command": "ruff",
+      "args": ["format", "."],
+      "group": "build"
+    },
+    {
+      "label": "🔍 ruff: Check Only",
+      "type": "shell",
+      "command": "ruff",
+      "args": ["check", "."],
+      "problemMatcher": "$ruff",
+      "group": "build"
+    },
+    {
+      "label": "🧪 pytest: Run Tests",
+      "type": "shell",
+      "command": "uv",
+      "args": ["run", "pytest"],
+      "problemMatcher": "$pytest",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "🧪 pytest: Run with Coverage",
+      "type": "shell",
+      "command": "uv",
+      "args": ["run", "pytest", "--cov=.", "--cov-report=html"],
+      "problemMatcher": "$pytest",
+      "group": "test"
+    },
+    {
+      "label": "📦 uv: Sync Dependencies",
+      "type": "shell",
+      "command": "uv",
+      "args": ["sync", "--all-extras"],
+      "group": "build"
+    },
+    {
+      "label": "📓 Jupyter: Start Lab",
+      "type": "shell",
+      "command": "jupyter",
+      "args": ["lab", "--ip=0.0.0.0", "--allow-root"],
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^.*$",
+          "file": 1,
+          "location": 2,
+          "message": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*",
+          "endsPattern": ".*Jupyter Lab.*running"
+        }
+      },
+      "group": "build"
+    },
+    {
+      "label": "🧹 Clean: Remove Cache",
+      "type": "shell",
+      "command": "make",
+      "args": ["clean"],
+      "group": "build"
+    },
+    {
+      "label": "🔍 pre-commit: Run Checks",
+      "type": "shell",
+      "command": "pre-commit",
+      "args": ["run", "--all-files"],
+      "group": "build"
+    }
+  ]
+}
