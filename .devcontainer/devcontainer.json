@@ -7,7 +7,7 @@
         "ghcr.io/devcontainers/features/github-cli:1": {},
         "ghcr.io/devcontainers/features/docker-in-docker:2": {
             "version": "latest",
-            "moby": true,
+            "moby": false,
             "dockerDashComposeVersion": "latest"
         }
     },
@@ -49,9 +49,6 @@
                     }
                 },
                 "ruff.importStrategy": "fromEnvironment",
-                "ruff.lint.run": "onSave",
-                "ruff.format.args": ["--line-length", "88"],
-                "ruff.lint.args": ["--line-length", "88"],
                 "jupyter.kernels.local.enabled": true,
                 "notebook.formatOnSave.enabled": true,
                 "[jupyter]": {
@@ -63,8 +60,10 @@
 
     "postCreateCommand": "bash .devcontainer/post-create-command.sh",
 
+    "waitFor": "postCreateCommand",
+
     "mounts": [
-        "source=${localEnv:HOME}/sqlite,target=/home/vscode/sqlite,readonly"
+        "type=bind,source=${localWorkspaceFolder}/sqlite3,target=/home/vscode/sqlite,readonly"
     ],
 
     "forwardPorts": [8888, 8000],
@@ -80,5 +79,5 @@
         }
     },
 
-    "workspaceFolder": "/workspaces/stock-trading"
+    "workspaceFolder": "/workspaces/臺股成交資訊收集"
 }
