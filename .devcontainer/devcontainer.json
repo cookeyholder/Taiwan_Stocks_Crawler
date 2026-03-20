@@ -60,7 +60,7 @@
         }
     },
 
-    "postCreateCommand": "bash .devcontainer/post-create-command.sh && npm install -g @fission-ai/openspec@latest",
+    "postCreateCommand": "bash .devcontainer/post-create-command.sh",
 
     "waitFor": "postCreateCommand",
 

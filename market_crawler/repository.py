@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from abc import ABC, abstractmethod
 from typing import Any
@@ -136,7 +137,6 @@ class SQLiteMarketRepository(MarketRepository):
             """,
             quote,
         )
-        self.connection.commit()
 
     def upsert_extension(self, quote: dict[str, Any]) -> None:
         self.connection.execute(
@@ -155,10 +155,9 @@ class SQLiteMarketRepository(MarketRepository):
                 "market_code": quote["market_code"],
                 "symbol_clean": quote["symbol_clean"],
                 "raw_change": quote.get("raw_change"),
-                "raw_payload": str(quote.get("raw_payload")),
+                "raw_payload": json.dumps(quote.get("raw_payload"), ensure_ascii=False),
             },
         )
-        self.connection.commit()
 
     def fetch_by_trade_date(self, trade_date: str) -> list[dict[str, Any]]:
         cur = self.connection.execute(

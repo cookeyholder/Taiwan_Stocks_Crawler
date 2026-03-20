@@ -4,10 +4,11 @@ from market_crawler.repository import SQLiteMarketRepository
 
 
 def _quote(symbol: str = "0050", close: float = 77.8) -> dict[str, object]:
+    symbol_raw = f'="{symbol}"' if symbol.isdigit() and len(symbol) == 4 else symbol
     return {
         "trade_date": "2026-03-18",
         "market_code": "TWSE",
-        "symbol_raw": '="0050"',
+        "symbol_raw": symbol_raw,
         "symbol_clean": symbol,
         "security_name": "元大台灣50",
         "instrument_type": "stock",

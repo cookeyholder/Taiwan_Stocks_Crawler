@@ -14,7 +14,10 @@ if str(ROOT_DIR) not in sys.path:
 
 @pytest.fixture
 def fixture_dir() -> Path:
-    return Path(__file__).parent / "fixtures"
+    fixture_root = Path(__file__).parent / "fixtures"
+    if not fixture_root.exists():
+        raise FileNotFoundError(f"Fixture directory not found: {fixture_root}")
+    return fixture_root
 
 
 @pytest.fixture
@@ -42,4 +45,7 @@ def sqlite_repo() -> Any:
 
 @pytest.fixture
 def stock_master_path() -> str:
-    return "StockID.csv"
+    stock_master = ROOT_DIR / "StockID.csv"
+    if not stock_master.exists():
+        raise FileNotFoundError(f"Stock master not found: {stock_master}")
+    return str(stock_master)
