@@ -34,7 +34,9 @@
                 "ms-azuretools.vscode-containers",
                 "ReprEng.csv",
                 "SeyyedKhandon.firacode",
-                "GitHub.vscode-pull-request-github"
+                "GitHub.vscode-pull-request-github",
+                "mechatroner.rainbow-csv",
+                "jraylan.seamless-agent"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/usr/local/bin/python",
@@ -58,7 +60,7 @@
         }
     },
 
-    "postCreateCommand": "bash .devcontainer/post-create-command.sh",
+    "postCreateCommand": "bash .devcontainer/post-create-command.sh && npm install -g @fission-ai/openspec@latest",
 
     "waitFor": "postCreateCommand",
 
