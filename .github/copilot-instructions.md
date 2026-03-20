@@ -85,3 +85,16 @@ pre-commit run --all-files
 - 測試會在 `tests/conftest.py` 中把專案根目錄加入 `sys.path`，且匯入方式預設採用套件路徑，例如 `from market_crawler...`。
 - 如果要調整 parser 或 normalization 行為，請同步更新 `tests/test_parsers.py`、`tests/test_normalize.py`、`tests/test_guardrails_and_regressions.py` 這些對應測試，必要時也更新 `tests/fixtures/` 下的範例資料。
 - 請遵循 `CONTRIBUTING.md` 既有的工具慣例：優先使用 dev container、以 `uv` 管理相依套件，並延續現有的 conventional commit 風格（`feat:`、`fix:`、`docs:`、`test:`、`refactor:`）。
+
+
+## 文件更新
+- 在 `docs/` 中撰寫與更新文件，並且在 commit message 中清楚說明文件更新的內容與目的。
+- 重要文件包括但不限於：`docs/canonical_schema.md`（canonical 欄位字典與對映表）、`docs/classification_rules.md`（分類規則決策表與維護準則）、`docs/debugging_guide.md`（新來源格式變動時的排查流程）、`docs/testing_matrix.md`（測試矩陣：測試類型、案例數、涵蓋風險、對應需求）等。
+- 文件內容應該清晰、具體且易於理解，並且盡量包含實際的範例與參考，讓使用者能夠有效地使用這些文件來理解專案的規格、流程與最佳實踐。
+
+
+## 其他注意事項
+- AI agents（例如 Plan Agent、Ask Agent）應該嚴格遵守專案的規範與流程，並且在執行任務時保持透明與可追蹤，確保每個步驟都有明確的記錄與驗證。
+- 在察覺到自己的 context window 快要滿了時，應該主動使用 #tool:vscode/memory 把重要的上下文資訊保存到 `/memories/session/` 中，以便在後續的對話或任務中能夠繼續參考這些資訊。
+- 在使用工具（例如 search、read、askQuestions）來收集資訊或澄清問題時，應該確保問題具體且提供足夠的背景資訊，以便使用者能夠給出明確的回答，並且在收集到資訊後能夠有效地整合這些資訊來完成任務。
+- 在撰寫計畫或回答問題時，應該盡量具體且提供明確的步驟、相關檔案、驗證方式、決策與後續考量，讓使用者能夠完整理解並有效執行，而不是提供模糊或過於抽象的建議。
