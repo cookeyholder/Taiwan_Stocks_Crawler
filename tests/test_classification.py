@@ -74,3 +74,19 @@ def test_classification_cfi_unknown_falls_back_to_ticker() -> None:
     }
     instrument, _, _, _ = classify_instrument(symbol_clean="1234A", security_master=master)
     assert instrument == "preferred_stock"
+
+
+def test_classification_ticker_fallback_five_digit_bond_etf() -> None:
+    """00679B（五位數+B）應分類為 etf，而非 warrant。"""
+    instrument, _, _, _ = classify_instrument(
+        symbol_clean="00679B", security_master={}
+    )
+    assert instrument == "etf"
+
+
+def test_classification_ticker_fallback_four_digit_bond_etf() -> None:
+    """0050B（四位數+B）應分類為 etf，而非 preferred_stock。"""
+    instrument, _, _, _ = classify_instrument(
+        symbol_clean="0050B", security_master={}
+    )
+    assert instrument == "etf"

@@ -62,6 +62,11 @@ def _from_ticker_pattern(symbol: str) -> str:
     # Based on Taiwan ticker coding principles fallback rules.
     if re.fullmatch(r"\d{4}", symbol):
         return "stock"
+    # Bond ETF: 4- or 5-digit code ending in B (e.g. 0050B, 00679B).
+    # Must be checked before preferred_stock (\d{4}[A-Y]) and warrant (\d{5}[...B...])
+    # rules that would otherwise capture these symbols first.
+    if re.fullmatch(r"\d{4,5}B", symbol):
+        return "etf"
     if re.fullmatch(r"\d{4}[A-Y]", symbol):
         return "preferred_stock"
     if re.fullmatch(r"\d{4}Z[1-9]", symbol):
@@ -70,8 +75,6 @@ def _from_ticker_pattern(symbol: str) -> str:
         return "warrant_certificate"
     if re.fullmatch(r"\d{2}\d{3}[PUTFQCBXY]", symbol):
         return "warrant"
-    if re.fullmatch(r"\d{4}[A-Z]", symbol) and symbol.endswith("B"):
-        return "etf"
     if re.fullmatch(r"[BGFAHPI]\w{5}", symbol):
         return "bond"
     if re.fullmatch(r"T\w{5}", symbol):

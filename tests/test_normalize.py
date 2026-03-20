@@ -144,3 +144,59 @@ def test_normalize_tpex_record_with_missing_numeric() -> None:
 def test_roc_to_ad_invalid_format() -> None:
     with pytest.raises(ValueError):
         roc_to_ad_date("20260318")
+
+
+def test_twse_change_sign_empty_string_normalized_to_none() -> None:
+    """TWSE change_sign 為空字串時（收盤價未變動），應正規化為 None。"""
+    record = {
+        "symbol": "0050",
+        "name": "元大台灣50",
+        "volume": "1000",
+        "open": "150.00",
+        "high": "152.00",
+        "low": "149.00",
+        "close": "150.00",
+        "change_sign": "",
+        "change_value": "0.00",
+        "turnover": "150000000",
+        "trade_count": "500",
+        "source_file": "MI_INDEX_ALL.csv",
+        "source_line_no": 1,
+    }
+    normalized = normalize_record(
+        market_code="TWSE",
+        trade_date="114/01/02",
+        record=record,
+        source_encoding="cp950",
+        ingest_run_id="run-1",
+        ingested_at="2025-01-03T00:00:00Z",
+    )
+    assert normalized["change_sign"] is None
+
+
+def test_twse_change_sign_whitespace_normalized_to_none() -> None:
+    """TWSE change_sign 為空白字元時，應正規化為 None。"""
+    record = {
+        "symbol": "2330",
+        "name": "台積電",
+        "volume": "5000",
+        "open": "900.00",
+        "high": "910.00",
+        "low": "895.00",
+        "close": "900.00",
+        "change_sign": " ",
+        "change_value": "0",
+        "turnover": "4500000000",
+        "trade_count": "2000",
+        "source_file": "MI_INDEX_ALL.csv",
+        "source_line_no": 2,
+    }
+    normalized = normalize_record(
+        market_code="TWSE",
+        trade_date="114/01/02",
+        record=record,
+        source_encoding="cp950",
+        ingest_run_id="run-1",
+        ingested_at="2025-01-03T00:00:00Z",
+    )
+    assert normalized["change_sign"] is None

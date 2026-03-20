@@ -114,7 +114,9 @@ def normalize_record(
     if market_code == "TPEX":
         change_sign, change_value = parse_change_field(record.get("change"))
     else:
-        change_sign, change_value = record.get("change_sign"), to_float(record.get("change_value"))
+        _raw_sign = record.get("change_sign")
+        change_sign = (_raw_sign.strip() if _raw_sign else None) or None
+        change_value = to_float(record.get("change_value"))
 
     return {
         "trade_date": roc_to_ad_date(trade_date),
