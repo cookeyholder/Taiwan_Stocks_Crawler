@@ -200,3 +200,57 @@ def test_twse_change_sign_whitespace_normalized_to_none() -> None:
         ingested_at="2025-01-03T00:00:00Z",
     )
     assert normalized["change_sign"] is None
+
+
+# --- 防呆：除息/除權當日漲跌欄位為文字 ---
+
+
+@pytest.mark.parametrize(
+    "marker",
+    ["除息", "除權", "除息除權"],
+)
+def test_parse_change_field_ex_dividend_markers_return_none(marker: str) -> None:
+    """TPEX 在除息/除權日，漲跌欄位會填入文字標記，應傳回 (None, None) 而非拋出例外。"""
+    sign, value = parse_change_field(marker)
+    assert sign is None
+    assert value is None
+
+
+def test_to_float_non_numeric_returns_none() -> None:
+    """to_float 遇到非數字文字時應傳回 None，不應拋出 ValueError。"""
+    from market_crawler.normalize import to_float
+
+    assert to_float("除息") is None
+    assert to_float("除權") is None
+    assert to_float("N/A") is None
+    assert to_float("abc") is None
+
+
+def test_normalize_tpex_record_with_ex_dividend_change() -> None:
+    """TPEX 除息當日的完整 normalize 流程不應拋出例外，change_sign 與 change 應為 None。"""
+    record = {
+        "symbol": "1234",
+        "name": "測試股",
+        "volume": "100,000",
+        "open": "50.00",
+        "high": "52.00",
+        "low": "49.00",
+        "close": "51.00",
+        "change": "除息",
+        "turnover": "5,000,000",
+        "trade_count": "500",
+        "avg_price": "50.50",
+        "source_file": "tpex_2026-03-17",
+        "source_line_no": 5,
+    }
+    normalized = normalize_record(
+        market_code="TPEX",
+        trade_date="115/03/17",
+        record=record,
+        source_encoding="utf-8",
+        ingest_run_id="run-1",
+        ingested_at="2026-03-17T00:00:00Z",
+    )
+    assert normalized["change_sign"] is None
+    assert normalized["change_value"] is None
+    assert normalized["close_price"] == 51.00

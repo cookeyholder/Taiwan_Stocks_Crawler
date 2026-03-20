@@ -210,3 +210,119 @@ def parse_tpex_daily_close(content: bytes, source_file: str) -> ParseResult:
         records=records,
         errors=errors,
     )
+
+
+# TPEX 新版 JSON API（2025 年後啟用）欄位順序
+#   https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes?response=json
+TPEX_JSON_FIELDS = [
+    "代號",        # 0  → symbol
+    "名稱",        # 1  → name
+    "收盤",        # 2  → close
+    "漲跌",        # 3  → change
+    "開盤",        # 4  → open
+    "最高",        # 5  → high
+    "最低",        # 6  → low
+    "均價",        # 7  → (略過，normalize 不需要)
+    "成交股數",    # 8  → volume
+    "成交金額(元)",# 9  → turnover
+    "成交筆數",    # 10 → trade_count
+    "最後買價",    # 11 → last_bid
+    "最後買量(張數)",  # 12 → last_bid_qty
+    "最後賣價",    # 13 → last_ask
+    "最後賣量(張數)",  # 14 → last_ask_qty
+    "發行股數",    # 15 → issued_shares
+    "次日參考價",  # 16 → (略過)
+    "次日漲停價",  # 17 → next_limit_up
+    "次日跌停價",  # 18 → next_limit_down
+]
+
+_TPEX_JSON_MIN_COLS = 17  # 至少要有到「次日漲停價」那一欄
+
+
+def parse_tpex_daily_close_json(
+    response_json: dict[str, Any], source_file: str
+) -> ParseResult:
+    """解析 TPEX 新版 JSON API（2025 年後的格式）回傳的每日收盤行情。
+
+    JSON 結構：
+    ``{"tables": [{"title": "上櫃股票行情", "fields": [...], "data": [[...], ...]}, ...]}``
+
+    Args:
+        response_json: `requests.Response.json()` 的解析結果。
+        source_file: 來源識別字串（URL 或流水號），用於追蹤。
+
+    Returns:
+        :class:`ParseResult` — 包含 market_code="TPEX"、records 與 errors。
+    """
+    tables: list[dict[str, Any]] = response_json.get("tables", [])
+
+    # 找出第一個包含上櫃股票行情的表格
+    target_table: dict[str, Any] | None = None
+    for table in tables:
+        title = table.get("title", "")
+        if "上櫃股票" in title:
+            target_table = table
+            break
+
+    if target_table is None:
+        return ParseResult(
+            market_code="TPEX",
+            source_encoding="utf-8",
+            records=[],
+            errors=[
+                ParseError(
+                    market_code="TPEX",
+                    source_line_no=0,
+                    reason="TPEX JSON: 找不到『上櫃股票行情』表格",
+                )
+            ],
+        )
+
+    raw_rows: list[list[str]] = target_table.get("data", [])
+    records: list[dict[str, Any]] = []
+    errors: list[ParseError] = []
+
+    for line_no, row in enumerate(raw_rows, start=1):
+        if not row or not row[0].strip():
+            continue
+        if len(row) < _TPEX_JSON_MIN_COLS:
+            errors.append(
+                ParseError(
+                    market_code="TPEX",
+                    source_line_no=line_no,
+                    reason=f"Expected >={_TPEX_JSON_MIN_COLS} columns, got {len(row)}",
+                )
+            )
+            continue
+
+        records.append(
+            {
+                "symbol": row[0].strip(),
+                "name": row[1].strip(),
+                "close": row[2].strip(),
+                "change": row[3].strip(),
+                "open": row[4].strip(),
+                "high": row[5].strip(),
+                "low": row[6].strip(),
+                "volume": row[8].strip(),       # 跳過 index 7（均價）
+                "turnover": row[9].strip(),
+                "trade_count": row[10].strip(),
+                "last_bid": row[11].strip(),
+                "last_bid_qty": row[12].strip(),
+                "last_ask": row[13].strip(),
+                "last_ask_qty": row[14].strip(),
+                "issued_shares": row[15].strip(),
+                # index 16：次日參考價（不在 canonical schema 中，略過）
+                "next_limit_up": row[17].strip() if len(row) > 17 else None,
+                "next_limit_down": row[18].strip() if len(row) > 18 else None,
+                "source_file": source_file,
+                "source_line_no": line_no,
+            }
+        )
+
+    return ParseResult(
+        market_code="TPEX",
+        source_encoding="utf-8",
+        records=records,
+        errors=errors,
+    )

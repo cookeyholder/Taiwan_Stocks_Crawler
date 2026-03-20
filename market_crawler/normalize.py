@@ -68,13 +68,24 @@ def to_int(value: str | None) -> int | None:
 
 def to_float(value: str | None) -> float | None:
     cleaned = clean_numeric(value)
-    return float(cleaned) if cleaned is not None else None
+    if cleaned is None:
+        return None
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+# 交易所在除息/除權日於漲跌欄位填入的文字標記
+_NON_NUMERIC_CHANGE_MARKERS = frozenset({"除息", "除權", "除息除權"})
 
 
 def parse_change_field(change: str | None) -> tuple[str | None, float | None]:
     if not change or change.strip() in {"", "--"}:
         return None, None
     value = change.strip()
+    if value in _NON_NUMERIC_CHANGE_MARKERS:
+        return None, None
     if value[0] in {"+", "-"}:
         sign = value[0]
         magnitude = to_float(value[1:])

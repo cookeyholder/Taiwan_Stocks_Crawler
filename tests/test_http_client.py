@@ -11,7 +11,7 @@ def test_get_with_retry_success_first_try(monkeypatch: MonkeyPatch) -> None:
     class DummyResponse:
         status_code = 200
 
-    def fake_get(_url: str, timeout: float) -> DummyResponse:
+    def fake_get(_url: str, timeout: float, **_kwargs: object) -> DummyResponse:
         assert timeout == 0.5
         return DummyResponse()
 
@@ -26,7 +26,7 @@ def test_get_with_retry_retries_then_succeeds(monkeypatch: MonkeyPatch) -> None:
 
     calls = {"n": 0}
 
-    def fake_get(_url: str, timeout: float) -> DummyResponse:
+    def fake_get(_url: str, timeout: float, **_kwargs: object) -> DummyResponse:
         _ = timeout
         calls["n"] += 1
         if calls["n"] < 3:
@@ -50,7 +50,7 @@ def test_get_with_retry_retries_then_succeeds(monkeypatch: MonkeyPatch) -> None:
 
 
 def test_get_with_retry_raises_after_all_retries(monkeypatch: MonkeyPatch) -> None:
-    def fake_get(_url: str, timeout: float) -> requests.Response:
+    def fake_get(_url: str, timeout: float, **_kwargs: object) -> requests.Response:
         _ = timeout
         raise requests.Timeout("always fail")
 
@@ -75,7 +75,7 @@ def test_get_with_retry_treats_5xx_as_retryable(monkeypatch: MonkeyPatch) -> Non
     class BadResponse:
         status_code = 503
 
-    def fake_get(_url: str, timeout: float) -> BadResponse:
+    def fake_get(_url: str, timeout: float, **_kwargs: object) -> BadResponse:
         _ = timeout
         return BadResponse()
 
