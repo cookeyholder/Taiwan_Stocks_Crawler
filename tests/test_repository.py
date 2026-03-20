@@ -97,3 +97,24 @@ def test_single_core_table_covers_stock_etf_warrant(sqlite_repo: SQLiteMarketRep
 
     rows = sqlite_repo.fetch_by_trade_date("2026-03-18")
     assert {row["instrument_type"] for row in rows} == {"stock", "etf", "warrant"}
+
+
+def test_upsert_core_normalizes_text_to_utf8(sqlite_repo: SQLiteMarketRepository) -> None:
+    quote = _quote(symbol="0050", close=77.8)
+    quote["security_name"] = "測試\udcff名稱"
+    sqlite_repo.upsert_core(quote)
+    saved_name = sqlite_repo.connection.execute(
+        "SELECT security_name FROM market_quote_core WHERE symbol_clean='0050'"
+    ).fetchone()[0]
+    assert saved_name == "測試?名稱"
+
+
+def test_upsert_extension_normalizes_text_to_utf8(sqlite_repo: SQLiteMarketRepository) -> None:
+    quote = _quote(symbol="0050", close=77.8)
+    quote["raw_payload"] = {"note": "測試\udcffpayload"}
+    sqlite_repo.upsert_core(quote)
+    sqlite_repo.upsert_extension(quote)
+    saved_payload = sqlite_repo.connection.execute(
+        "SELECT raw_payload FROM market_quote_extension WHERE symbol_clean='0050'"
+    ).fetchone()[0]
+    assert "?payload" in saved_payload

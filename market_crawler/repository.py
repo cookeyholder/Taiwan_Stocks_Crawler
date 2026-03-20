@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Mapping
 
 
 class MarketRepository(ABC):
@@ -84,7 +84,27 @@ class SQLiteMarketRepository(MarketRepository):
         )
         self.connection.commit()
 
+    @staticmethod
+    def _normalize_text(value: Any) -> Any:
+        if isinstance(value, str):
+            return value.encode("utf-8", errors="replace").decode("utf-8")
+        return value
+
+    def _normalize_value(self, value: Any) -> Any:
+        if isinstance(value, Mapping):
+            return {
+                self._normalize_text(key): self._normalize_value(inner_value)
+                for key, inner_value in value.items()
+            }
+        if isinstance(value, list):
+            return [self._normalize_value(item) for item in value]
+        return self._normalize_text(value)
+
+    def _normalize_quote_payload(self, quote: dict[str, Any]) -> dict[str, Any]:
+        return {key: self._normalize_value(value) for key, value in quote.items()}
+
     def upsert_core(self, quote: dict[str, Any]) -> None:
+        normalized_quote = self._normalize_quote_payload(quote)
         self.connection.execute(
             """
             INSERT INTO market_quote_core (
@@ -135,10 +155,11 @@ class SQLiteMarketRepository(MarketRepository):
                 ingest_run_id=excluded.ingest_run_id,
                 ingested_at=excluded.ingested_at
             """,
-            quote,
+            normalized_quote,
         )
 
     def upsert_extension(self, quote: dict[str, Any]) -> None:
+        normalized_quote = self._normalize_quote_payload(quote)
         self.connection.execute(
             """
             INSERT INTO market_quote_extension (
@@ -151,11 +172,11 @@ class SQLiteMarketRepository(MarketRepository):
                 raw_payload=excluded.raw_payload
             """,
             {
-                "trade_date": quote["trade_date"],
-                "market_code": quote["market_code"],
-                "symbol_clean": quote["symbol_clean"],
-                "raw_change": quote.get("raw_change"),
-                "raw_payload": json.dumps(quote.get("raw_payload"), ensure_ascii=False),
+                "trade_date": normalized_quote["trade_date"],
+                "market_code": normalized_quote["market_code"],
+                "symbol_clean": normalized_quote["symbol_clean"],
+                "raw_change": normalized_quote.get("raw_change"),
+                "raw_payload": json.dumps(normalized_quote.get("raw_payload"), ensure_ascii=False),
             },
         )
 
