@@ -13,6 +13,9 @@ dependencies = [
     "fake-useragent>=2.2.0",
 ]
 
+[project.scripts]
+twse-crawler = "market_crawler.pipeline:main"
+
 [project.optional-dependencies]
 dev = [
     "ruff>=0.1.0",
@@ -29,7 +32,10 @@ jupyter = [
 ]
 
 [tool.uv]
-package = false
+package = true
+
+[tool.setuptools.packages.find]
+include = ["market_crawler*"]
 
 [tool.ruff]
 line-length = 88
