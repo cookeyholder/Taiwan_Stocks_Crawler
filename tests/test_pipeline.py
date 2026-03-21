@@ -37,7 +37,7 @@ def _empty_parse_result() -> ParseResult:
 
 def _mock_response(json_data: Any = None, content: bytes = b"") -> MagicMock:
     resp = MagicMock()
-    resp.json.return_value = json_data if json_data is not None else []
+    resp.json.return_value = json_data if json_data is not None else {}
     resp.content = content
     return resp
 
@@ -59,7 +59,9 @@ class TestTwseDateRouting:
 
         def mock_get(url: str, policy: Any) -> MagicMock:
             captured.append(url)
-            return _mock_response(json_data=[])
+            if "STOCK_DAY_ALL" in url:
+                return _mock_response(json_data=[])
+            return _mock_response(json_data={"tables": []})
 
         monkeypatch.setattr("market_crawler.pipeline.get_with_retry", mock_get)
         monkeypatch.setattr(

@@ -223,6 +223,63 @@ def _fetch_and_parse_twse_csv(date_str: str, policy: HttpPolicy) -> object:
     return parse_twse_daily_close(resp.content, source_file=url)
 
 
+def _fetch_and_ingest_tpex(
+    *,
+    date_str: str,
+    policy: HttpPolicy,
+    security_master: dict,
+    ingest_run_id: str,
+    ingested_at: str,
+    repo: SQLiteMarketRepository,
+) -> int:
+    """抓取並寫入單日 TPEX 資料，成功回傳寫入筆數。"""
+    tpex_url = _build_tpex_url(date_str)
+    resp = get_with_retry(tpex_url, policy)
+    response_json = resp.json()
+    result = parse_tpex_daily_close_json(response_json, source_file=tpex_url)
+    return _ingest_records(
+        market_code="TPEX",
+        date_str=date_str,
+        parse_result=result,
+        security_master=security_master,
+        ingest_run_id=ingest_run_id,
+        ingested_at=ingested_at,
+        repo=repo,
+    )
+
+
+def _fetch_and_ingest_twse(
+    *,
+    date_str: str,
+    requested_date: _dt.date,
+    today: _dt.date,
+    policy: HttpPolicy,
+    security_master: dict,
+    ingest_run_id: str,
+    ingested_at: str,
+    repo: SQLiteMarketRepository,
+) -> tuple[int, bool]:
+    """抓取並寫入 TWSE，回傳 (written_count, twse_market_closed)。"""
+    if requested_date < today:
+        twse_result = _fetch_and_parse_twse_csv(date_str, policy)
+    else:
+        twse_result = _fetch_and_parse_twse(date_str, policy)
+
+    if twse_result is None:
+        return 0, True
+
+    written = _ingest_records(
+        market_code="TWSE",
+        date_str=date_str,
+        parse_result=twse_result,
+        security_master=security_master,
+        ingest_run_id=ingest_run_id,
+        ingested_at=ingested_at,
+        repo=repo,
+    )
+    return written, False
+
+
 # ---------------------------------------------------------------------------
 # 核心：單日抓取與入庫
 # ---------------------------------------------------------------------------
@@ -288,46 +345,33 @@ def fetch_and_ingest_day(
     with conn:
         # --- TWSE ---
         try:
-            if requested_date < today:
-                # 歷史日期：使用 CSV API
-                twse_result = _fetch_and_parse_twse_csv(date_str, policy)
-            else:
-                # 今日：使用 JSON API（date_str == today 或 future）
-                twse_result = _fetch_and_parse_twse(date_str, policy)
-
-            if twse_result is None:
-                # JSON API 路徑：日期不符 → market_closed 訊號
-                twse_market_closed = True
-            else:
-                total_written += _ingest_records(
-                    market_code="TWSE",
-                    date_str=date_str,
-                    parse_result=twse_result,
-                    security_master=security_master,
-                    ingest_run_id=ingest_run_id,
-                    ingested_at=ingested_at,
-                    repo=repo,
-                )
-        except Exception as exc:  # noqa: BLE001
-            warnings.warn(f"TWSE {date_str} 抓取/入庫失敗：{exc}", stacklevel=2)
-
-        # --- TPEX ---
-        try:
-            tpex_url = _build_tpex_url(date_str)
-            resp = get_with_retry(tpex_url, policy)
-            response_json = resp.json()
-            result = parse_tpex_daily_close_json(response_json, source_file=tpex_url)
-            total_written += _ingest_records(
-                market_code="TPEX",
+            written, twse_market_closed = _fetch_and_ingest_twse(
                 date_str=date_str,
-                parse_result=result,
+                requested_date=requested_date,
+                today=today,
+                policy=policy,
                 security_master=security_master,
                 ingest_run_id=ingest_run_id,
                 ingested_at=ingested_at,
                 repo=repo,
             )
+            total_written += written
         except Exception as exc:  # noqa: BLE001
-            warnings.warn(f"TPEX {date_str} 抓取/入庫失敗：{exc}", stacklevel=2)
+            warnings.warn(f"TWSE {date_str} 抓取/入庫失敗：{exc}", stacklevel=2)
+
+        # --- TPEX ---
+        if not twse_market_closed:
+            try:
+                total_written += _fetch_and_ingest_tpex(
+                    date_str=date_str,
+                    policy=policy,
+                    security_master=security_master,
+                    ingest_run_id=ingest_run_id,
+                    ingested_at=ingested_at,
+                    repo=repo,
+                )
+            except Exception as exc:  # noqa: BLE001
+                warnings.warn(f"TPEX {date_str} 抓取/入庫失敗：{exc}", stacklevel=2)
 
     conn.close()
 
