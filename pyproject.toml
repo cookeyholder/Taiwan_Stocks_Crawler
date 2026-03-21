@@ -62,7 +62,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["you"]
+known-first-party = ["market_crawler"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -87,8 +87,8 @@
     {
       "label": "🔍 pre-commit: Run Checks",
       "type": "shell",
-      "command": "uv",
-      "args": ["tool", "run", "pre-commit", "run", "--all-files"],
+      "command": "bash",
+      "args": ["-lc", "unset VIRTUAL_ENV && uv run pre-commit run --all-files"],
       "group": "build"
     }
   ]

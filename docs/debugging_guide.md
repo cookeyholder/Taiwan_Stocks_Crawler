@@ -6,13 +6,13 @@
 
 ### 何時標記為 market_closed？
 
-`classify_day()` 回傳 `"market_closed"` 的判斷條件（由上到下，第一個符合的就短路）：
+在整體匯入流程中，`"market_closed"` 主要由 `run_date_range_ingestion()` 根據 fetcher 回傳值判定（由上到下，第一個符合就短路）：
 
 1. **非週末（工作日）**
 2. **非已知假日（holidays 集合不含此日）**
-3. **Fetcher 回傳 `None`**（而非 `True`/`False`）
+3. **`fetch_and_ingest_day()` 回傳 `None`**（而非 `True`/`False`）
 
-fetcher 回傳 `None` 的觸發條件（在 `fetch_and_ingest_day()` 中）：
+`fetch_and_ingest_day()` 回傳 `None` 的觸發條件：
 - 使用 JSON API 路徑（今日路由）
 - TWSE JSON API 有正常回應
 - 但 API 回傳的日期 ≠ 請求日期（表示市場當日未開市，API 退回前一交易日資料）
