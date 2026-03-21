@@ -5,7 +5,9 @@
 `make_fetcher()` 包裝函式。
 
 資料來源：
-- TWSE：https://www.twse.com.tw/exchangeReport/MI_INDEX（CSV，Big5）
+- TWSE：https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL（JSON，UTF-8）
+  注意：此 API 不接受日期參數，固定回傳最新交易日資料。
+  若請求的日期與 API 回傳的日期不符，TWSE 資料將被略過。
 - TPEX：https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes（JSON，UTF-8）
 
 注意事項：
@@ -33,7 +35,10 @@ from market_crawler.classification import classify_instrument, load_security_mas
 from market_crawler.http_client import HttpPolicy, get_with_retry
 from market_crawler.normalize import normalize_record
 from market_crawler.orchestrator import run_date_range_ingestion
-from market_crawler.parsers import parse_tpex_daily_close_json, parse_twse_daily_close
+from market_crawler.parsers import (
+    parse_tpex_daily_close_json,
+    parse_twse_daily_close_json,
+)
 from market_crawler.repository import SQLiteMarketRepository
 
 # ---------------------------------------------------------------------------
@@ -62,21 +67,20 @@ def _make_user_agent() -> str:
 # URL 建構
 # ---------------------------------------------------------------------------
 
-def _build_twse_url(date_str: str) -> str:
-    """建立 TWSE 每日收盤行情 CSV 下載 URL。
+# TWSE OpenAPI 無日期參數，固定回傳最新交易日資料
+_TWSE_OPENAPI_URL = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
 
-    Args:
-        date_str: ISO 格式日期字串，例如 ``"2026-03-17"``。
 
-    Returns:
-        完整 URL 字串，例如
-        ``"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=csv&date=20260317&type=ALL"``
+def _roc_compact_to_iso(roc_compact: str) -> str:
+    """將 TWSE JSON 中的民國緊湊日期格式轉為 ISO 格式。
+
+    例如 ``"1150320"`` → ``"2026-03-20"``。
     """
-    date_compact = date_str.replace("-", "")
-    return (
-        f"https://www.twse.com.tw/exchangeReport/MI_INDEX"
-        f"?response=csv&date={date_compact}&type=ALL"
-    )
+    roc_compact = roc_compact.strip()
+    roc_year = int(roc_compact[:-4])
+    month = int(roc_compact[-4:-2])
+    day = int(roc_compact[-2:])
+    return f"{roc_year + 1911:04d}-{month:02d}-{day:02d}"
 
 
 def _build_tpex_url(date_str: str) -> str:
@@ -144,6 +148,36 @@ def _ingest_records(
 
 
 # ---------------------------------------------------------------------------
+# 內部：TWSE fetch + 日期驗證
+# ---------------------------------------------------------------------------
+
+def _fetch_and_parse_twse(date_str: str, policy: HttpPolicy) -> object | None:
+    """抓取 TWSE OpenAPI 並驗證日期；日期不符時回傳 ``None``。"""
+    resp = get_with_retry(_TWSE_OPENAPI_URL, policy)
+    response_json = resp.json()
+
+    # 驗證 API 回傳的日期與請求日期是否一致
+    # （STOCK_DAY_ALL 不接受日期參數，固定回傳最新交易日）
+    returned_date: str | None = None
+    if isinstance(response_json, list) and response_json:
+        raw_date = str(response_json[0].get("Date", ""))
+        if raw_date:
+            try:
+                returned_date = _roc_compact_to_iso(raw_date)
+            except (ValueError, IndexError):
+                pass
+
+    if returned_date and returned_date != date_str:
+        warnings.warn(
+            f"TWSE API 回傳日期 {returned_date} 與請求日期 {date_str} 不符，略過 TWSE 資料",
+            stacklevel=3,
+        )
+        return None
+
+    return parse_twse_daily_close_json(response_json, source_file=_TWSE_OPENAPI_URL)
+
+
+# ---------------------------------------------------------------------------
 # 核心：單日抓取與入庫
 # ---------------------------------------------------------------------------
 
@@ -198,18 +232,17 @@ def fetch_and_ingest_day(
     with conn:
         # --- TWSE ---
         try:
-            twse_url = _build_twse_url(date_str)
-            resp = get_with_retry(twse_url, policy)
-            result = parse_twse_daily_close(resp.content, source_file=twse_url)
-            total_written += _ingest_records(
-                market_code="TWSE",
-                date_str=date_str,
-                parse_result=result,
-                security_master=security_master,
-                ingest_run_id=ingest_run_id,
-                ingested_at=ingested_at,
-                repo=repo,
-            )
+            twse_result = _fetch_and_parse_twse(date_str, policy)
+            if twse_result is not None:
+                total_written += _ingest_records(
+                    market_code="TWSE",
+                    date_str=date_str,
+                    parse_result=twse_result,
+                    security_master=security_master,
+                    ingest_run_id=ingest_run_id,
+                    ingested_at=ingested_at,
+                    repo=repo,
+                )
         except Exception as exc:  # noqa: BLE001
             warnings.warn(f"TWSE {date_str} 抓取/入庫失敗：{exc}", stacklevel=2)
 

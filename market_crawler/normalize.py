@@ -122,7 +122,7 @@ def normalize_record(
     symbol_raw = record["symbol"]
     symbol_clean = clean_symbol(symbol_raw)
 
-    if market_code == "TPEX":
+    if market_code == "TPEX" or "change" in record:
         change_sign, change_value = parse_change_field(record.get("change"))
     else:
         _raw_sign = record.get("change_sign")

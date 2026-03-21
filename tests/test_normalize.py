@@ -254,3 +254,123 @@ def test_normalize_tpex_record_with_ex_dividend_change() -> None:
     assert normalized["change_sign"] is None
     assert normalized["change_value"] is None
     assert normalized["close_price"] == 51.00
+
+
+
+# ---------------------------------------------------------------------------
+# TWSE JSON format (OpenAPI STOCK_DAY_ALL — 含 "change" 鍵而非 change_sign)
+# ---------------------------------------------------------------------------
+
+def test_normalize_twse_json_change_field_parsed() -> None:
+    """TWSE JSON 格式的 record 含有 'change' 鍵時，應使用 parse_change_field 解析。"""
+    record = {
+        "symbol": "0050",
+        "name": "元大台灣50",
+        "volume": "72638922",
+        "turnover": "5517624557",
+        "open": "76.20",
+        "high": "76.40",
+        "low": "75.50",
+        "close": "75.90",
+        "change": "-0.1000",
+        "trade_count": "101109",
+        "source_file": "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
+        "source_line_no": 1,
+    }
+    normalized = normalize_record(
+        market_code="TWSE",
+        trade_date="2026-03-20",
+        record=record,
+        source_encoding="utf-8",
+        ingest_run_id="run-1",
+        ingested_at="2026-03-20T00:00:00Z",
+    )
+    assert normalized["change_sign"] == "-"
+    assert normalized["change_value"] == pytest.approx(0.1)
+    assert normalized["symbol_clean"] == "0050"
+    assert normalized["close_price"] == pytest.approx(75.90)
+
+
+def test_normalize_twse_json_positive_change() -> None:
+    """TWSE JSON 正漲無加號時，change_sign 應為 None，change_value 應為正值。"""
+    record = {
+        "symbol": "2330",
+        "name": "台積電",
+        "volume": "1000",
+        "turnover": "1860000",
+        "open": "1860.00",
+        "high": "1870.00",
+        "low": "1855.00",
+        "close": "1865.00",
+        "change": "5.0000",
+        "trade_count": "500",
+        "source_file": "url",
+        "source_line_no": 1,
+    }
+    normalized = normalize_record(
+        market_code="TWSE",
+        trade_date="2026-03-20",
+        record=record,
+        source_encoding="utf-8",
+        ingest_run_id="run-1",
+        ingested_at="2026-03-20T00:00:00Z",
+    )
+    assert normalized["change_sign"] is None
+    assert normalized["change_value"] == pytest.approx(5.0)
+
+
+def test_normalize_twse_json_zero_change() -> None:
+    """TWSE JSON change 為 '0.0000' 時，change_sign 應為 None，change_value 應為 0.0。"""
+    record = {
+        "symbol": "1101",
+        "name": "台泥",
+        "volume": "1000",
+        "turnover": "100000",
+        "open": "50.00",
+        "high": "50.50",
+        "low": "49.50",
+        "close": "50.00",
+        "change": "0.0000",
+        "trade_count": "100",
+        "source_file": "url",
+        "source_line_no": 1,
+    }
+    normalized = normalize_record(
+        market_code="TWSE",
+        trade_date="2026-03-20",
+        record=record,
+        source_encoding="utf-8",
+        ingest_run_id="run-1",
+        ingested_at="2026-03-20T00:00:00Z",
+    )
+    assert normalized["change_sign"] is None
+    assert normalized["change_value"] == pytest.approx(0.0)
+
+
+def test_normalize_twse_json_empty_fields_become_none() -> None:
+    """未成交時空字串欄位應 normalize 為 None。"""
+    record = {
+        "symbol": "00707R",
+        "name": "期元大S&P日圓反1",
+        "volume": "",
+        "turnover": "",
+        "open": "",
+        "high": "",
+        "low": "",
+        "close": "",
+        "change": "0.0000",
+        "trade_count": "",
+        "source_file": "url",
+        "source_line_no": 1,
+    }
+    normalized = normalize_record(
+        market_code="TWSE",
+        trade_date="2026-03-20",
+        record=record,
+        source_encoding="utf-8",
+        ingest_run_id="run-1",
+        ingested_at="2026-03-20T00:00:00Z",
+    )
+    assert normalized["volume_shares"] is None
+    assert normalized["close_price"] is None
+    assert normalized["open_price"] is None

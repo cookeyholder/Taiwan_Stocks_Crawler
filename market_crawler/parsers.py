@@ -326,3 +326,108 @@ def parse_tpex_daily_close_json(
         records=records,
         errors=errors,
     )
+
+
+# TWSE OpenAPI STOCK_DAY_ALL 欄位名稱
+_TWSE_JSON_REQUIRED_KEYS = frozenset(
+    {
+        "Code",
+        "Name",
+        "TradeVolume",
+        "TradeValue",
+        "OpeningPrice",
+        "HighestPrice",
+        "LowestPrice",
+        "ClosingPrice",
+        "Change",
+        "Transaction",
+    }
+)
+
+
+def parse_twse_daily_close_json(
+    response_json: Any, source_file: str
+) -> ParseResult:
+    """解析 TWSE OpenAPI STOCK_DAY_ALL JSON 回應（每日全部股票收盤行情）。
+
+    JSON 結構：list of dict，每筆含：
+    ``Date``, ``Code``, ``Name``, ``TradeVolume``, ``TradeValue``,
+    ``OpeningPrice``, ``HighestPrice``, ``LowestPrice``, ``ClosingPrice``,
+    ``Change``, ``Transaction``
+
+    注意：此 API 不接受日期參數，固定回傳最新交易日資料。
+    呼叫端應自行驗證 ``Date`` 欄位是否符合預期日期。
+
+    Args:
+        response_json: ``requests.Response.json()`` 取得的 list。
+        source_file: 來源識別字串（URL），用於追蹤。
+
+    Returns:
+        :class:`ParseResult` — 包含 market_code="TWSE"、records 與 errors。
+    """
+    if not isinstance(response_json, list):
+        return ParseResult(
+            market_code="TWSE",
+            source_encoding="utf-8",
+            records=[],
+            errors=[
+                ParseError(
+                    market_code="TWSE",
+                    source_line_no=0,
+                    reason="TWSE JSON: 預期 list，實際收到非 list 型態",
+                )
+            ],
+        )
+
+    records: list[dict[str, Any]] = []
+    errors: list[ParseError] = []
+
+    for line_no, item in enumerate(response_json, start=1):
+        if not isinstance(item, dict):
+            errors.append(
+                ParseError(
+                    market_code="TWSE",
+                    source_line_no=line_no,
+                    reason="TWSE JSON: 資料列不是 dict",
+                )
+            )
+            continue
+
+        code = item.get("Code", "").strip()
+        if not code:
+            continue  # 跳過代號為空的列
+
+        missing = _TWSE_JSON_REQUIRED_KEYS - item.keys()
+        if missing:
+            errors.append(
+                ParseError(
+                    market_code="TWSE",
+                    source_line_no=line_no,
+                    reason=f"TWSE JSON: 缺少欄位 {sorted(missing)}",
+                )
+            )
+            continue
+
+        records.append(
+            {
+                "symbol": code,
+                "name": item.get("Name", "").strip(),
+                "volume": item.get("TradeVolume", "").strip(),
+                "turnover": item.get("TradeValue", "").strip(),
+                "open": item.get("OpeningPrice", "").strip(),
+                "high": item.get("HighestPrice", "").strip(),
+                "low": item.get("LowestPrice", "").strip(),
+                "close": item.get("ClosingPrice", "").strip(),
+                "change": item.get("Change", "").strip(),
+                "trade_count": item.get("Transaction", "").strip(),
+                "source_file": source_file,
+                "source_line_no": line_no,
+            }
+        )
+
+    return ParseResult(
+        market_code="TWSE",
+        source_encoding="utf-8",
+        records=records,
+        errors=errors,
+    )
