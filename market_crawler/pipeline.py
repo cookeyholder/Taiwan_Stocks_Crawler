@@ -271,8 +271,6 @@ def fetch_and_ingest_day(
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    from market_crawler.repository import SQLiteMarketRepository
-
     repo = SQLiteMarketRepository(conn)
     repo.init_schema()
 
