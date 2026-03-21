@@ -1,0 +1,7 @@
+name: harden-twse-tpex-market-crawler
+schema: spec-driven
+status: archived
+artifacts:
+  - proposal.md
+  - design.md
+  - tasks.md

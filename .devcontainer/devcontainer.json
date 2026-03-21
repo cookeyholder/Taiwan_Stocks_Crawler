@@ -34,7 +34,9 @@
                 "ms-azuretools.vscode-containers",
                 "ReprEng.csv",
                 "SeyyedKhandon.firacode",
-                "GitHub.vscode-pull-request-github"
+                "GitHub.vscode-pull-request-github",
+                "mechatroner.rainbow-csv",
+                "jraylan.seamless-agent"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/usr/local/bin/python",
