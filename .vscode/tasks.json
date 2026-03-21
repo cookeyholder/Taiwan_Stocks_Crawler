@@ -4,8 +4,8 @@
     {
       "label": "🔧 ruff: Check & Fix",
       "type": "shell",
-      "command": "ruff",
-      "args": ["check", ".", "--fix"],
+      "command": "uv",
+      "args": ["run", "ruff", "check", ".", "--fix"],
       "problemMatcher": "$ruff",
       "group": {
         "kind": "build",
@@ -15,15 +15,15 @@
     {
       "label": "✨ ruff: Format",
       "type": "shell",
-      "command": "ruff",
-      "args": ["format", "."],
+      "command": "uv",
+      "args": ["run", "ruff", "format", "."],
       "group": "build"
     },
     {
       "label": "🔍 ruff: Check Only",
       "type": "shell",
-      "command": "ruff",
-      "args": ["check", "."],
+      "command": "uv",
+      "args": ["run", "ruff", "check", "."],
       "problemMatcher": "$ruff",
       "group": "build"
     },
@@ -84,8 +84,8 @@
     {
       "label": "🔍 pre-commit: Run Checks",
       "type": "shell",
-      "command": "pre-commit",
-      "args": ["run", "--all-files"],
+      "command": "uv",
+      "args": ["tool", "run", "pre-commit", "run", "--all-files"],
       "group": "build"
     }
   ]

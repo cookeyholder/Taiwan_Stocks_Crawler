@@ -84,7 +84,9 @@ def _make_user_agent() -> str:
 _TWSE_OPENAPI_URL = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
 
 # TWSE 歷史 CSV API（有日期參數）
-_TWSE_CSV_URL_TEMPLATE = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?response=csv&date={yyyymmdd}&type=ALL"
+_TWSE_CSV_URL_TEMPLATE = (
+    "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?response=csv&date={yyyymmdd}&type=ALL"
+)
 
 
 def _roc_compact_to_iso(roc_compact: str) -> str:
@@ -377,7 +379,9 @@ def make_fetcher(
 # 假日抓取：best-effort TWSE holidaySchedule API
 # ---------------------------------------------------------------------------
 
-_TWSE_HOLIDAY_URL = "https://www.twse.com.tw/rwd/zh/holidaySchedule/holidaySchedule?response=json&queryYear={year}"
+_TWSE_HOLIDAY_URL = (
+    "https://www.twse.com.tw/rwd/zh/holidaySchedule/holidaySchedule?response=json&queryYear={year}"
+)
 
 
 def _fetch_twse_holidays(policy: HttpPolicy) -> set[_dt.date]:
@@ -404,12 +408,7 @@ def _fetch_twse_holidays(policy: HttpPolicy) -> set[_dt.date]:
         raw_date = str(row[0]).strip()
         # 支援 YYYY/MM/DD 格式
         try:
-            parts = (
-                raw_date.replace("年", "/")
-                .replace("月", "/")
-                .replace("日", "")
-                .split("/")
-            )
+            parts = raw_date.replace("年", "/").replace("月", "/").replace("日", "").split("/")
             if len(parts) == 3:
                 year_part = int(parts[0])
                 month_part = int(parts[1])
@@ -431,9 +430,7 @@ def _fetch_twse_holidays(policy: HttpPolicy) -> set[_dt.date]:
 _ISO_DATE_RE = _re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def _validate_iso_date(
-    value: str, flag: str, parser: argparse.ArgumentParser
-) -> _dt.date:
+def _validate_iso_date(value: str, flag: str, parser: argparse.ArgumentParser) -> _dt.date:
     """驗證字串為合法 ISO 日期，否則呼叫 parser.error() 報錯。"""
     if not _ISO_DATE_RE.match(value):
         parser.error(f"{flag} 格式錯誤（須為 YYYY-MM-DD）：{value!r}")
@@ -452,9 +449,7 @@ def _resolve_date_range(
     """將 argparse Namespace 解析為 ``(start_date, end_date)`` ISO 字串。"""
     assert isinstance(args, argparse.Namespace)
 
-    if (args.today or args.date or args.backfill is not None) and (
-        args.start or args.end
-    ):
+    if (args.today or args.date or args.backfill is not None) and (args.start or args.end):
         parser.error("--today/--date/--backfill 與 --start/--end 不能同時使用")
 
     if args.today:
@@ -467,9 +462,7 @@ def _resolve_date_range(
     if args.backfill is not None:
         if args.backfill <= 0:
             parser.error(f"--backfill 值必須大於 0，得到：{args.backfill}")
-        return (
-            today - _dt.timedelta(days=args.backfill)
-        ).isoformat(), today.isoformat()
+        return (today - _dt.timedelta(days=args.backfill)).isoformat(), today.isoformat()
 
     if args.start and args.end:
         start_date = _validate_iso_date(args.start, "--start", parser)
@@ -508,9 +501,7 @@ def main(argv: list[str] | None = None) -> None:
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument("--today", action="store_true", help="抓取今日資料")
     mode_group.add_argument("--date", metavar="YYYY-MM-DD", help="抓取指定單日")
-    mode_group.add_argument(
-        "--backfill", type=int, metavar="N", help="從今日往前 N 天（含今日）"
-    )
+    mode_group.add_argument("--backfill", type=int, metavar="N", help="從今日往前 N 天（含今日）")
 
     # 區間引數（與 --today/--date/--backfill 互斥，不加入同一 group 以允許 --start/--end 搭配使用）
     parser.add_argument("--start", metavar="YYYY-MM-DD", help="起始日期（ISO 格式）")
@@ -534,12 +525,8 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="停用自動抓取 TWSE holidaySchedule",
     )
-    parser.add_argument(
-        "--timeout", type=float, default=30.0, help="HTTP 逾時秒數（預設：30）"
-    )
-    parser.add_argument(
-        "--retries", type=int, default=3, help="HTTP 重試次數（預設：3）"
-    )
+    parser.add_argument("--timeout", type=float, default=30.0, help="HTTP 逾時秒數（預設：30）")
+    parser.add_argument("--retries", type=int, default=3, help="HTTP 重試次數（預設：3）")
 
     args = parser.parse_args(argv)
 

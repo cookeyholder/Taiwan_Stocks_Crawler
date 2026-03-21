@@ -200,9 +200,7 @@ def test_integration_today_full_flow_with_mocks(
         return [], report
 
     monkeypatch.setattr("market_crawler.pipeline.run_date_range_ingestion", mock_run)
-    monkeypatch.setattr(
-        "market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True
-    )
+    monkeypatch.setattr("market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True)
 
     _pipeline.main(["--today", "--db", ":memory:"])
 
@@ -210,7 +208,5 @@ def test_integration_today_full_flow_with_mocks(
     assert called_with.get("start_date") == "2026-03-21"
     assert called_with.get("end_date") == "2026-03-21"
     holidays = called_with.get("holidays", set())
-    holidays_str = {
-        d.isoformat() if isinstance(d, datetime.date) else d for d in holidays
-    }
+    holidays_str = {d.isoformat() if isinstance(d, datetime.date) else d for d in holidays}
     assert "2026-04-04" in holidays_str, f"Auto holiday not merged: {holidays_str}"

@@ -13,6 +13,7 @@
 - 原子寫入（先寫暫存檔再改名），避免寫入中斷造成 CSV 損毀。
 - 每個市場獨立錯誤處理，一個市場失敗不影響另一個市場。
 """
+
 from __future__ import annotations
 
 import csv

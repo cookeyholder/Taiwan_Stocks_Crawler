@@ -67,20 +67,14 @@ class TestTwseDateRouting:
             lambda **_: 0,
         )
 
-        _pipeline.fetch_and_ingest_day(
-            "2026-03-21", db_path=":memory:", security_master_path=None
-        )
+        _pipeline.fetch_and_ingest_day("2026-03-21", db_path=":memory:", security_master_path=None)
 
-        assert any(
-            "STOCK_DAY_ALL" in url for url in captured
-        ), f"JSON API not called: {captured}"
+        assert any("STOCK_DAY_ALL" in url for url in captured), f"JSON API not called: {captured}"
         assert not any(
             "MI_INDEX" in url for url in captured
         ), "CSV API should NOT be called for today"
 
-    def test_historical_route_calls_csv_api(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_historical_route_calls_csv_api(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """date < today → 呼叫 TWSE CSV API（MI_INDEX），不呼叫 JSON API"""
         today = datetime.date(2026, 3, 21)
         monkeypatch.setattr("market_crawler.pipeline._get_today", lambda: today)
@@ -97,20 +91,14 @@ class TestTwseDateRouting:
             lambda **_: 0,
         )
 
-        _pipeline.fetch_and_ingest_day(
-            "2026-03-18", db_path=":memory:", security_master_path=None
-        )
+        _pipeline.fetch_and_ingest_day("2026-03-18", db_path=":memory:", security_master_path=None)
 
-        assert any(
-            "MI_INDEX" in url for url in captured
-        ), f"CSV API not called: {captured}"
+        assert any("MI_INDEX" in url for url in captured), f"CSV API not called: {captured}"
         assert not any(
             "STOCK_DAY_ALL" in url for url in captured
         ), "JSON API should NOT be called for historical"
 
-    def test_csv_api_url_has_yyyymmdd_format(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_csv_api_url_has_yyyymmdd_format(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """CSV API URL 中的日期參數為 YYYYMMDD（無連字號）"""
         today = datetime.date(2026, 3, 21)
         monkeypatch.setattr("market_crawler.pipeline._get_today", lambda: today)
@@ -127,20 +115,14 @@ class TestTwseDateRouting:
             lambda **_: 0,
         )
 
-        _pipeline.fetch_and_ingest_day(
-            "2026-01-02", db_path=":memory:", security_master_path=None
-        )
+        _pipeline.fetch_and_ingest_day("2026-01-02", db_path=":memory:", security_master_path=None)
 
         csv_urls = [u for u in captured if "MI_INDEX" in u]
         assert csv_urls, "MI_INDEX URL not found"
         assert "20260102" in csv_urls[0], f"YYYYMMDD format not found in {csv_urls[0]}"
-        assert (
-            "2026-01-02" not in csv_urls[0]
-        ), "Hyphenated date should NOT appear in CSV URL"
+        assert "2026-01-02" not in csv_urls[0], "Hyphenated date should NOT appear in CSV URL"
 
-    def test_tpex_routing_unchanged_for_historical(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_tpex_routing_unchanged_for_historical(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """TPEX 歷史日期仍走既有 CSV 路徑（tpex.org.tw），不走 MI_INDEX"""
         today = datetime.date(2026, 3, 21)
         monkeypatch.setattr("market_crawler.pipeline._get_today", lambda: today)
@@ -157,15 +139,11 @@ class TestTwseDateRouting:
             lambda **_: 0,
         )
 
-        _pipeline.fetch_and_ingest_day(
-            "2026-01-02", db_path=":memory:", security_master_path=None
-        )
+        _pipeline.fetch_and_ingest_day("2026-01-02", db_path=":memory:", security_master_path=None)
 
         tpex_urls = [u for u in captured if "tpex.org.tw" in u]
         assert tpex_urls, "TPEX URL not found"
-        assert not any(
-            "MI_INDEX" in u for u in tpex_urls
-        ), "TPEX should NOT use MI_INDEX"
+        assert not any("MI_INDEX" in u for u in tpex_urls), "TPEX should NOT use MI_INDEX"
 
 
 # ---------------------------------------------------------------------------
@@ -189,12 +167,8 @@ class TestCliArguments:
 
             return [], BatchQualityReport()
 
-        monkeypatch.setattr(
-            "market_crawler.pipeline.run_date_range_ingestion", mock_run
-        )
-        monkeypatch.setattr(
-            "market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True
-        )
+        monkeypatch.setattr("market_crawler.pipeline.run_date_range_ingestion", mock_run)
+        monkeypatch.setattr("market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True)
 
         _pipeline.main(["--today", "--db", ":memory:"])
 
@@ -211,12 +185,8 @@ class TestCliArguments:
 
             return [], BatchQualityReport()
 
-        monkeypatch.setattr(
-            "market_crawler.pipeline.run_date_range_ingestion", mock_run
-        )
-        monkeypatch.setattr(
-            "market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True
-        )
+        monkeypatch.setattr("market_crawler.pipeline.run_date_range_ingestion", mock_run)
+        monkeypatch.setattr("market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True)
         monkeypatch.setattr(
             "market_crawler.pipeline._get_today", lambda: datetime.date(2026, 3, 21)
         )
@@ -239,21 +209,15 @@ class TestCliArguments:
 
             return [], BatchQualityReport()
 
-        monkeypatch.setattr(
-            "market_crawler.pipeline.run_date_range_ingestion", mock_run
-        )
-        monkeypatch.setattr(
-            "market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True
-        )
+        monkeypatch.setattr("market_crawler.pipeline.run_date_range_ingestion", mock_run)
+        monkeypatch.setattr("market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True)
 
         _pipeline.main(["--backfill", "30", "--db", ":memory:"])
 
         assert called_with.get("start_date") == "2026-02-19"
         assert called_with.get("end_date") == "2026-03-21"
 
-    def test_today_and_start_are_mutually_exclusive(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_today_and_start_are_mutually_exclusive(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """--today 與 --start 同時指定 → 報錯退出"""
         monkeypatch.setattr(
             "market_crawler.pipeline._get_today", lambda: datetime.date(2026, 3, 21)
@@ -290,9 +254,7 @@ class TestCliArguments:
         )
 
         with pytest.raises(SystemExit) as exc_info:
-            _pipeline.main(
-                ["--start", "20260316", "--end", "2026-03-20", "--db", ":memory:"]
-            )
+            _pipeline.main(["--start", "20260316", "--end", "2026-03-20", "--db", ":memory:"])
         assert exc_info.value.code != 0
 
     def test_end_bad_format_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -302,9 +264,7 @@ class TestCliArguments:
         )
 
         with pytest.raises(SystemExit) as exc_info:
-            _pipeline.main(
-                ["--start", "2026-03-16", "--end", "20260320", "--db", ":memory:"]
-            )
+            _pipeline.main(["--start", "2026-03-16", "--end", "20260320", "--db", ":memory:"])
         assert exc_info.value.code != 0
 
     def test_start_invalid_date_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -314,9 +274,7 @@ class TestCliArguments:
         )
 
         with pytest.raises(SystemExit) as exc_info:
-            _pipeline.main(
-                ["--start", "2026-02-30", "--end", "2026-03-20", "--db", ":memory:"]
-            )
+            _pipeline.main(["--start", "2026-02-30", "--end", "2026-03-20", "--db", ":memory:"])
         assert exc_info.value.code != 0
 
     def test_start_after_end_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -326,9 +284,7 @@ class TestCliArguments:
         )
 
         with pytest.raises(SystemExit) as exc_info:
-            _pipeline.main(
-                ["--start", "2026-03-20", "--end", "2026-03-16", "--db", ":memory:"]
-            )
+            _pipeline.main(["--start", "2026-03-20", "--end", "2026-03-16", "--db", ":memory:"])
         assert exc_info.value.code != 0
 
 
@@ -357,12 +313,8 @@ class TestAutoHolidayFetch:
 
             return [], BatchQualityReport()
 
-        monkeypatch.setattr(
-            "market_crawler.pipeline.run_date_range_ingestion", mock_run
-        )
-        monkeypatch.setattr(
-            "market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True
-        )
+        monkeypatch.setattr("market_crawler.pipeline.run_date_range_ingestion", mock_run)
+        monkeypatch.setattr("market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True)
         monkeypatch.setattr(
             "market_crawler.pipeline._get_today", lambda: datetime.date(2026, 3, 21)
         )
@@ -375,17 +327,13 @@ class TestAutoHolidayFetch:
             or datetime.date(2026, 4, 4) in holidays
         )
 
-    def test_auto_holiday_fetch_failure_continues(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_auto_holiday_fetch_failure_continues(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """holidaySchedule API 失敗時 → warning，不中斷作業"""
 
         def mock_fetch_holidays(policy: Any) -> set:
             raise ConnectionError("API unreachable")
 
-        monkeypatch.setattr(
-            "market_crawler.pipeline._fetch_twse_holidays", mock_fetch_holidays
-        )
+        monkeypatch.setattr("market_crawler.pipeline._fetch_twse_holidays", mock_fetch_holidays)
 
         called_with: dict[str, Any] = {}
 
@@ -395,12 +343,8 @@ class TestAutoHolidayFetch:
 
             return [], BatchQualityReport()
 
-        monkeypatch.setattr(
-            "market_crawler.pipeline.run_date_range_ingestion", mock_run
-        )
-        monkeypatch.setattr(
-            "market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True
-        )
+        monkeypatch.setattr("market_crawler.pipeline.run_date_range_ingestion", mock_run)
+        monkeypatch.setattr("market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True)
         monkeypatch.setattr(
             "market_crawler.pipeline._get_today", lambda: datetime.date(2026, 3, 21)
         )
@@ -417,9 +361,7 @@ class TestAutoHolidayFetch:
             for warning in w
         ), f"Expected holiday warning, got: {[str(x.message) for x in w]}"
 
-    def test_no_auto_holidays_flag_skips_fetch(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_auto_holidays_flag_skips_fetch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """--no-auto-holidays 時不呼叫 holidaySchedule API"""
         fetch_called = {"n": 0}
 
@@ -427,34 +369,24 @@ class TestAutoHolidayFetch:
             fetch_called["n"] += 1
             return set()
 
-        monkeypatch.setattr(
-            "market_crawler.pipeline._fetch_twse_holidays", mock_fetch_holidays
-        )
+        monkeypatch.setattr("market_crawler.pipeline._fetch_twse_holidays", mock_fetch_holidays)
 
         def mock_run(**kwargs: Any) -> tuple[list, Any]:
             from market_crawler.quality import BatchQualityReport
 
             return [], BatchQualityReport()
 
-        monkeypatch.setattr(
-            "market_crawler.pipeline.run_date_range_ingestion", mock_run
-        )
-        monkeypatch.setattr(
-            "market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True
-        )
+        monkeypatch.setattr("market_crawler.pipeline.run_date_range_ingestion", mock_run)
+        monkeypatch.setattr("market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True)
         monkeypatch.setattr(
             "market_crawler.pipeline._get_today", lambda: datetime.date(2026, 3, 21)
         )
 
         _pipeline.main(["--today", "--no-auto-holidays", "--db", ":memory:"])
 
-        assert (
-            fetch_called["n"] == 0
-        ), "Holiday fetch should NOT be called with --no-auto-holidays"
+        assert fetch_called["n"] == 0, "Holiday fetch should NOT be called with --no-auto-holidays"
 
-    def test_manual_holidays_merged_with_auto(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_manual_holidays_merged_with_auto(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """--holidays 與自動抓取結果正確合併（取聯集）"""
         monkeypatch.setattr(
             "market_crawler.pipeline._fetch_twse_holidays",
@@ -469,12 +401,8 @@ class TestAutoHolidayFetch:
 
             return [], BatchQualityReport()
 
-        monkeypatch.setattr(
-            "market_crawler.pipeline.run_date_range_ingestion", mock_run
-        )
-        monkeypatch.setattr(
-            "market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True
-        )
+        monkeypatch.setattr("market_crawler.pipeline.run_date_range_ingestion", mock_run)
+        monkeypatch.setattr("market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True)
         monkeypatch.setattr(
             "market_crawler.pipeline._get_today", lambda: datetime.date(2026, 3, 21)
         )
@@ -483,10 +411,6 @@ class TestAutoHolidayFetch:
 
         holidays = called_with.get("holidays", set())
         # 兩個假日都應在集合中（ISO 格式或 date 物件）
-        holidays_str = {
-            d.isoformat() if isinstance(d, datetime.date) else d for d in holidays
-        }
-        assert (
-            "2026-04-04" in holidays_str
-        ), f"Auto-fetched holiday missing: {holidays_str}"
+        holidays_str = {d.isoformat() if isinstance(d, datetime.date) else d for d in holidays}
+        assert "2026-04-04" in holidays_str, f"Auto-fetched holiday missing: {holidays_str}"
         assert "2026-02-28" in holidays_str, f"Manual holiday missing: {holidays_str}"

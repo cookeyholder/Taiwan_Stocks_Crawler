@@ -38,7 +38,7 @@ package = true
 include = ["market_crawler*"]
 
 [tool.ruff]
-line-length = 88
+line-length = 100
 target-version = "py313"
 exclude = [
     ".git",
@@ -63,6 +63,22 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["you"]
+
+[tool.ruff.lint.per-file-ignores]
+"you/*.py" = [
+    "B018",  # historical scripts: allow existing expression-style close call patterns
+    "C901",  # historical scripts: keep complex crawler/backtest flows as-is
+    "E712",  # historical scripts: keep explicit boolean equality style
+    "E722",  # historical scripts: keep broad exception handlers
+    "F821",  # historical scripts: keep unresolved runtime globals for now
+    "F841",  # historical scripts: keep compatibility placeholders
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
 
 [build-system]
 requires = ["setuptools"]
