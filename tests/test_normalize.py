@@ -256,10 +256,10 @@ def test_normalize_tpex_record_with_ex_dividend_change() -> None:
     assert normalized["close_price"] == 51.00
 
 
-
 # ---------------------------------------------------------------------------
 # TWSE JSON format (OpenAPI STOCK_DAY_ALL — 含 "change" 鍵而非 change_sign)
 # ---------------------------------------------------------------------------
+
 
 def test_normalize_twse_json_change_field_parsed() -> None:
     """TWSE JSON 格式的 record 含有 'change' 鍵時，應使用 parse_change_field 解析。"""

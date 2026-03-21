@@ -6,6 +6,7 @@
 - fetch_and_save：成功寫入、欄位完整性、去重、部分市場失敗、資料列數不足防呆、
                   網路錯誤、原子寫入、FetchResult.success 屬性
 """
+
 from __future__ import annotations
 
 import csv
@@ -36,10 +37,12 @@ def _make_html(*rows: tuple[str, ...]) -> str:
     rows 中每一個 tuple 都是 (代號 名稱, col1, 上市日, 市場別, 產業別, CFICode)。
     注意：第一欄必須是「代號 名稱」（有空白）或區段標頭（無空白）。
     """
-    header = ("<tr>"
-              "<td>有價證券代號及名稱</td><td>ISIN</td>"
-              "<td>上市日</td><td>市場別</td><td>產業別</td><td>CFICode</td>"
-              "</tr>")
+    header = (
+        "<tr>"
+        "<td>有價證券代號及名稱</td><td>ISIN</td>"
+        "<td>上市日</td><td>市場別</td><td>產業別</td><td>CFICode</td>"
+        "</tr>"
+    )
     data_rows = []
     for row in rows:
         cells = "".join(f"<td>{c}</td>" for c in row)
@@ -135,16 +138,20 @@ class TestParseIsinPage:
 
     def test_filters_rows_with_too_few_cells(self):
         """欄位數不足 6 的資料列應被略過。"""
-        html = "<table><tr><td>有價證券代號及名稱</td><td>ISIN</td><td>上市日</td><td>市場別</td><td>產業別</td><td>CFICode</td></tr>" \
-               "<tr><td>2330 台積電</td><td>只有兩欄</td></tr>" \
-               "</table>"
+        html = (
+            "<table><tr><td>有價證券代號及名稱</td><td>ISIN</td><td>上市日</td><td>市場別</td><td>產業別</td><td>CFICode</td></tr>"
+            "<tr><td>2330 台積電</td><td>只有兩欄</td></tr>"
+            "</table>"
+        )
         records = _parse_isin_page(html)
         assert records == []
 
     def test_filters_non_alnum_starting_codes(self):
         """代號以非英數字元開頭者應被略過（例如 HTML 特殊字元殘留）。"""
         bad_row = ("＊2330 台積電", "", "1994/09/05", "上市", "半導體", "ESVUFR")
-        html = _make_html(bad_row, _stock_row("0050", "元大台灣50", "2003/06/30", "上市", "ETF", "EMXXXX"))
+        html = _make_html(
+            bad_row, _stock_row("0050", "元大台灣50", "2003/06/30", "上市", "ETF", "EMXXXX")
+        )
         records = _parse_isin_page(html)
         # 只有 0050 應被保留（代號以 0 開頭，isalnum OK）
         assert len(records) == 1
@@ -175,7 +182,7 @@ class TestParseIsinPage:
         html = _make_html(
             _stock_row("2330", "台積電", cfi="ESVUFR"),
             _stock_row("00631L", "元大台灣50正2", cfi="EMABVR"),  # 槓桿 ETF
-            _stock_row("028011", "某公司債", cfi="DBXXXX"),        # 債券
+            _stock_row("028011", "某公司債", cfi="DBXXXX"),  # 債券
         )
         records = _parse_isin_page(html)
         assert len(records) == 3
@@ -227,7 +234,9 @@ class TestFetchAndSave:
         """輸出 CSV 的第一列應包含六個指定欄位名稱。"""
         target = str(tmp_path / "StockID.csv")
 
-        monkeypatch.setattr(fsm, "get_with_retry", lambda url, policy: _make_response(_minimal_html()))
+        monkeypatch.setattr(
+            fsm, "get_with_retry", lambda url, policy: _make_response(_minimal_html())
+        )
         fetch_and_save(target, _DEFAULT_POLICY)
 
         with open(target, encoding="utf-8", newline="") as f:
@@ -278,7 +287,11 @@ class TestFetchAndSave:
         """兩個市場均失敗時，不應寫入任何檔案。"""
         target = str(tmp_path / "StockID.csv")
 
-        monkeypatch.setattr(fsm, "get_with_retry", lambda url, policy: (_ for _ in ()).throw(RuntimeError("timeout")))
+        monkeypatch.setattr(
+            fsm,
+            "get_with_retry",
+            lambda url, policy: (_ for _ in ()).throw(RuntimeError("timeout")),
+        )
         result = fetch_and_save(target, _DEFAULT_POLICY)
 
         assert not result.success
@@ -411,7 +424,9 @@ class TestGuardrails:
     def test_does_not_overwrite_existing_file_on_too_few_rows(self, tmp_path, monkeypatch):
         """列數不足時，既有的 StockID.csv 不應被覆蓋。"""
         target = str(tmp_path / "StockID.csv")
-        original_content = "代號,名稱,上市日,市場別,產業別,CFICode\n2330,台積電,1994/09/05,上市,半導體,ESVUFR\n"
+        original_content = (
+            "代號,名稱,上市日,市場別,產業別,CFICode\n2330,台積電,1994/09/05,上市,半導體,ESVUFR\n"
+        )
         with open(target, "w", encoding="utf-8") as f:
             f.write(original_content)
 
@@ -426,7 +441,9 @@ class TestGuardrails:
     def test_no_leftover_tmp_file_on_success(self, tmp_path, monkeypatch):
         """成功寫入後，暫存檔不應殘留在目錄中。"""
         target = str(tmp_path / "StockID.csv")
-        monkeypatch.setattr(fsm, "get_with_retry", lambda url, policy: _make_response(_minimal_html()))
+        monkeypatch.setattr(
+            fsm, "get_with_retry", lambda url, policy: _make_response(_minimal_html())
+        )
         fetch_and_save(target, _DEFAULT_POLICY)
 
         tmp_files = [f for f in os.listdir(tmp_path) if f.endswith(".tmp")]
@@ -435,7 +452,9 @@ class TestGuardrails:
     def test_no_leftover_tmp_file_on_ioerror(self, tmp_path, monkeypatch):
         """OS 錯誤導致寫入失敗時，暫存檔不應殘留在目錄中。"""
         target = str(tmp_path / "StockID.csv")
-        monkeypatch.setattr(fsm, "get_with_retry", lambda url, policy: _make_response(_minimal_html()))
+        monkeypatch.setattr(
+            fsm, "get_with_retry", lambda url, policy: _make_response(_minimal_html())
+        )
 
         def broken_replace(src, dst):
             raise OSError("磁碟空間不足")
@@ -499,7 +518,9 @@ class TestGuardrails:
     def test_default_policy_used_when_none_passed(self, tmp_path, monkeypatch):
         """policy=None 時，函式應使用預設策略而不崩潰。"""
         target = str(tmp_path / "StockID.csv")
-        monkeypatch.setattr(fsm, "get_with_retry", lambda url, policy: _make_response(_minimal_html()))
+        monkeypatch.setattr(
+            fsm, "get_with_retry", lambda url, policy: _make_response(_minimal_html())
+        )
         result = fetch_and_save(target, policy=None)
         assert result.success
 

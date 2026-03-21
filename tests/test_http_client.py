@@ -35,6 +35,7 @@ def test_get_with_retry_retries_then_succeeds(monkeypatch: MonkeyPatch) -> None:
 
     sleep_calls: list[float] = []
     monkeypatch.setattr(requests, "get", fake_get)
+
     def fake_sleep(seconds: float) -> None:
         sleep_calls.append(seconds)
 
@@ -55,6 +56,7 @@ def test_get_with_retry_raises_after_all_retries(monkeypatch: MonkeyPatch) -> No
         raise requests.Timeout("always fail")
 
     monkeypatch.setattr(requests, "get", fake_get)
+
     def fake_sleep(_seconds: float) -> None:
         return None
 

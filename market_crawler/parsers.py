@@ -215,22 +215,22 @@ def parse_tpex_daily_close(content: bytes, source_file: str) -> ParseResult:
 # TPEX 新版 JSON API（2025 年後啟用）欄位順序
 #   https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes?response=json
 TPEX_JSON_FIELDS = [
-    "代號",        # 0  → symbol
-    "名稱",        # 1  → name
-    "收盤",        # 2  → close
-    "漲跌",        # 3  → change
-    "開盤",        # 4  → open
-    "最高",        # 5  → high
-    "最低",        # 6  → low
-    "均價",        # 7  → (略過，normalize 不需要)
-    "成交股數",    # 8  → volume
-    "成交金額(元)",# 9  → turnover
-    "成交筆數",    # 10 → trade_count
-    "最後買價",    # 11 → last_bid
+    "代號",  # 0  → symbol
+    "名稱",  # 1  → name
+    "收盤",  # 2  → close
+    "漲跌",  # 3  → change
+    "開盤",  # 4  → open
+    "最高",  # 5  → high
+    "最低",  # 6  → low
+    "均價",  # 7  → (略過，normalize 不需要)
+    "成交股數",  # 8  → volume
+    "成交金額(元)",  # 9  → turnover
+    "成交筆數",  # 10 → trade_count
+    "最後買價",  # 11 → last_bid
     "最後買量(張數)",  # 12 → last_bid_qty
-    "最後賣價",    # 13 → last_ask
+    "最後賣價",  # 13 → last_ask
     "最後賣量(張數)",  # 14 → last_ask_qty
-    "發行股數",    # 15 → issued_shares
+    "發行股數",  # 15 → issued_shares
     "次日參考價",  # 16 → (略過)
     "次日漲停價",  # 17 → next_limit_up
     "次日跌停價",  # 18 → next_limit_down
@@ -239,9 +239,7 @@ TPEX_JSON_FIELDS = [
 _TPEX_JSON_MIN_COLS = 17  # 至少要有到「次日漲停價」那一欄
 
 
-def parse_tpex_daily_close_json(
-    response_json: dict[str, Any], source_file: str
-) -> ParseResult:
+def parse_tpex_daily_close_json(response_json: dict[str, Any], source_file: str) -> ParseResult:
     """解析 TPEX 新版 JSON API（2025 年後的格式）回傳的每日收盤行情。
 
     JSON 結構：
@@ -304,7 +302,7 @@ def parse_tpex_daily_close_json(
                 "open": row[4].strip(),
                 "high": row[5].strip(),
                 "low": row[6].strip(),
-                "volume": row[8].strip(),       # 跳過 index 7（均價）
+                "volume": row[8].strip(),  # 跳過 index 7（均價）
                 "turnover": row[9].strip(),
                 "trade_count": row[10].strip(),
                 "last_bid": row[11].strip(),
@@ -345,9 +343,7 @@ _TWSE_JSON_REQUIRED_KEYS = frozenset(
 )
 
 
-def parse_twse_daily_close_json(
-    response_json: Any, source_file: str
-) -> ParseResult:
+def parse_twse_daily_close_json(response_json: Any, source_file: str) -> ParseResult:
     """解析 TWSE OpenAPI STOCK_DAY_ALL JSON 回應（每日全部股票收盤行情）。
 
     JSON 結構：list of dict，每筆含：

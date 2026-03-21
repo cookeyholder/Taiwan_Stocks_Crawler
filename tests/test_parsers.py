@@ -180,10 +180,19 @@ def test_parse_twse_json_accepts_empty_trade_fields() -> None:
 def test_parse_twse_json_skips_empty_code() -> None:
     """代號為空的列應被跳過，不新增錯誤。"""
     data = [
-        {"Date": "1150320", "Code": "", "Name": "空代號",
-         "TradeVolume": "1", "TradeValue": "1", "OpeningPrice": "1",
-         "HighestPrice": "1", "LowestPrice": "1", "ClosingPrice": "1",
-         "Change": "0.0000", "Transaction": "1"},
+        {
+            "Date": "1150320",
+            "Code": "",
+            "Name": "空代號",
+            "TradeVolume": "1",
+            "TradeValue": "1",
+            "OpeningPrice": "1",
+            "HighestPrice": "1",
+            "LowestPrice": "1",
+            "ClosingPrice": "1",
+            "Change": "0.0000",
+            "Transaction": "1",
+        },
     ]
     result = parse_twse_daily_close_json(data, source_file="test_url")
     assert result.records == []

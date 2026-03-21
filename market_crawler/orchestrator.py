@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Callable
 
 from market_crawler.quality import BatchQualityReport
 
@@ -18,12 +18,30 @@ def iter_date_strings(start_date: str, end_date: str) -> list[str]:
     return days
 
 
-def classify_day(day: str, holidays: set[str]) -> str:
+def classify_day(
+    day: str,
+    holidays: set[str],
+    *,
+    api_date: str | None = None,
+) -> str:
+    """分類交易日類型。
+
+    Args:
+        day: ISO 格式日期，例如 ``"2026-03-18"``。
+        holidays: 已知假日集合（ISO 格式日期字串）。
+        api_date: API 實際回傳的交易日期。若提供且與 ``day`` 不符，
+            表示當日未開市（颱風假等），回傳 ``"market_closed"``。
+
+    Returns:
+        ``"holiday"``、``"weekend"``、``"market_closed"``、或 ``"trading"``。
+    """
     d = date.fromisoformat(day)
     if day in holidays:
         return "holiday"
     if d.weekday() >= 5:
         return "weekend"
+    if api_date is not None and api_date != day:
+        return "market_closed"
     return "trading"
 
 
@@ -39,8 +57,15 @@ def run_date_range_ingestion(
     start_date: str,
     end_date: str,
     holidays: set[str],
-    fetcher: Callable[[str], bool],
+    fetcher: Callable[[str], bool | None],
 ) -> tuple[list[IngestionOutcome], BatchQualityReport]:
+    """執行日期區間批次匯入。
+
+    fetcher 回傳值語意：
+    - ``True``  — 成功（data written）
+    - ``False`` — 失敗（網路錯誤、格式解析失敗）→ source_error
+    - ``None``  — API 有回應但交易日期不符請求日期 → market_closed
+    """
     outcomes: list[IngestionOutcome] = []
     report = BatchQualityReport()
 
@@ -51,13 +76,19 @@ def run_date_range_ingestion(
             continue
 
         try:
-            ok = fetcher(day)
+            result = fetcher(day)
         except Exception as exc:  # noqa: BLE001
             outcomes.append(IngestionOutcome(day_type="source_error", ok=False, message=str(exc)))
             report.record_failure("source_error")
             continue
 
-        if ok:
+        if result is None:
+            # API 有回應但交易日期不符請求日期（颱風假等臨時休市）
+            outcomes.append(
+                IngestionOutcome(day_type="market_closed", ok=True, message="market_closed")
+            )
+            report.record_market_closed()
+        elif result:
             outcomes.append(IngestionOutcome(day_type="trading", ok=True, message="ok"))
             report.record_success()
         else:

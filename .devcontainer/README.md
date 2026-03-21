@@ -12,6 +12,22 @@
 - **Docker Compose**: 已安裝最新版本
 - **容器映像**: `mcr.microsoft.com/devcontainers/python:3.13-trixie`
 
+### 建構效能模式
+
+目前預設採用「快速模式」以縮短 Dev Container 首次可用時間：
+
+- 不等待整段 `postCreateCommand` 才 attach（可更快進入編輯環境）
+- 使用 Docker volume 快取 `uv`/`pip`/`npm` 下載內容
+- `post-create-command.sh` 預設跳過耗時的可選安裝與 smoke check
+
+可用環境變數切換行為：
+
+- `DEVCONTAINER_FAST_SETUP=1`（預設）：快速模式
+- `DEVCONTAINER_FAST_SETUP=0`：完整初始化模式
+- `DEVCONTAINER_SMOKE_CHECK=1`：啟用 `pre-commit/pytest/ruff` smoke check
+- `DEVCONTAINER_INSTALL_OPENSPEC=1`：安裝 OpenSpec CLI
+- `DEVCONTAINER_INSTALL_PRECOMMIT=1`：安裝 pre-commit 與 hooks
+
 ## 快速開始
 
 ### 使用 VS Code Dev Container
@@ -28,8 +44,19 @@
 
 3. **自動設置**:
    - 容器會自動執行 `post-create-command.sh`
-   - 自動安裝 uv 和所有依賴套件
+   - 自動安裝 uv 和所有依賴套件（快速模式下採可重入策略，降低重複耗時）
    - VS Code 擴充套件會自動安裝
+
+4. **需要完整初始化時**（例如你要做 CI 前本機驗證）:
+
+```bash
+DEVCONTAINER_FAST_SETUP=0 \
+DEVCONTAINER_SMOKE_CHECK=1 \
+DEVCONTAINER_INSTALL_OPENSPEC=1 \
+DEVCONTAINER_INSTALL_PRECOMMIT=1
+```
+
+設定後可執行「Dev Containers: Rebuild Container」。
 
 ## 常用命令
 
@@ -101,10 +128,19 @@ docker system df
 docker system prune
 ```
 
-**注意**: 
+**注意**:
 - Docker socket 通過掛載自動連接
 - `vscode` 使用者已新增到 `docker` group
 - 無需使用 `sudo docker` 命令
+
+### 建構過久時的優先檢查
+
+若你感覺建構時間過長，建議先檢查：
+
+1. 是否誤開完整模式（`DEVCONTAINER_FAST_SETUP=0`）
+2. 是否啟用 smoke check（`DEVCONTAINER_SMOKE_CHECK=1`）
+3. Docker volume 快取是否存在（`tw-stock-uv-cache`、`tw-stock-pip-cache`、`tw-stock-npm-cache`）
+4. 是否需要 Docker-in-Docker（若暫時不需要可先移除對應 feature）
 
 ### Git 與 Pre-commit
 

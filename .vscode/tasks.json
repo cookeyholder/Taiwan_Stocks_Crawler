@@ -4,8 +4,8 @@
     {
       "label": "🔧 ruff: Check & Fix",
       "type": "shell",
-      "command": "ruff",
-      "args": ["check", ".", "--fix"],
+      "command": "bash",
+      "args": ["-lc", "unset VIRTUAL_ENV && uv run ruff check . --fix"],
       "problemMatcher": "$ruff",
       "group": {
         "kind": "build",
@@ -15,23 +15,23 @@
     {
       "label": "✨ ruff: Format",
       "type": "shell",
-      "command": "ruff",
-      "args": ["format", "."],
+      "command": "bash",
+      "args": ["-lc", "unset VIRTUAL_ENV && uv run ruff format ."],
       "group": "build"
     },
     {
       "label": "🔍 ruff: Check Only",
       "type": "shell",
-      "command": "ruff",
-      "args": ["check", "."],
+      "command": "bash",
+      "args": ["-lc", "unset VIRTUAL_ENV && uv run ruff check ."],
       "problemMatcher": "$ruff",
       "group": "build"
     },
     {
       "label": "🧪 pytest: Run Tests",
       "type": "shell",
-      "command": "uv",
-      "args": ["run", "pytest"],
+      "command": "bash",
+      "args": ["-lc", "unset VIRTUAL_ENV && uv run python -m pytest"],
       "problemMatcher": "$pytest",
       "group": {
         "kind": "test",
@@ -41,8 +41,11 @@
     {
       "label": "🧪 pytest: Run with Coverage",
       "type": "shell",
-      "command": "uv",
-      "args": ["run", "pytest", "--cov=.", "--cov-report=html"],
+      "command": "bash",
+      "args": [
+        "-lc",
+        "unset VIRTUAL_ENV && uv run python -m pytest --cov=. --cov-report=html"
+      ],
       "problemMatcher": "$pytest",
       "group": "test"
     },
@@ -84,8 +87,8 @@
     {
       "label": "🔍 pre-commit: Run Checks",
       "type": "shell",
-      "command": "pre-commit",
-      "args": ["run", "--all-files"],
+      "command": "bash",
+      "args": ["-lc", "unset VIRTUAL_ENV && uv run pre-commit run --all-files"],
       "group": "build"
     }
   ]

@@ -14,7 +14,10 @@
 
     "remoteEnv": {
         "UV_INDEX_STRATEGY": "unsafe-best-match",
-        "UV_LINK_MODE": "copy"
+        "UV_LINK_MODE": "copy",
+        "DEVCONTAINER_FAST_SETUP": "1",
+        "DEVCONTAINER_SMOKE_CHECK": "0",
+        "DEVCONTAINER_INSTALL_PRECOMMIT": "1"
     },
 
     "customizations": {
@@ -39,7 +42,7 @@
                 "jraylan.seamless-agent"
             ],
             "settings": {
-                "python.defaultInterpreterPath": "/usr/local/bin/python",
+                "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
                 "python.linting.enabled": true,
                 "python.linting.pylintEnabled": false,
                 "python.formatting.provider": "none",
@@ -62,10 +65,13 @@
 
     "postCreateCommand": "bash .devcontainer/post-create-command.sh",
 
-    "waitFor": "postCreateCommand",
+    "waitFor": "updateContentCommand",
 
     "mounts": [
-        "type=bind,source=${localWorkspaceFolder}/sqlite3,target=/home/vscode/sqlite,readonly"
+        "type=bind,source=${localWorkspaceFolder}/sqlite3,target=/home/vscode/sqlite,readonly",
+        "type=volume,source=tw-stock-uv-cache,target=/home/vscode/.cache/uv",
+        "type=volume,source=tw-stock-pip-cache,target=/home/vscode/.cache/pip",
+        "type=volume,source=tw-stock-npm-cache,target=/home/vscode/.npm"
     ],
 
     "forwardPorts": [8888, 8000],
