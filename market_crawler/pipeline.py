@@ -190,7 +190,11 @@ def _fetch_and_parse_twse(date_str: str, policy: HttpPolicy) -> object | None:
             try:
                 returned_date = _roc_compact_to_iso(raw_date)
             except (ValueError, IndexError):
-                pass
+                warnings.warn(
+                    f"TWSE API Date 欄位格式異常（{raw_date!r}），略過 TWSE 資料",
+                    stacklevel=3,
+                )
+                return None
 
     if returned_date and returned_date != date_str:
         warnings.warn(
@@ -384,6 +388,33 @@ _TWSE_HOLIDAY_URL = (
 )
 
 
+def _fetch_twse_holidays_for_year(policy: HttpPolicy, year: int) -> set[_dt.date]:
+    """從 TWSE holidaySchedule API 抓取指定年度國定假日清單。"""
+    url = _TWSE_HOLIDAY_URL.format(year=year)
+    resp = get_with_retry(url, policy)
+    data = resp.json()
+
+    holidays: set[_dt.date] = set()
+    rows = data.get("data", []) if isinstance(data, dict) else []
+    for row in rows:
+        if not row:
+            continue
+        raw_date = str(row[0]).strip()
+        try:
+            parts = raw_date.replace("年", "/").replace("月", "/").replace("日", "").split("/")
+            if len(parts) == 3:
+                year_part = int(parts[0])
+                month_part = int(parts[1])
+                day_part = int(parts[2])
+                if year_part < 200:
+                    year_part += 1911
+                holidays.add(_dt.date(year_part, month_part, day_part))
+        except (ValueError, IndexError):
+            continue
+
+    return holidays
+
+
 def _fetch_twse_holidays(policy: HttpPolicy) -> set[_dt.date]:
     """嘗試從 TWSE holidaySchedule API 抓取當年國定假日清單。
 
@@ -393,34 +424,7 @@ def _fetch_twse_holidays(policy: HttpPolicy) -> set[_dt.date]:
     Returns:
         當年國定假日的 ``date`` 物件集合。若 API 失敗則拋出例外（由呼叫端 try/except 處理）。
     """
-    year = _get_today().year
-    url = _TWSE_HOLIDAY_URL.format(year=year)
-    resp = get_with_retry(url, policy)
-    data = resp.json()
-
-    holidays: set[_dt.date] = set()
-    # API 回傳格式：{"stat": "OK", "data": [[...], ...]}
-    # 第一欄通常為日期字串（西元 YYYY/MM/DD 或民國 YYY/MM/DD）
-    rows = data.get("data", []) if isinstance(data, dict) else []
-    for row in rows:
-        if not row:
-            continue
-        raw_date = str(row[0]).strip()
-        # 支援 YYYY/MM/DD 格式
-        try:
-            parts = raw_date.replace("年", "/").replace("月", "/").replace("日", "").split("/")
-            if len(parts) == 3:
-                year_part = int(parts[0])
-                month_part = int(parts[1])
-                day_part = int(parts[2])
-                # 民國年轉西元 (< 200 視為民國年)
-                if year_part < 200:
-                    year_part += 1911
-                holidays.add(_dt.date(year_part, month_part, day_part))
-        except (ValueError, IndexError):
-            continue
-
-    return holidays
+    return _fetch_twse_holidays_for_year(policy, _get_today().year)
 
 
 # ---------------------------------------------------------------------------
@@ -469,7 +473,6 @@ def _resolve_date_range(
         end_date = _validate_iso_date(args.end, "--end", parser)
         if start_date > end_date:
             parser.error(f"--start 不得晚於 --end：{args.start} > {args.end}")
-        return args.start, args.end
         return args.start, args.end
 
     parser.error("請指定 --today、--date、--backfill 或 --start/--end 其中一種模式")
@@ -546,11 +549,22 @@ def main(argv: list[str] | None = None) -> None:
     holidays: set[str] = set(args.holidays)
 
     if not args.no_auto_holidays:
-        try:
-            auto_holidays = _fetch_twse_holidays(policy)
-            holidays |= {d.isoformat() for d in auto_holidays}
-        except Exception as exc:  # noqa: BLE001
-            warnings.warn(f"自動抓取 TWSE 假日失敗，繼續執行（{exc}）", stacklevel=1)
+        current_year = _get_today().year
+        start_year = int(start_date[:4])
+        end_year = int(end_date[:4])
+
+        for year in range(start_year, end_year + 1):
+            try:
+                if year == current_year:
+                    auto_holidays = _fetch_twse_holidays(policy)
+                else:
+                    auto_holidays = _fetch_twse_holidays_for_year(policy, year)
+                holidays |= {d.isoformat() for d in auto_holidays}
+            except Exception as exc:  # noqa: BLE001
+                warnings.warn(
+                    f"自動抓取 TWSE 假日失敗（{year} 年），繼續執行（{exc}）",
+                    stacklevel=1,
+                )
 
     # --- 執行 ---
     fetcher = make_fetcher(db_path=args.db, policy=policy)

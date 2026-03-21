@@ -145,6 +145,40 @@ class TestTwseDateRouting:
         assert tpex_urls, "TPEX URL not found"
         assert not any("MI_INDEX" in u for u in tpex_urls), "TPEX should NOT use MI_INDEX"
 
+    def test_twse_malformed_date_treated_as_market_closed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """TWSE JSON Date 欄位格式異常時，fetch_and_ingest_day 回傳 None。"""
+
+        monkeypatch.setattr(
+            "market_crawler.pipeline._get_today",
+            lambda: datetime.date(2026, 3, 21),
+        )
+
+        def mock_get(url: str, policy: Any) -> MagicMock:
+            if "STOCK_DAY_ALL" in url:
+                return _mock_response(json_data=[{"Date": "bad-format"}])
+            raise ConnectionError("TPEX unavailable")
+
+        monkeypatch.setattr("market_crawler.pipeline.get_with_retry", mock_get)
+
+        ingest_called = {"n": 0}
+        monkeypatch.setattr(
+            "market_crawler.pipeline._ingest_records",
+            lambda **_: ingest_called.__setitem__("n", ingest_called["n"] + 1) or 0,
+        )
+
+        result = _pipeline.fetch_and_ingest_day(
+            "2026-03-21",
+            db_path=":memory:",
+            security_master_path=None,
+            policy=_make_policy(),
+        )
+
+        assert result is None
+        assert ingest_called["n"] == 0, "Date 格式異常時不應寫入資料"
+
 
 # ---------------------------------------------------------------------------
 # 任務 3.1: CLI 引數測試（--today / --date / --backfill / 互斥）
@@ -414,3 +448,58 @@ class TestAutoHolidayFetch:
         holidays_str = {d.isoformat() if isinstance(d, datetime.date) else d for d in holidays}
         assert "2026-04-04" in holidays_str, f"Auto-fetched holiday missing: {holidays_str}"
         assert "2026-02-28" in holidays_str, f"Manual holiday missing: {holidays_str}"
+
+    def test_auto_holiday_fetch_includes_all_years_in_range(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--start/--end 跨年度時，會抓取區間內每個年度的 holidaySchedule"""
+        monkeypatch.setattr(
+            "market_crawler.pipeline._get_today",
+            lambda: datetime.date(2026, 3, 21),
+        )
+
+        called_years: list[int] = []
+
+        monkeypatch.setattr(
+            "market_crawler.pipeline._fetch_twse_holidays",
+            lambda policy: {datetime.date(2026, 4, 4)},
+        )
+
+        def mock_fetch_for_year(policy: Any, year: int) -> set[datetime.date]:
+            called_years.append(year)
+            return {datetime.date(year, 1, 1)}
+
+        monkeypatch.setattr(
+            "market_crawler.pipeline._fetch_twse_holidays_for_year",
+            mock_fetch_for_year,
+        )
+
+        called_with: dict[str, Any] = {}
+
+        def mock_run(**kwargs: Any) -> tuple[list, Any]:
+            called_with.update(kwargs)
+            from market_crawler.quality import BatchQualityReport
+
+            return [], BatchQualityReport()
+
+        monkeypatch.setattr("market_crawler.pipeline.run_date_range_ingestion", mock_run)
+        monkeypatch.setattr("market_crawler.pipeline.make_fetcher", lambda **_: lambda _d: True)
+
+        _pipeline.main(
+            [
+                "--start",
+                "2025-12-31",
+                "--end",
+                "2026-01-02",
+                "--db",
+                ":memory:",
+            ]
+        )
+
+        assert called_years == [2025]
+
+        holidays = called_with.get("holidays", set())
+        holidays_str = {d.isoformat() if isinstance(d, datetime.date) else d for d in holidays}
+        assert "2025-01-01" in holidays_str
+        assert "2026-04-04" in holidays_str
