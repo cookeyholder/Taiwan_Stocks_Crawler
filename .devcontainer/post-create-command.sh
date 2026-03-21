@@ -188,6 +188,11 @@ fi
 
 log_success "uv installed successfully"
 
+run_uv() {
+    # 避免 shell 內殘留的 VIRTUAL_ENV 干擾 uv 對專案 .venv 的判斷
+    env -u VIRTUAL_ENV $UV_CMD "$@"
+}
+
 # 確保快取掛載目錄可寫，避免 volume 預設 root 擁有造成 uv 初始化失敗
 ensure_cache_writable() {
     local cache_dir="$1"
@@ -237,7 +242,7 @@ if [ -f "uv.lock" ] && [ -d ".venv" ]; then
 fi
 
 if [ "$sync_required" -eq 1 ]; then
-    if ! $UV_CMD sync --all-extras; then
+    if ! run_uv sync --all-extras; then
         log_error "Failed to install project dependencies"
         exit 1
     fi
@@ -247,6 +252,14 @@ if [ "$sync_required" -eq 1 ]; then
     fi
 fi
 log_success "Project dependencies installed"
+
+# 驗證測試執行所需套件可在專案環境匯入
+log_info "Verifying test dependencies (pytest, requests, urllib3)..."
+if ! run_uv run python -c "import pytest, requests, urllib3"; then
+    log_error "Test dependencies verification failed"
+    exit 1
+fi
+log_success "Test dependencies are ready"
 
 # 設定 Docker-in-Docker
 log_info "Setting up Docker-in-Docker..."
@@ -306,11 +319,11 @@ if [ "$SMOKE_CHECK" = "1" ]; then
         smoke_failed=1
     fi
 
-    if ! run_smoke_check "pytest" bash -lc "$UV_CMD run pytest --version"; then
+    if ! run_smoke_check "pytest" bash -lc "env -u VIRTUAL_ENV $UV_CMD run python -m pytest --version"; then
         smoke_failed=1
     fi
 
-    if ! run_smoke_check "ruff" bash -lc "$UV_CMD run ruff --version"; then
+    if ! run_smoke_check "ruff" bash -lc "env -u VIRTUAL_ENV $UV_CMD run ruff --version"; then
         smoke_failed=1
     fi
 
