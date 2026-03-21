@@ -102,8 +102,8 @@ twse-crawler --start 2026-01-01 --end 2026-03-31
 
 | 請求日期 | TWSE 來源 | TPEX 來源 |
 |----------|----------|----------|
-| 今日 | JSON API（`openapi.twse.com.tw`） | CSV API（含日期參數） |
-| 歷史日期 | CSV API（`MI_INDEX?response=csv&date=YYYYMMDD`） | CSV API（含日期參數） |
+| 今日 | JSON API（`openapi.twse.com.tw`） | JSON API（`dailyQuotes?response=json`） |
+| 歷史日期 | CSV API（`MI_INDEX?response=csv&date=YYYYMMDD`） | JSON API（`dailyQuotes?response=json`） |
 
 > TWSE JSON API 固定回傳最新交易日資料，不接受日期參數。若回傳日期與請求日期不符，系統自動標記為 `market_closed`。
 

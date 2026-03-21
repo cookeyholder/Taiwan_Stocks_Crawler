@@ -40,7 +40,7 @@ fetcher 回傳 `None` 的觸發條件（在 `fetch_and_ingest_day()` 中）：
 1. 當日 TWSE JSON API 仍有回應，但回傳的是前一交易日日期
 2. `fetch_and_ingest_day()` 偵測日期不符
 3. 回傳 `None`
-4. `orchestrator.classify_day()` 收到 `api_date != day` → 標 `market_closed`
+4. `run_date_range_ingestion()` 看到當日 fetcher 回傳 `None`，將該日標記為 `market_closed`
 
 若要讓颱風假被正確標為 `holiday`（而非 `market_closed`），需在執行前將該日期加入 holidays：
 

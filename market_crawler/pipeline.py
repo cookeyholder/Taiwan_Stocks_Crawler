@@ -8,7 +8,7 @@
 - TWSE （今日）：https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL（JSON）
   注意：此 API 不接受日期參數，固定回傳最新交易日資料。
 - TWSE （歷史）：https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?response=csv&date=YYYYMMDD&type=ALL
-- TPEX：https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes（CSV，含日期參數）
+- TPEX：https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes?response=json（JSON API，含日期參數）
 
 命令列用法：
     twse-crawler --today
@@ -431,6 +431,19 @@ def _fetch_twse_holidays(policy: HttpPolicy) -> set[_dt.date]:
 _ISO_DATE_RE = _re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+def _validate_iso_date(
+    value: str, flag: str, parser: argparse.ArgumentParser
+) -> _dt.date:
+    """驗證字串為合法 ISO 日期，否則呼叫 parser.error() 報錯。"""
+    if not _ISO_DATE_RE.match(value):
+        parser.error(f"{flag} 格式錯誤（須為 YYYY-MM-DD）：{value!r}")
+    try:
+        return _dt.date.fromisoformat(value)
+    except ValueError:
+        parser.error(f"{flag} 必須為有效日期（YYYY-MM-DD）：{value!r}")
+        return _dt.date.min  # unreachable
+
+
 def _resolve_date_range(
     args: object,
     parser: argparse.ArgumentParser,
@@ -448,13 +461,7 @@ def _resolve_date_range(
         return today.isoformat(), today.isoformat()
 
     if args.date:
-        if not _ISO_DATE_RE.match(args.date):
-            parser.error(f"--date 格式錯誤（須為 YYYY-MM-DD）：{args.date!r}")
-        try:
-            iso = _dt.date.fromisoformat(args.date).isoformat()
-        except ValueError:
-            parser.error(f"--date 格式錯誤（須為 YYYY-MM-DD）：{args.date!r}")
-            return "", ""  # unreachable
+        iso = _validate_iso_date(args.date, "--date", parser).isoformat()
         return iso, iso
 
     if args.backfill is not None:
@@ -465,6 +472,11 @@ def _resolve_date_range(
         ).isoformat(), today.isoformat()
 
     if args.start and args.end:
+        start_date = _validate_iso_date(args.start, "--start", parser)
+        end_date = _validate_iso_date(args.end, "--end", parser)
+        if start_date > end_date:
+            parser.error(f"--start 不得晚於 --end：{args.start} > {args.end}")
+        return args.start, args.end
         return args.start, args.end
 
     parser.error("請指定 --today、--date、--backfill 或 --start/--end 其中一種模式")

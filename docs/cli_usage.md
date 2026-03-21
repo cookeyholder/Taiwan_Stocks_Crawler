@@ -78,8 +78,8 @@ twse-crawler --today --no-auto-holidays --holidays 2026-04-04 2026-04-05
 
 | 情況 | TWSE 資料來源 | TPEX 資料來源 |
 |------|--------------|--------------|
-| `date == today` | TWSE JSON API (`STOCK_DAY_ALL`) | TPEX CSV API（不變） |
-| `date < today` | TWSE 歷史 CSV API (`MI_INDEX?date=YYYYMMDD`) | TPEX CSV API（不變） |
+| `date == today` | TWSE JSON API (`STOCK_DAY_ALL`) | TPEX JSON API (`dailyQuotes?response=json`) |
+| `date < today` | TWSE 歷史 CSV API (`MI_INDEX?date=YYYYMMDD`) | TPEX JSON API (`dailyQuotes?response=json`) |
 
 ## 排程設定建議（cron）
 

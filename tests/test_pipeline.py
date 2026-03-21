@@ -283,6 +283,54 @@ class TestCliArguments:
             _pipeline.main(["--backfill", "0", "--db", ":memory:"])
         assert exc_info.value.code != 0
 
+    def test_start_bad_format_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--start 格式非 YYYY-MM-DD → 報錯退出"""
+        monkeypatch.setattr(
+            "market_crawler.pipeline._get_today", lambda: datetime.date(2026, 3, 21)
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            _pipeline.main(
+                ["--start", "20260316", "--end", "2026-03-20", "--db", ":memory:"]
+            )
+        assert exc_info.value.code != 0
+
+    def test_end_bad_format_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--end 格式非 YYYY-MM-DD → 報錯退出"""
+        monkeypatch.setattr(
+            "market_crawler.pipeline._get_today", lambda: datetime.date(2026, 3, 21)
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            _pipeline.main(
+                ["--start", "2026-03-16", "--end", "20260320", "--db", ":memory:"]
+            )
+        assert exc_info.value.code != 0
+
+    def test_start_invalid_date_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--start 為不存在日期（2026-02-30）→ 報錯退出"""
+        monkeypatch.setattr(
+            "market_crawler.pipeline._get_today", lambda: datetime.date(2026, 3, 21)
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            _pipeline.main(
+                ["--start", "2026-02-30", "--end", "2026-03-20", "--db", ":memory:"]
+            )
+        assert exc_info.value.code != 0
+
+    def test_start_after_end_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--start 晚於 --end → 報錯退出"""
+        monkeypatch.setattr(
+            "market_crawler.pipeline._get_today", lambda: datetime.date(2026, 3, 21)
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            _pipeline.main(
+                ["--start", "2026-03-20", "--end", "2026-03-16", "--db", ":memory:"]
+            )
+        assert exc_info.value.code != 0
+
 
 # ---------------------------------------------------------------------------
 # 任務 5.1: 自動假日抓取測試
