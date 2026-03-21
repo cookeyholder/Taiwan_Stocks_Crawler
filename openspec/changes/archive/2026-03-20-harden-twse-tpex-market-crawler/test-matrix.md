@@ -3,9 +3,9 @@
 ## 摘要
 
 - 測試框架：pytest
-- 總案例數：83
+- 總案例數：142 passed，2 skipped（StockID.csv 不存在時分類整合測試以 skip 處理）
 - 防呆案例數：10+（空檔、缺欄、異常格式、`="0050"`、`--` 等）
-- 覆蓋率（market_crawler）：96%
+- 覆蓋率（market_crawler）：96%+
 
 ## 矩陣
 

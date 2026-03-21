@@ -29,6 +29,8 @@ class SQLiteMarketRepository(MarketRepository):
         self.connection = connection
 
     def init_schema(self) -> None:
+        # Enable FK enforcement; must be set per-connection in SQLite.
+        self.connection.execute("PRAGMA foreign_keys = ON")
         self.connection.execute(
             """
             CREATE TABLE IF NOT EXISTS market_quote_core (

@@ -51,6 +51,7 @@ venv.bak/
 
 # Data files (CSV, but keep tracked ones)
 *.csv
+!tests/fixtures/*.csv
 
 # Cache
 .pytest_cache/
@@ -60,3 +61,6 @@ htmlcov/
 # uv
 .uv/
 uv.lock
+
+# Force-track test fixture CSVs
+!tests/fixtures/*.csv

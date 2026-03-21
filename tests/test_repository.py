@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from market_crawler.repository import SQLiteMarketRepository
 
 
@@ -118,3 +120,23 @@ def test_upsert_extension_normalizes_text_to_utf8(sqlite_repo: SQLiteMarketRepos
         "SELECT raw_payload FROM market_quote_extension WHERE symbol_clean='0050'"
     ).fetchone()[0]
     assert "?payload" in saved_payload
+
+
+def test_foreign_key_constraint_enforced(sqlite_repo: SQLiteMarketRepository) -> None:
+    """未在 market_quote_core 建立記錄，不得直接寫入 market_quote_extension。"""
+    import sqlite3
+
+    with pytest.raises(sqlite3.IntegrityError):
+        sqlite_repo.connection.execute(
+            """
+            INSERT INTO market_quote_extension (trade_date, market_code, symbol_clean, raw_change, raw_payload)
+            VALUES ('2026-03-21', 'TWSE', 'ORPHAN', NULL, NULL)
+            """
+        )
+        sqlite_repo.connection.commit()
+
+
+def test_pragma_foreign_keys_on(sqlite_repo: SQLiteMarketRepository) -> None:
+    """init_schema 應啟用 PRAGMA foreign_keys = ON。"""
+    result = sqlite_repo.connection.execute("PRAGMA foreign_keys").fetchone()
+    assert result[0] == 1, "PRAGMA foreign_keys 應為 ON（1）"
