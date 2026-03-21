@@ -13,6 +13,19 @@ from fake_useragent import UserAgent
 from you import Line
 
 
+def _sleep_retry():
+    print("休息 5 到 10 秒鐘再抓")
+    time.sleep(random.randint(5, 10))
+
+
+def _normalize_quote_row(data):
+    normalized = [i.replace('"', "") for i in data]
+    normalized = [i.replace(",", "") for i in normalized]
+    normalized = [i.replace("---", "0") for i in normalized]
+    normalized = [i.replace("--", "0") for i in normalized]
+    return [i.strip() for i in normalized]
+
+
 def is_warrant(code):
     """
     從代號判斷是不是權證
@@ -122,13 +135,8 @@ def twse_crawler(trade_date, output_to_file=True):
                 data[0] = data[0].replace("=", "")
                 data[0] = data[0].replace('"', "")
                 # 如果不是權證
-                if is_warrant(data[0]) == False:
-                    data = [i.replace('"', "") for i in data]
-                    data = [i.replace(",", "") for i in data]
-                    data = [i.replace("---", "0") for i in data]
-                    data = [i.replace("--", "0") for i in data]
-                    data = [i.strip() for i in data]
-                    twse_stocks.append(data)
+                if not is_warrant(data[0]):
+                    twse_stocks.append(_normalize_quote_row(data))
 
             # 把 twse_stocks 轉成 DataFrame
             twse_stocks = pd.DataFrame(twse_stocks[1:], columns=twse_stocks[0][:-1])
@@ -167,47 +175,14 @@ def twse_crawler(trade_date, output_to_file=True):
             ]
             break
 
-        # 錯誤控制：發生以下各種例外時，清除代理資訊，繼續下個迴圈
-        # 連接錯誤
-        except requests.exceptions.ConnectionError:
-            print("ConnectionError")
-            print("休息 5 到 10 秒鐘再抓")
-            time.sleep(random.randint(5, 10))
-            # proxy_ip = None
-            continue
-
-        # 逾時錯誤
-        except requests.exceptions.ConnectTimeout:
-            print("ConnectTimeout")
-            print("休息 5 到 10 秒鐘再抓")
-            time.sleep(random.randint(5, 10))
-            # proxy_ip = None
-            continue
-
-        except requests.exceptions.ReadTimeout:
-            print("ReadTimeout")
-            print("休息 5 到 10 秒鐘再抓")
-            time.sleep(random.randint(5, 10))
-            # proxy_ip = None
-            continue
-
-        except requests.exceptions.ProxyError:
-            print("ProxyError")
-            print("休息 5 到 10 秒鐘再抓")
-            time.sleep(random.randint(5, 10))
-            # proxy_ip = None
-            continue
-
-        except requests.exceptions.SSLError:
-            print("SSLError")
-            print("休息 5 到 10 秒鐘再抓")
-            time.sleep(random.randint(5, 10))
-            # proxy_ip = None
+        except requests.exceptions.RequestException as e:
+            print(type(e).__name__)
+            _sleep_retry()
             continue
 
         except Exception as e:
             print(e)
-            # proxy_ip = None
+            _sleep_retry()
             continue
     print(f"        抓取 {trade_date} 的上市每日收盤行情結束")
     return twse_stocks
@@ -265,13 +240,8 @@ def otc_crawler(trade_date, output_to_file=True):
                     data[0] = data[0].replace("=", "")
                     data[0] = data[0].replace('"', "")
                     # 如果不是權證
-                    if is_warrant(data[0]) == False:
-                        data = [i.replace('"', "") for i in data]
-                        data = [i.replace(",", "") for i in data]
-                        data = [i.replace("---", "0") for i in data]
-                        data = [i.replace("--", "0") for i in data]
-                        data = [i.strip() for i in data]
-                        otc_stocks.append(data)
+                    if not is_warrant(data[0]):
+                        otc_stocks.append(_normalize_quote_row(data))
 
                 otc_stocks = pd.DataFrame(otc_stocks[1:], columns=otc_stocks[0])
                 # otc_stocks = otc_stocks.apply(pd.to_numeric, errors='ignore')
@@ -312,47 +282,14 @@ def otc_crawler(trade_date, output_to_file=True):
                 return otc_stocks
                 break
 
-        # 錯誤控制：發生以下各種例外時，清除代理資訊，繼續下個迴圈
-        # 連接錯誤
-        except requests.exceptions.ConnectionError:
-            print("ConnectionError")
-            print("休息 5 到 10 秒鐘再抓")
-            time.sleep(random.randint(5, 10))
-            # proxy_ip = None
-            continue
-
-        # 逾時錯誤
-        except requests.exceptions.ConnectTimeout:
-            print("ConnectTimeout")
-            print("休息 5 到 10 秒鐘再抓")
-            time.sleep(random.randint(5, 10))
-            # proxy_ip = None
-            continue
-
-        except requests.exceptions.ReadTimeout:
-            print("ReadTimeout")
-            print("休息 5 到 10 秒鐘再抓")
-            time.sleep(random.randint(5, 10))
-            # proxy_ip = None
-            continue
-
-        except requests.exceptions.ProxyError:
-            print("ProxyError")
-            print("休息 5 到 10 秒鐘再抓")
-            time.sleep(random.randint(5, 10))
-            # proxy_ip = None
-            continue
-
-        except requests.exceptions.SSLError:
-            print("SSLError")
-            print("休息 5 到 10 秒鐘再抓")
-            time.sleep(random.randint(5, 10))
-            # proxy_ip = None
+        except requests.exceptions.RequestException as e:
+            print(type(e).__name__)
+            _sleep_retry()
             continue
 
         except Exception as e:
             print(e)
-            # proxy_ip = None
+            _sleep_retry()
             continue
     print(f"        抓取 {trade_date} 的上櫃每日收盤行情結束")
     return otc_stocks
@@ -410,9 +347,9 @@ def main(end_date=datetime.date.today().strftime("%Y-%m-%d")):
         days = days + 1
 
     msg = f"下載每日收盤行情完成，總共抓取了 {days} 天的交易資料，共用了 {time.time() - start_time} 秒。"
-    if (Line.lineNotifyMessage(Vanessa_token, msg)) != 200:
+    if Line.Vanessa(msg) != 200:
         msg = "每日收盤行情下載失敗"
-        Line.lineNotifyMessage(Vanessa_token, msg)
+        Line.Vanessa(msg)
 
     print("全部結束。")
     print(f"總共抓取了 {days} 天的交易資料。")
@@ -467,8 +404,6 @@ def get_stock_ownership(stock_id):
     """
     取得臺灣集中保管結算所的個股股權分散表
     """
-    end_date = datetime.date.today()
-    start_date = end_date - datetime.timedelta(weeks=52)
     query_dates = get_query_dates()
     for i, date in enumerate(query_dates):
         print(f"{i:>02d}.", "Crawling date is", date)

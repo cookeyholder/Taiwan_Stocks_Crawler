@@ -60,9 +60,9 @@ def test_proxy_alive(proxies):
     for proxy in proxies:
         testurl = f"https://{proxy}/"
         try:
-            testproxy = requests.get(testurl, timeout=2)
+            requests.get(testurl, timeout=2)
             print(f"{proxy} 可用。")
-        except:
+        except Exception:
             print(f"從 proxies 中移除 {proxy}")
             proxies.remove(proxy)
     print("檢查 Proxy 是否可正常連線結束")

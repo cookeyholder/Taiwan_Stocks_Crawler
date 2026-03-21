@@ -11,6 +11,7 @@ dependencies = [
     "numpy>=1.23.0",
     "requests>=2.28.0",
     "fake-useragent>=2.2.0",
+    "urllib3>=2.6.3",
 ]
 
 [project.scripts]
@@ -63,16 +64,6 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["you"]
-
-[tool.ruff.lint.per-file-ignores]
-"you/*.py" = [
-    "B018",  # historical scripts: allow existing expression-style close call patterns
-    "C901",  # historical scripts: keep complex crawler/backtest flows as-is
-    "E712",  # historical scripts: keep explicit boolean equality style
-    "E722",  # historical scripts: keep broad exception handlers
-    "F821",  # historical scripts: keep unresolved runtime globals for now
-    "F841",  # historical scripts: keep compatibility placeholders
-]
 
 [tool.ruff.format]
 quote-style = "double"

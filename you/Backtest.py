@@ -43,6 +43,8 @@ class TransactionRecord:
 
     def incomes(
         self,
+        stock_id="",
+        price=0.0,
         tax_rate=0.003,  # 證交稅稅率
         fee_rate=0.001425,  # 手續費原始費率
         discount=1,  # 手續費折扣
@@ -57,11 +59,34 @@ class TransactionRecord:
         if stock_id[:2] == "00":
             tax_rate = 0.001
 
-        turnover = round(self.serial.price * shares)  # 成交額
+        turnover = round(float(price) * shares)  # 成交額
         tax = math.floor(turnover * tax_rate)  # 證交稅
         fee = max(math.floor(turnover * fee_rate * discount), min_fee)  # 傭金
         incomes["date"] = turnover - tax - fee
         return incomes
+
+
+def _resolve_backtest_window(start, end):
+    ptn = re.compile(r"([1-9]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01]))")
+
+    if end is None:
+        end_date = datetime.date.today()
+    elif isinstance(end, str) and ptn.match(end):
+        end_date = datetime.datetime.strptime(end, "%Y-%m-%d").date()
+    else:
+        raise ValueError("end 日期格式錯誤")
+
+    if start is None:
+        start_date = end_date - datetime.timedelta(days=365)
+    elif isinstance(start, str) and ptn.match(start):
+        start_date = datetime.datetime.strptime(start, "%Y-%m-%d").date()
+    else:
+        raise ValueError("start 日期格式錯誤")
+
+    if start_date > end_date:
+        raise ValueError("start 不可晚於 end")
+
+    return start_date, end_date
 
 
 def backtest(targets=None, start=None, end=None, strategy=None):
@@ -74,40 +99,17 @@ def backtest(targets=None, start=None, end=None, strategy=None):
     # 新增一個空白記帳簿物件
     Booking = TransactionRecord()
 
+    if not targets:
+        print("No target stock.")
+        return Booking
+
+    if strategy is None:
+        return Booking
+
     try:
-        # 如果沒有標的物 targets
-        if targets is None:
-            print("No target stock.")
-        elif not targets:
-            print("No target stock.")
-
-        # 處理開始和結束的日期
-        # 如果沒有指定結束日期，則以今天為結束日期
-        ptn = re.compile(r"([1-9]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01]))")
-
-        if end is None:
-            end = datetime.date.today()
-            # 如果沒有指定開始日期，則以結束日期往前推 365 天當做開始日期
-            if start is None:
-                start = end - datetime.timedelta(days=365)
-            elif ptn.match(start):
-                start = datetime.datetime.strptime(start, "%y-%m-%d").date()
-
-        elif ptn.match(end):
-            end = datetime.datetime.strptime(end, "%y-%m-%d").date()
-            # 如果沒有指定開始日期，則以結束日期往前推 365 天當做開始日期
-            if start is None:
-                start = end - datetime.timedelta(days=365)
-            elif ptn.match(start):
-                start = datetime.datetime.strptime(start, "%y-%m-%d").date()
-
-    except:
-        """
-        可能的錯誤：
-            開始、結束日期不是 YYYY-MM-DD 格式
-            結束日期比開始日期還早
-        """
-        pass
+        _resolve_backtest_window(start, end)
+    except Exception:
+        return Booking
 
     # 建立回測期間所有的日期序列，以資料庫中取出的日期為依據
     trade_dates = []
@@ -116,13 +118,10 @@ def backtest(targets=None, start=None, end=None, strategy=None):
     for trade_date in trade_dates:
         for target in targets:
             answer = strategy(target=target, trade_date=trade_date)
-            if answer[0] == "Buy":
-                pass
-
-            if answer[0] == "Sell":
-                pass
-
-            if answer[0] == "Hold":
+            action = answer[0] if answer else "Hold"
+            if action == "Hold":
                 continue
+            if action in {"Buy", "Sell"}:
+                pass
 
     return Booking

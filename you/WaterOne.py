@@ -38,7 +38,7 @@ def crawlStockID():
             df.drop(["有價證券代號及名稱", "備註", "國際證券辨識號碼(ISIN Code)"], axis=1)
             df = df[["代號", "名稱", "上市日", "市場別", "產業別", "CFICode"]]
             stockcodes = pd.concat([stockcodes, df], axis=0)
-    except:
+    except Exception:
         print("請檢查網路連線。")
 
     stockcodes.to_csv("StockID.csv", index=False)
@@ -103,7 +103,7 @@ def read_data_from_db(end_date=datetime.date.today(), data_period=100):
     conn = sqlite3.connect("stocks.sqlite")
     sql = f'SELECT * FROM OHLCV WHERE Date > "{start_date}" AND Date <= "{end_date}";'
     df = pd.read_sql(sql, conn)
-    conn.close
+    conn.close()
     df = df.replace("--", 0)
     df = df.replace("---", 0)
     df = df.replace(" ---", 0)
@@ -127,7 +127,6 @@ def buy_test(
         成交金額門檻 transaction_value_limit
         交易資料欄位順序：序號、日期、代碼、名稱、開、高、低、收、量、值、上、下、寬、均量
     """
-    yahoo_prefix = "https://tw.stock.yahoo.com/q/ta?s="
     goodinfo_prefix = "https://goodinfo.tw/StockInfo/ShowK_Chart.asp?STOCK_ID="
 
     # 交易序號長度為 20 碼，年月日時分秒(14碼) + 6位數的隨機整數
@@ -211,7 +210,7 @@ def sell_test(record, df_stock, loss_rate=-0.05):
             reasons.append("停損")
         if out3:
             reasons.append("五日均線開始下彎")
-    except:
+    except Exception:
         pass
 
     if reasons:
