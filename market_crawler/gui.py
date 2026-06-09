@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import platform
 import queue
 import sqlite3
@@ -21,6 +22,9 @@ from market_crawler.yfinance_sync import sync_yfinance_to_db
 # 設定 Matplotlib 支援 Tkinter 渲染並套用美觀樣式
 matplotlib.use("TkAgg")
 plt.style.use("ggplot")  # 使用 ggplot 樣式讓圖表更美觀
+
+# 關閉 matplotlib 的 debug/warning 日誌，防止控制台被 findfont missing 警告訊息洗板
+logging.getLogger("matplotlib").setLevel(logging.ERROR)
 
 # 解決跨平台中文字型顯示問題，防止 Linux (DejaVu Sans) 出現 Glyph missing 警告與亂碼
 _system = platform.system()
