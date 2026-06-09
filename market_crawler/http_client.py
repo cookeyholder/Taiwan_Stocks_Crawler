@@ -34,8 +34,7 @@ def get_with_retry(
                 headers=policy.headers,
                 verify=policy.ssl_verify,
             )
-            if response.status_code >= 500:
-                raise requests.HTTPError(f"server error {response.status_code}")
+            response.raise_for_status()
             return response
         except Exception as exc:  # noqa: BLE001
             last_exception = exc

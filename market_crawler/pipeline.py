@@ -361,38 +361,23 @@ def fetch_and_ingest_day(
         conn.row_factory = sqlite3.Row
         should_close_conn = True
 
-    repo = SQLiteMarketRepository(conn)
-    if should_close_conn:
-        repo.init_schema()
+    try:
+        repo = SQLiteMarketRepository(conn)
+        if should_close_conn:
+            repo.init_schema()
 
-    total_written = 0
-    twse_market_closed = False  # TWSE 日期不符旗標
-    today = _get_today()
-    requested_date = _dt.date.fromisoformat(date_str)
+        total_written = 0
+        twse_market_closed = False  # TWSE 日期不符旗標
+        today = _get_today()
+        requested_date = _dt.date.fromisoformat(date_str)
 
-    with conn:
-        # --- TWSE ---
-        try:
-            written, twse_market_closed = _fetch_and_ingest_twse(
-                date_str=date_str,
-                requested_date=requested_date,
-                today=today,
-                policy=policy,
-                security_master=security_master,
-                ingest_run_id=ingest_run_id,
-                ingested_at=ingested_at,
-                repo=repo,
-                session=session,
-            )
-            total_written += written
-        except Exception as exc:  # noqa: BLE001
-            warnings.warn(f"TWSE {date_str} 抓取/入庫失敗：{exc}", stacklevel=2)
-
-        # --- TPEX ---
-        if not twse_market_closed:
+        with conn:
+            # --- TWSE ---
             try:
-                total_written += _fetch_and_ingest_tpex(
+                written, twse_market_closed = _fetch_and_ingest_twse(
                     date_str=date_str,
+                    requested_date=requested_date,
+                    today=today,
                     policy=policy,
                     security_master=security_master,
                     ingest_run_id=ingest_run_id,
@@ -400,15 +385,31 @@ def fetch_and_ingest_day(
                     repo=repo,
                     session=session,
                 )
+                total_written += written
             except Exception as exc:  # noqa: BLE001
-                warnings.warn(f"TPEX {date_str} 抓取/入庫失敗：{exc}", stacklevel=2)
+                warnings.warn(f"TWSE {date_str} 抓取/入庫失敗：{exc}", stacklevel=2)
 
-    if should_close_conn:
-        conn.close()
+            # --- TPEX ---
+            if not twse_market_closed:
+                try:
+                    total_written += _fetch_and_ingest_tpex(
+                        date_str=date_str,
+                        policy=policy,
+                        security_master=security_master,
+                        ingest_run_id=ingest_run_id,
+                        ingested_at=ingested_at,
+                        repo=repo,
+                        session=session,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    warnings.warn(f"TPEX {date_str} 抓取/入庫失敗：{exc}", stacklevel=2)
 
-    if total_written == 0 and twse_market_closed:
-        return None  # market_closed 訊號
-    return total_written > 0
+        if total_written == 0 and twse_market_closed:
+            return None  # market_closed 訊號
+        return total_written > 0
+    finally:
+        if should_close_conn:
+            conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -480,6 +481,17 @@ def make_fetcher(
             security_master=local_security_master,
             session=local_session,
         )
+
+    def _close() -> None:
+        nonlocal local_conn, local_session, resources_initialized
+        if resources_initialized:
+            if conn is None and local_conn is not None:
+                local_conn.close()
+            if session is None and local_session is not None:
+                local_session.close()
+            resources_initialized = False
+
+    _fetcher.close = _close  # type: ignore[attr-defined]
 
     return _fetcher
 

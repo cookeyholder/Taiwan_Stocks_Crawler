@@ -69,30 +69,34 @@ def run_date_range_ingestion(
     outcomes: list[IngestionOutcome] = []
     report = BatchQualityReport()
 
-    for day in iter_date_strings(start_date, end_date):
-        day_type = classify_day(day, holidays)
-        if day_type != "trading":
-            outcomes.append(IngestionOutcome(day_type=day_type, ok=True, message="skip"))
-            continue
+    try:
+        for day in iter_date_strings(start_date, end_date):
+            day_type = classify_day(day, holidays)
+            if day_type != "trading":
+                outcomes.append(IngestionOutcome(day_type=day_type, ok=True, message="skip"))
+                continue
 
-        try:
-            result = fetcher(day)
-        except Exception as exc:  # noqa: BLE001
-            outcomes.append(IngestionOutcome(day_type="source_error", ok=False, message=str(exc)))
-            report.record_failure("source_error")
-            continue
+            try:
+                result = fetcher(day)
+            except Exception as exc:  # noqa: BLE001
+                outcomes.append(IngestionOutcome(day_type="source_error", ok=False, message=str(exc)))
+                report.record_failure("source_error")
+                continue
 
-        if result is None:
-            # API 有回應但交易日期不符請求日期（颱風假等臨時休市）
-            outcomes.append(
-                IngestionOutcome(day_type="market_closed", ok=True, message="market_closed")
-            )
-            report.record_market_closed()
-        elif result:
-            outcomes.append(IngestionOutcome(day_type="trading", ok=True, message="ok"))
-            report.record_success()
-        else:
-            outcomes.append(IngestionOutcome(day_type="source_error", ok=False, message="failed"))
-            report.record_failure("source_error")
+            if result is None:
+                # API 有回應但交易日期不符請求日期（颱風假等臨時休市）
+                outcomes.append(
+                    IngestionOutcome(day_type="market_closed", ok=True, message="market_closed")
+                )
+                report.record_market_closed()
+            elif result:
+                outcomes.append(IngestionOutcome(day_type="trading", ok=True, message="ok"))
+                report.record_success()
+            else:
+                outcomes.append(IngestionOutcome(day_type="source_error", ok=False, message="failed"))
+                report.record_failure("source_error")
+    finally:
+        if hasattr(fetcher, "close") and callable(fetcher.close):
+            fetcher.close()
 
     return outcomes, report
