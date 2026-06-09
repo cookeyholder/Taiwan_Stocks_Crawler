@@ -141,7 +141,7 @@ def _ingest_records(
     repo: SQLiteMarketRepository,
 ) -> int:
     """將 parse_result 中的 records 進行 normalize / classify 後寫入 repo。"""
-    written = 0
+    quotes: list[dict[str, Any]] = []
     for rec in parse_result.records:  # type: ignore[attr-defined]
         quote = normalize_record(
             market_code=market_code,
@@ -161,15 +161,21 @@ def _ingest_records(
             quote["cfi_code"] = cfi
         if sec_label:
             quote["section_label"] = sec_label
-        repo.upsert_core(quote)
-        repo.upsert_extension(quote)
-        written += 1
+        
+        # 提前在 Pipeline 進行一次性的規整化，避免 repo 重複處理
+        normalized_quote = repo._normalize_quote_payload(quote)
+        quotes.append(normalized_quote)
+
+    if quotes:
+        repo.upsert_core_batch(quotes)
+        repo.upsert_extension_batch(quotes)
+
     if parse_result.errors:  # type: ignore[attr-defined]
         warnings.warn(
             f"{market_code} {date_str}：{len(parse_result.errors)} 筆解析錯誤",  # type: ignore[arg-type]
             stacklevel=3,
         )
-    return written
+    return len(quotes)
 
 
 # ---------------------------------------------------------------------------
