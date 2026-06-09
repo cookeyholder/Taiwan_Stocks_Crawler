@@ -64,3 +64,6 @@ uv.lock
 
 # Force-track test fixture CSVs
 !tests/fixtures/*.csv
+
+# Local SQLite3 executables
+sqlite3/

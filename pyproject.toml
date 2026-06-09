@@ -3,7 +3,7 @@ name = "stock-trading"
 version = "0.1.0"
 description = "台灣股票交易程式化系統"
 authors = [
-    { name = "cookeyholder", email = "cookeyholder@gmail.com" }
+    { name = "cookeyholder" }
 ]
 requires-python = ">=3.13"
 dependencies = [
