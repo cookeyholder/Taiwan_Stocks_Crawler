@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import platform
 import queue
 import sqlite3
 import threading
@@ -20,6 +21,17 @@ from market_crawler.yfinance_sync import sync_yfinance_to_db
 # 設定 Matplotlib 支援 Tkinter 渲染並套用美觀樣式
 matplotlib.use("TkAgg")
 plt.style.use("ggplot")  # 使用 ggplot 樣式讓圖表更美觀
+
+# 解決跨平台中文字型顯示問題，防止 Linux (DejaVu Sans) 出現 Glyph missing 警告與亂碼
+_system = platform.system()
+if _system == "Darwin":  # macOS
+    matplotlib.rc("font", family="Arial Unicode MS")
+elif _system == "Windows":
+    matplotlib.rc("font", family="Microsoft JhengHei")
+else:  # Linux / Unix
+    # 使用常見的 Linux 繁體中文/中文字型
+    matplotlib.rc("font", family=["Noto Sans CJK TC", "Noto Sans CJK SC", "Source Han Sans TC", "Droid Sans Fallback", "sans-serif"])
+matplotlib.rcParams["axes.unicode_minus"] = False  # 正常顯示負號
 
 # 台灣 50 常見成份股與權值股，供使用者快速批次下載測試
 TAIWAN_50_SYMBOLS = [
@@ -249,7 +261,7 @@ class StockScreenerApp:
 
         # 批次下載的日誌框
         log_frame = ttk.LabelFrame(left_frame, text=" 同步進度與日誌 ", padding=5)
-        log_frame.pack(fill=tk.X, height=120, pady=(10, 0))
+        log_frame.pack(fill=tk.X, pady=(10, 0))
 
         self.t2_log_text = tk.Text(log_frame, height=6, wrap=tk.WORD, font=("Courier New", 9), bg="#f7fafc", fg="#4a5568")
         self.t2_log_text.pack(fill=tk.BOTH, expand=True)
