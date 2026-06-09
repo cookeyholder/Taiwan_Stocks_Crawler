@@ -64,6 +64,10 @@ class StockScreenerApp:
         self._setup_styles()
         self._create_widgets()
 
+        # 載入下拉選單初始資料
+        self._t1_refresh_combo()
+        self._t1_set_default_symbol("2330")
+
         # 啟動佇列輪詢監聽
         self.root.after(100, self._process_queue)
 
@@ -147,9 +151,8 @@ class StockScreenerApp:
         ctrl_frame.pack(fill=tk.X, pady=(0, 10))
 
         ttk.Label(ctrl_frame, text="股票代號:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.t1_symbol_entry = ttk.Entry(ctrl_frame, width=15)
-        self.t1_symbol_entry.insert(0, "2330")
-        self.t1_symbol_entry.grid(row=0, column=1, sticky=tk.W, pady=5, padx=5)
+        self.t1_symbol_combo = ttk.Combobox(ctrl_frame, width=13, state="normal")
+        self.t1_symbol_combo.grid(row=0, column=1, sticky=tk.W, pady=5, padx=5)
 
         ttk.Label(ctrl_frame, text="市場類型:").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.t1_market_combo = ttk.Combobox(ctrl_frame, values=["TWSE", "TPEX"], width=13, state="readonly")
@@ -294,7 +297,7 @@ class StockScreenerApp:
         self.t2_log_text.config(state=tk.DISABLED)
 
     # ==================== 異步與多線程處理邏輯 ====================
-    def _process_queue(self) -> None:
+    def _process_queue(self) -> None:  # noqa: C901
         """主執行緒定期輪詢任務佇列，更新 UI 狀態。"""
         try:
             while True:
@@ -306,11 +309,35 @@ class StockScreenerApp:
                     if status == "SUCCESS":
                         count = data
                         self.status_var.set("下載成功")
+                        self._t1_refresh_combo()  # 重新整理選單
                         messagebox.showinfo("成功", f"歷史數據同步完成！共匯入 {count} 筆記錄。")
                         self._t1_plot_data()  # 同步完自動畫圖
                     else:
                         self.status_var.set("下載失敗")
                         messagebox.showerror("錯誤", f"同步失敗：\n{data}")
+
+                elif msg_type == "AUTO_SYNC_SUCCESS":
+                    self.progress_bar.stop()
+                    self._enable_all_buttons()
+                    symbol, count = status, data
+                    self.status_var.set(f"自動下載成功 ({symbol})")
+                    self._t1_refresh_combo()  # 重新整理選單
+                    self._t1_set_default_symbol(symbol)  # 選取該股票
+                    self._t1_plot_data()  # 自動畫圖
+
+                elif msg_type == "AUTO_SYNC_EMPTY":
+                    self.progress_bar.stop()
+                    self._enable_all_buttons()
+                    symbol, _ = status, data
+                    self.status_var.set("自動下載無數據")
+                    self._t1_draw_placeholder(f"[{symbol}] yfinance 同步無數據，請確認代號與市場。")
+
+                elif msg_type == "AUTO_SYNC_ERROR":
+                    self.progress_bar.stop()
+                    self._enable_all_buttons()
+                    symbol, error_msg = status, data
+                    self.status_var.set("自動下載錯誤")
+                    self._t1_draw_placeholder(f"[{symbol}] 自動同步失敗：\n{error_msg}")
 
                 elif msg_type == "SCREEN":
                     self.progress_bar.stop()
@@ -332,6 +359,7 @@ class StockScreenerApp:
                     self._enable_all_buttons()
                     success_count, failed_count = data
                     self.status_var.set(f"批次同步完成 (成功: {success_count}, 失敗: {failed_count})")
+                    self._t1_refresh_combo()  # 重新整理選單
                     messagebox.showinfo("完成", f"台灣 50 批次同步結束！\n成功：{success_count} 檔\n失敗：{failed_count} 檔")
 
                 self.task_queue.task_done()
@@ -357,13 +385,14 @@ class StockScreenerApp:
     # ==================== 單股分析事件 ====================
     def _t1_sync_data(self) -> None:
         """按下單股同步按鈕。"""
-        symbol = self.t1_symbol_entry.get().strip()
-        market = self.t1_market_combo.get()
-        period = self.t1_period_combo.get()
-
-        if not symbol:
+        raw_val = self.t1_symbol_combo.get().strip()
+        if not raw_val:
             messagebox.showwarning("警告", "請先輸入股票代號！")
             return
+        symbol = raw_val.split(" - ")[0].strip()
+
+        market = self.t1_market_combo.get()
+        period = self.t1_period_combo.get()
 
         self._disable_all_buttons()
         self.progress_bar.start(10)
@@ -381,10 +410,11 @@ class StockScreenerApp:
 
     def _t1_plot_data(self) -> None:
         """讀取本地資料並繪製布林通道圖。"""
-        symbol = self.t1_symbol_entry.get().strip()
-        if not symbol:
+        raw_val = self.t1_symbol_combo.get().strip()
+        if not raw_val:
             messagebox.showwarning("警告", "請先輸入股票代號！")
             return
+        symbol = raw_val.split(" - ")[0].strip()
 
         with self.db_lock:
             df = pd.read_sql_query(
@@ -399,8 +429,7 @@ class StockScreenerApp:
             )
 
         if df.empty:
-            self._t1_draw_placeholder(f"本地資料庫中無 [{symbol}] 之數據，請先點擊同步。")
-            self._update_t1_info_text(None)
+            self._t1_auto_sync_and_plot(symbol)
             return
 
         if len(df) < 20:
@@ -462,6 +491,70 @@ class StockScreenerApp:
 
         self._update_t1_info_text(df)
 
+    def _t1_load_db_choices(self) -> list[str]:
+        """從資料庫讀取已存在的所有股票代號與名稱，格式化為 '代號 - 名稱'。"""
+        try:
+            with self.db_lock:
+                cur = self.conn.cursor()
+                cur.execute("""
+                    SELECT symbol_clean, MIN(security_name)
+                    FROM market_quote_core
+                    GROUP BY symbol_clean
+                    ORDER BY symbol_clean ASC
+                """)
+                rows = cur.fetchall()
+
+            choices = []
+            for sym, name in rows:
+                if name:
+                    choices.append(f"{sym} - {name}")
+                else:
+                    choices.append(f"{sym}")
+            return choices
+        except Exception:
+            return []
+
+    def _t1_refresh_combo(self) -> None:
+        """更新單股分析中股票代號下拉選單的選項。"""
+        choices = self._t1_load_db_choices()
+        self.t1_symbol_combo["values"] = choices
+
+    def _t1_set_default_symbol(self, default_sym: str) -> None:
+        """嘗試設定選單的預設選取股票。"""
+        choices = self.t1_symbol_combo["values"]
+        matched = None
+        for choice in choices:
+            if choice.startswith(default_sym):
+                matched = choice
+                break
+
+        if matched:
+            self.t1_symbol_combo.set(matched)
+        else:
+            self.t1_symbol_combo.set(default_sym)
+
+    def _t1_auto_sync_and_plot(self, symbol: str) -> None:
+        """當本地無資料時，自動發起背景下載，下載完成後自動畫圖。"""
+        market = self.t1_market_combo.get()
+        period = self.t1_period_combo.get()
+
+        self._disable_all_buttons()
+        self.progress_bar.start(10)
+        self.status_var.set(f"本地無資料，自動自 yfinance 同步 {symbol}... (期間: {period})")
+
+        def worker() -> None:
+            try:
+                with self.db_lock:
+                    count = sync_yfinance_to_db(self.repo, symbol, market, period=period)
+                if count > 0:
+                    self.task_queue.put(("AUTO_SYNC_SUCCESS", symbol, count))
+                else:
+                    self.task_queue.put(("AUTO_SYNC_EMPTY", symbol, "yfinance 沒有回傳任何數據"))
+            except Exception as e:
+                self.task_queue.put(("AUTO_SYNC_ERROR", symbol, str(e)))
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _update_t1_info_text(self, df: pd.DataFrame | None) -> None:
         """更新單股指標的文字資訊區。"""
         self.t1_info_text.config(state=tk.NORMAL)
@@ -481,7 +574,10 @@ class StockScreenerApp:
 
         info = []
         info.append("====== 基本資訊 ======")
-        info.append(f"代號: {self.t1_symbol_entry.get().strip()}")
+        # 從下拉選單取得解析後代號
+        combo_val = self.t1_symbol_combo.get().strip()
+        info_symbol = combo_val.split(" - ")[0].strip() if combo_val else ""
+        info.append(f"代號: {info_symbol}")
         if name:
             info.append(f"名稱: {name}")
         info.append(f"總資料天數: {len(df)} 天")
