@@ -63,6 +63,20 @@ gui:
 	@echo "🖥️ Starting GUI Application..."
 	.venv/bin/python -m market_crawler.gui
 
+build-deps:
+	@echo "📦 Installing build dependencies..."
+	uv pip install pyinstaller
+
+build-linux:
+	@echo "🔨 Building Linux executable..."
+	uv run pyinstaller build/stock_screener.spec
+	@echo "✅ Executable created at dist/stock_screener/"
+
+build-clean:
+	@echo "🧹 Removing build artifacts..."
+	rm -rf build/stock_screener build/stock_screener.spec dist/stock_screener/
+	@echo "✅ Cleaned build artifacts"
+
 test-cov:
 	@echo "🧪 Running pytest with coverage..."
 	uv run pytest --cov=. --cov-report=html
