@@ -76,7 +76,7 @@ class StockScreenerApp:
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
 
         # 啟動佇列輪詢監聽
-        self.root.after(100, self._process_queue)
+        self.after_id = self.root.after(100, self._process_queue)
 
     def _setup_styles(self) -> None:
         """設定 ttk 風格樣式，提升介面美觀度。"""
@@ -378,10 +378,20 @@ class StockScreenerApp:
         except queue.Empty:
             pass
         finally:
-            self.root.after(100, self._process_queue)
+            try:
+                self.after_id = self.root.after(100, self._process_queue)
+            except Exception:
+                self.after_id = None
 
     def _on_closing(self) -> None:
         """在關閉視窗時，優雅釋放資料庫連線等資源並退出。"""
+        # 取消未執行的 after() 定時器，防止退出後出現 invalid command name 警告
+        if hasattr(self, "after_id") and self.after_id:
+            try:
+                self.root.after_cancel(self.after_id)
+            except Exception:
+                pass
+
         try:
             with self.db_lock:
                 self.conn.close()
