@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from functools import lru_cache
 from typing import Any
 
 CANONICAL_CORE_FIELDS = [
@@ -42,10 +43,13 @@ CANONICAL_CORE_FIELDS = [
 CANONICAL_EXTENSION_FIELDS = ["raw_change", "raw_payload"]
 
 
+_SYMBOL_CLEAN_RE = re.compile(r"=\"([^\"]+)\"")
+
+
 def clean_symbol(symbol_raw: str) -> str:
     value = symbol_raw.strip()
     # Keep the original symbol untouched elsewhere; this returns canonical clean key.
-    match = re.fullmatch(r"=\"([^\"]+)\"", value)
+    match = _SYMBOL_CLEAN_RE.fullmatch(value)
     if match:
         return match.group(1).strip()
     value = value.strip('"')
@@ -63,7 +67,12 @@ def clean_numeric(value: str | None) -> str | None:
 
 def to_int(value: str | None) -> int | None:
     cleaned = clean_numeric(value)
-    return int(cleaned) if cleaned is not None else None
+    if cleaned is None:
+        return None
+    try:
+        return int(cleaned)
+    except ValueError:
+        return None
 
 
 def to_float(value: str | None) -> float | None:
@@ -93,6 +102,7 @@ def parse_change_field(change: str | None) -> tuple[str | None, float | None]:
     return None, to_float(value)
 
 
+@lru_cache(maxsize=32)
 def roc_to_ad_date(value: str) -> str:
     value = value.strip()
     if "-" in value:

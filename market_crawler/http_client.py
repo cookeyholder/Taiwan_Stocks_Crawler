@@ -19,11 +19,16 @@ class HttpPolicy:
     ssl_verify: bool = True
 
 
-def get_with_retry(url: str, policy: HttpPolicy) -> requests.Response:
+def get_with_retry(
+    url: str,
+    policy: HttpPolicy,
+    session: requests.Session | None = None,
+) -> requests.Response:
     last_exception: Exception | None = None
     for attempt in range(policy.retry_count + 1):
         try:
-            response = requests.get(
+            getter = session.get if session is not None else requests.get
+            response = getter(
                 url,
                 timeout=policy.timeout_seconds,
                 headers=policy.headers,
