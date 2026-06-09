@@ -15,6 +15,9 @@ import pandas as pd
 import pandas_ta as ta
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+from market_crawler.http_client import HttpPolicy
+from market_crawler.orchestrator import classify_day, iter_date_strings
+from market_crawler.pipeline import fetch_and_ingest_day, make_fetcher
 from market_crawler.repository import SQLiteMarketRepository
 from market_crawler.screener import screen_bollinger_squeeze
 from market_crawler.yfinance_sync import sync_yfinance_to_db
@@ -188,15 +191,18 @@ class StockScreenerApp:
         self.notebook = ttk.Notebook(main_container)
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        # 建立兩個分頁
+        # 建立三個分頁
         self.tab1 = ttk.Frame(self.notebook, padding=10)
         self.tab2 = ttk.Frame(self.notebook, padding=10)
+        self.tab3 = ttk.Frame(self.notebook, padding=10)
 
         self.notebook.add(self.tab1, text="📊 單股分析與視覺化")
         self.notebook.add(self.tab2, text="🔍 布林擠壓選股器")
+        self.notebook.add(self.tab3, text="⬇️ 下載管理")
 
         self._build_tab1()
         self._build_tab2()
+        self._build_tab3()
 
     # ==================== TAB 1: 單股分析 ====================
     def _build_tab1(self) -> None:
@@ -352,6 +358,71 @@ class StockScreenerApp:
         self.t2_ax_price.text(0.5, 0.5, message, ha="center", va="center", fontsize=11, color="gray")
         self.t2_canvas.draw()
 
+    # ==================== TAB 3: 下載管理 ====================
+    def _build_tab3(self) -> None:
+        """建立下載管理分頁。"""
+        # 上方面板：模式選擇與日期輸入
+        ctrl_frame = ttk.LabelFrame(self.tab3, text=" 下載設定 ", padding=10)
+        ctrl_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(ctrl_frame, text="下載模式:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.t3_mode_combo = ttk.Combobox(ctrl_frame, values=["下載今日", "指定日期", "日期區間"], width=15, state="readonly")
+        self.t3_mode_combo.set("下載今日")
+        self.t3_mode_combo.grid(row=0, column=1, sticky=tk.W, pady=5, padx=5)
+        self.t3_mode_combo.bind("<<ComboboxSelected>>", self._t3_on_mode_change)
+
+        self.t3_date_label = ttk.Label(ctrl_frame, text="日期 (YYYY-MM-DD):")
+        self.t3_date_label.grid(row=0, column=2, sticky=tk.W, pady=5, padx=(15, 0))
+        self.t3_date_entry = ttk.Entry(ctrl_frame, width=14)
+        self.t3_date_entry.grid(row=0, column=3, sticky=tk.W, pady=5, padx=5)
+
+        self.t3_start_label = ttk.Label(ctrl_frame, text="起始日期:")
+        self.t3_start_entry = ttk.Entry(ctrl_frame, width=14)
+        self.t3_end_label = ttk.Label(ctrl_frame, text="結束日期:")
+        self.t3_end_entry = ttk.Entry(ctrl_frame, width=14)
+
+        self.t3_holiday_var = tk.BooleanVar(value=True)
+        self.t3_holiday_cb = ttk.Checkbutton(ctrl_frame, text="自動跳過假日", variable=self.t3_holiday_var)
+
+        self.t3_dl_btn = ttk.Button(ctrl_frame, text="⬇️ 開始下載所有股票", style="Primary.TButton", command=self._t3_start_download)
+        self.t3_dl_btn.grid(row=1, column=0, columnspan=6, pady=10, sticky=tk.EW)
+
+        self._t3_update_mode_visibility()
+
+        # 下載日誌區
+        log_frame = ttk.LabelFrame(self.tab3, text=" 下載進度與日誌 ", padding=5)
+        log_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.t3_log_text = tk.Text(log_frame, wrap=tk.WORD, font=("Courier New", 10), bg="#f7fafc", fg="#4a5568")
+        self.t3_log_text.pack(fill=tk.BOTH, expand=True)
+        self.t3_log_text.config(state=tk.DISABLED)
+
+    def _t3_update_mode_visibility(self) -> None:
+        """根據選取的模式顯示/隱藏對應的日期輸入元件。"""
+        mode = self.t3_mode_combo.get()
+
+        self.t3_date_label.grid_remove()
+        self.t3_date_entry.grid_remove()
+        self.t3_start_label.grid_remove()
+        self.t3_start_entry.grid_remove()
+        self.t3_end_label.grid_remove()
+        self.t3_end_entry.grid_remove()
+        self.t3_holiday_cb.grid_remove()
+
+        if mode == "指定日期":
+            self.t3_date_label.grid(row=0, column=2, sticky=tk.W, pady=5, padx=(15, 0))
+            self.t3_date_entry.grid(row=0, column=3, sticky=tk.W, pady=5, padx=5)
+        elif mode == "日期區間":
+            self.t3_start_label.grid(row=0, column=2, sticky=tk.W, pady=5, padx=(15, 0))
+            self.t3_start_entry.grid(row=0, column=3, sticky=tk.W, pady=5, padx=5)
+            self.t3_end_label.grid(row=0, column=4, sticky=tk.W, pady=5, padx=(10, 0))
+            self.t3_end_entry.grid(row=0, column=5, sticky=tk.W, pady=5, padx=5)
+            self.t3_holiday_cb.grid(row=0, column=6, sticky=tk.W, pady=5, padx=(15, 0))
+
+    def _t3_on_mode_change(self, event: Any = None) -> None:
+        """模式切換時更新介面。"""
+        self._t3_update_mode_visibility()
+
     def _write_log(self, message: str) -> None:
         """向日誌視窗寫入文字。"""
         self.t2_log_text.config(state=tk.NORMAL)
@@ -425,6 +496,65 @@ class StockScreenerApp:
                     self._t1_refresh_combo()  # 重新整理選單
                     messagebox.showinfo("完成", f"台灣 50 批次同步結束！\n成功：{success_count} 檔\n失敗：{failed_count} 檔")
 
+                elif msg_type == "BULK_LOG":
+                    self._t3_write_log(data)
+
+                elif msg_type == "BULK_PROGRESS":
+                    day, current, total = status, data[0], data[1]
+                    self.status_var.set(f"正在處理 {day} ({current}/{total})")
+                    self.progress_bar["mode"] = "determinate"
+                    # 進度條（含跳過的週末/假日）
+                    self.progress_bar["maximum"] = total
+                    self.progress_bar["value"] = current
+
+                elif msg_type == "BULK_DONE":
+                    self.progress_bar.stop()
+                    self.progress_bar["value"] = 0
+                    self._enable_all_buttons()
+                    summary = data
+                    if status == "success":
+                        self.status_var.set("✓ 下載完成")
+                        self._t3_write_log("\n✓ 完成：當日資料下載成功")
+                        messagebox.showinfo("完成", "當日收盤行情下載成功！")
+                    elif status == "warning":
+                        self.status_var.set("- 當日休市")
+                        self._t3_write_log("\n- 完成：當日休市（無資料）")
+                        messagebox.showinfo("提示", "當日為休市日，無資料可下載。")
+                    elif status == "failed":
+                        self.status_var.set("✗ 下載失敗")
+                        self._t3_write_log("\n✗ 完成：下載失敗")
+                        messagebox.showerror("錯誤", "當日資料下載失敗，請檢查網路或稍後重試。")
+                    elif status == "error":
+                        self.status_var.set("✗ 下載異常中斷")
+                        self._t3_write_log("\n✗ 下載程序異常中斷")
+                        messagebox.showerror("錯誤", "下載程序發生未預期錯誤。")
+                    elif status == "range_done":
+                        s = summary["success"]
+                        m = summary["market_closed"]
+                        f = summary["failed"]
+                        sk = summary.get("skipped", 0)
+                        self.status_var.set(f"✓ 區間下載完成 (成功 {s} / 休市 {m} / 失敗 {f})")
+                        self._t3_write_log(
+                            f"\n{'='*40}"
+                            f"\n📊 下載摘要"
+                            f"\n  成功天數：{s}"
+                            f"\n  休市天數：{m}"
+                            f"\n  失敗天數：{f}"
+                            f"\n  跳過假日：{sk}"
+                            f"\n{'='*40}"
+                        )
+                        msg = (
+                            f"區間下載完成！\n\n"
+                            f"✅ 成功：{s} 天\n"
+                            f"➖ 休市：{m} 天\n"
+                            f"❌ 失敗：{f} 天"
+                        )
+                        if f > 0:
+                            messagebox.showwarning("完成", msg)
+                        else:
+                            messagebox.showinfo("完成", msg)
+                    self._t1_refresh_combo()
+
                 self.task_queue.task_done()
         except queue.Empty:
             pass
@@ -459,6 +589,7 @@ class StockScreenerApp:
         self.t1_plot_btn.config(state=tk.DISABLED)
         self.t2_screen_btn.config(state=tk.DISABLED)
         self.t2_batch_btn.config(state=tk.DISABLED)
+        self.t3_dl_btn.config(state=tk.DISABLED)
         self.exit_btn.config(state=tk.DISABLED)
 
     def _enable_all_buttons(self) -> None:
@@ -467,6 +598,7 @@ class StockScreenerApp:
         self.t1_plot_btn.config(state=tk.NORMAL)
         self.t2_screen_btn.config(state=tk.NORMAL)
         self.t2_batch_btn.config(state=tk.NORMAL)
+        self.t3_dl_btn.config(state=tk.NORMAL)
         self.exit_btn.config(state=tk.NORMAL)
 
     # ==================== 單股分析事件 ====================
@@ -859,6 +991,139 @@ class StockScreenerApp:
             self.task_queue.put(("BATCH_DONE", "SUCCESS", (success, failed)))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    # ==================== 下載管理事件 (TAB 3) ====================
+    def _t3_start_download(self) -> None:
+        """按下「開始下載」按鈕，啟動背景執行緒下載所有上市/上櫃股票。"""
+        mode = self.t3_mode_combo.get()
+
+        if mode == "指定日期":
+            date_str = self.t3_date_entry.get().strip()
+            if not date_str:
+                messagebox.showwarning("警告", "請輸入日期 (YYYY-MM-DD)")
+                return
+        elif mode == "日期區間":
+            start = self.t3_start_entry.get().strip()
+            end = self.t3_end_entry.get().strip()
+            if not start or not end:
+                messagebox.showwarning("警告", "請輸入起始與結束日期")
+                return
+
+        self._disable_all_buttons()
+        self.progress_bar.start(10)
+        self.status_var.set("準備下載...")
+
+        self.t3_log_text.config(state=tk.NORMAL)
+        self.t3_log_text.delete("1.0", tk.END)
+        self.t3_log_text.config(state=tk.DISABLED)
+
+        self._t3_write_log(f"▶ 模式：{mode}")
+        self._t3_write_log(f"  資料庫：{self.db_path}\n")
+
+        threading.Thread(target=self._t3_download_worker, args=(mode,), daemon=True).start()
+
+    def _t3_write_log(self, message: str) -> None:
+        """寫入 tab3 日誌框。"""
+        self.t3_log_text.config(state=tk.NORMAL)
+        self.t3_log_text.insert(tk.END, message + "\n")
+        self.t3_log_text.see(tk.END)
+        self.t3_log_text.config(state=tk.DISABLED)
+
+    def _t3_download_worker(self, mode: str) -> None:
+        """背景下載執行緒：複用 Pipeline 下載所有上市/上櫃股票。"""
+        import datetime as _dt
+        import sqlite3
+
+        import requests
+
+        from market_crawler.pipeline import _fetch_twse_holidays, fetch_and_ingest_day
+
+        policy = HttpPolicy()
+
+        try:
+            if mode == "下載今日":
+                today = _dt.date.today().isoformat()
+                self.task_queue.put(("BULK_PROGRESS", today, 1, 1))
+
+                result = fetch_and_ingest_day(today, db_path=self.db_path, policy=policy)
+                if result is True:
+                    self.task_queue.put(("BULK_DONE", "success", {"success": 1, "market_closed": 0, "failed": 0}))
+                elif result is None:
+                    self.task_queue.put(("BULK_DONE", "warning", {"success": 0, "market_closed": 1, "failed": 0}))
+                else:
+                    self.task_queue.put(("BULK_DONE", "failed", {"success": 0, "market_closed": 0, "failed": 1}))
+
+            elif mode == "指定日期":
+                date_str = self.t3_date_entry.get().strip()
+                self.task_queue.put(("BULK_PROGRESS", date_str, 1, 1))
+                self.task_queue.put(("BULK_LOG", f"  正在下載 {date_str}（TWSE + TPEX）..."))
+
+                result = fetch_and_ingest_day(date_str, db_path=self.db_path, policy=policy)
+                if result is True:
+                    self.task_queue.put(("BULK_LOG", "  ✓ 下載成功"))
+                    self.task_queue.put(("BULK_DONE", "success", {"success": 1, "market_closed": 0, "failed": 0}))
+                elif result is None:
+                    self.task_queue.put(("BULK_LOG", "  - 當日休市"))
+                    self.task_queue.put(("BULK_DONE", "warning", {"success": 0, "market_closed": 1, "failed": 0}))
+                else:
+                    self.task_queue.put(("BULK_LOG", "  ✗ 下載失敗"))
+                    self.task_queue.put(("BULK_DONE", "failed", {"success": 0, "market_closed": 0, "failed": 1}))
+
+            elif mode == "日期區間":
+                start = self.t3_start_entry.get().strip()
+                end = self.t3_end_entry.get().strip()
+                use_holidays = self.t3_holiday_var.get()
+
+                holidays: set[str] = set()
+                if use_holidays:
+                    try:
+                        twse_h = _fetch_twse_holidays(policy)
+                        holidays = {d.isoformat() for d in twse_h}
+                        self.task_queue.put(("BULK_LOG", f"  自動假日偵測：{len(holidays)} 天假日"))
+                    except Exception as e:
+                        self.task_queue.put(("BULK_LOG", f"  ⚠ 假日 API 抓取失敗：{e}"))
+
+                days = iter_date_strings(start, end)
+                total = len(days)
+                self.task_queue.put(("BULK_LOG", f"  日期區間：{start} ~ {end}（共 {total} 天）"))
+
+                success = market_closed = failed = skipped = 0
+
+                for i, day in enumerate(days):
+                    day_type = classify_day(day, holidays)
+                    if day_type in ("holiday", "weekend"):
+                        skipped += 1
+                        continue
+
+                    self.task_queue.put(("BULK_PROGRESS", day, i + 1, total))
+                    self.task_queue.put(("BULK_LOG", f"  [{i + 1 - skipped}/{total}] 處理 {day}..."))
+
+                    try:
+                        result = fetch_and_ingest_day(day, db_path=self.db_path, policy=policy)
+                        if result is True:
+                            success += 1
+                            self.task_queue.put(("BULK_LOG", f"    ✓ 寫入完成"))
+                        elif result is None:
+                            market_closed += 1
+                            self.task_queue.put(("BULK_LOG", f"    - 休市"))
+                        else:
+                            failed += 1
+                            self.task_queue.put(("BULK_LOG", f"    ✗ 失敗"))
+                    except Exception as e:
+                        failed += 1
+                        self.task_queue.put(("BULK_LOG", f"    ✗ 異常：{e}"))
+
+                self.task_queue.put(("BULK_LOG", ""))
+                self.task_queue.put(("BULK_DONE", "range_done", {
+                    "success": success,
+                    "market_closed": market_closed,
+                    "failed": failed,
+                    "skipped": skipped,
+                }))
+
+        except Exception as e:
+            self.task_queue.put(("BULK_LOG", f"\n✗ 下載程序異常中斷：{e}"))
+            self.task_queue.put(("BULK_DONE", "error", {"success": 0, "market_closed": 0, "failed": 0}))
 
 
 def main() -> None:
