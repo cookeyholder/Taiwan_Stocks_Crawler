@@ -43,9 +43,8 @@ from market_crawler.parsers import (
 from market_crawler.repository import SQLiteMarketRepository
 
 # ---------------------------------------------------------------------------
-# 抑制 InsecureRequestWarning（TWSE/TPEX SSL 憑證問題）
+# 憑證警告抑制已於安全重構中移除（預設啟用 SSL/TLS 驗證）
 # ---------------------------------------------------------------------------
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ---------------------------------------------------------------------------
 # 輔助：取得今日日期（可被 monkeypatch 覆蓋）
@@ -183,9 +182,13 @@ def _ingest_records(
 # ---------------------------------------------------------------------------
 
 
-def _fetch_and_parse_twse(date_str: str, policy: HttpPolicy) -> object | None:
+def _fetch_and_parse_twse(
+    date_str: str,
+    policy: HttpPolicy,
+    session: requests.Session | None = None,
+) -> object | None:
     """抓取 TWSE OpenAPI（今日 JSON）並驗證日期；日期不符時回傳 ``None``。"""
-    resp = get_with_retry(_TWSE_OPENAPI_URL, policy)
+    resp = get_with_retry(_TWSE_OPENAPI_URL, policy, session=session)
     response_json = resp.json()
 
     # 驗證 API 回傳的日期與請求日期是否一致
@@ -212,7 +215,11 @@ def _fetch_and_parse_twse(date_str: str, policy: HttpPolicy) -> object | None:
     return parse_twse_daily_close_json(response_json, source_file=_TWSE_OPENAPI_URL)
 
 
-def _fetch_and_parse_twse_csv(date_str: str, policy: HttpPolicy) -> object:
+def _fetch_and_parse_twse_csv(
+    date_str: str,
+    policy: HttpPolicy,
+    session: requests.Session | None = None,
+) -> object:
     """抓取 TWSE 歷史 CSV API（MI_INDEX）並解析。
 
     使用具備日期參數的 CSV API，適用於歷史日期（date < today）。
@@ -220,12 +227,13 @@ def _fetch_and_parse_twse_csv(date_str: str, policy: HttpPolicy) -> object:
     Args:
         date_str: ISO 格式日期字串，例如 ``"2026-03-17"``。
         policy: HTTP 請求策略。
+        session: 選用的 requests.Session 實例。
 
     Returns:
         ``ParseResult`` 物件（records + errors）。
     """
     url = _build_twse_csv_url(date_str)
-    resp = get_with_retry(url, policy)
+    resp = get_with_retry(url, policy, session=session)
     return parse_twse_daily_close(resp.content, source_file=url)
 
 
@@ -237,10 +245,11 @@ def _fetch_and_ingest_tpex(
     ingest_run_id: str,
     ingested_at: str,
     repo: SQLiteMarketRepository,
+    session: requests.Session | None = None,
 ) -> int:
     """抓取並寫入單日 TPEX 資料，成功回傳寫入筆數。"""
     tpex_url = _build_tpex_url(date_str)
-    resp = get_with_retry(tpex_url, policy)
+    resp = get_with_retry(tpex_url, policy, session=session)
     response_json = resp.json()
     result = parse_tpex_daily_close_json(response_json, source_file=tpex_url)
     return _ingest_records(
@@ -264,12 +273,13 @@ def _fetch_and_ingest_twse(
     ingest_run_id: str,
     ingested_at: str,
     repo: SQLiteMarketRepository,
+    session: requests.Session | None = None,
 ) -> tuple[int, bool]:
     """抓取並寫入 TWSE，回傳 (written_count, twse_market_closed)。"""
     if requested_date < today:
-        twse_result = _fetch_and_parse_twse_csv(date_str, policy)
+        twse_result = _fetch_and_parse_twse_csv(date_str, policy, session=session)
     else:
-        twse_result = _fetch_and_parse_twse(date_str, policy)
+        twse_result = _fetch_and_parse_twse(date_str, policy, session=session)
 
     if twse_result is None:
         return 0, True
@@ -298,6 +308,9 @@ def fetch_and_ingest_day(
     security_master_path: str | None = "StockID.csv",
     policy: HttpPolicy | None = None,
     ingest_run_id: str | None = None,
+    conn: sqlite3.Connection | None = None,
+    security_master: dict[str, Any] | None = None,
+    session: requests.Session | None = None,
 ) -> bool | None:
     """抓取指定日期的 TWSE 與 TPEX 每日收盤行情並寫入 SQLite。
 
@@ -308,9 +321,12 @@ def fetch_and_ingest_day(
     Args:
         date_str: ISO 格式交易日，例如 ``"2026-03-17"``。
         db_path: SQLite 資料庫路徑。
-        security_master_path: StockID.csv 路徑；``None`` 則跳過分類擴充。
+        security_master_path: StockID.csv 路徑；``None``則跳過分類擴充。
         policy: HTTP 請求策略。
         ingest_run_id: 本次匯入的唯一識別碼（留空時自動產生 UUID）。
+        conn: 選用的 SQLite 連線，提供批次連線複用。
+        security_master: 選用的有價證券主檔 dict，提供批次記憶體複用。
+        session: 選用的 requests.Session 實例，提供連線池複用。
 
     Returns:
         - ``True``  — 至少有一個市場成功寫入資料
@@ -323,7 +339,7 @@ def fetch_and_ingest_day(
             retry_count=3,
             backoff_seconds=1.5,
             headers={"user-agent": _make_user_agent()},
-            ssl_verify=False,
+            ssl_verify=True,
         )
     if ingest_run_id is None:
         ingest_run_id = str(uuid.uuid4())
@@ -331,17 +347,23 @@ def fetch_and_ingest_day(
     ingested_at = _dt.datetime.now(_dt.timezone.utc).isoformat()
 
     # 載入有價證券主檔
-    security_master = {}
-    if security_master_path:
-        try:
-            security_master = load_security_master(security_master_path)
-        except Exception as exc:  # noqa: BLE001
-            warnings.warn(f"無法載入 {security_master_path}：{exc}", stacklevel=2)
+    if security_master is None:
+        security_master = {}
+        if security_master_path:
+            try:
+                security_master = load_security_master(security_master_path)
+            except Exception as exc:  # noqa: BLE001
+                warnings.warn(f"無法載入 {security_master_path}：{exc}", stacklevel=2)
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    should_close_conn = False
+    if conn is None:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        should_close_conn = True
+
     repo = SQLiteMarketRepository(conn)
-    repo.init_schema()
+    if should_close_conn:
+        repo.init_schema()
 
     total_written = 0
     twse_market_closed = False  # TWSE 日期不符旗標
@@ -360,6 +382,7 @@ def fetch_and_ingest_day(
                 ingest_run_id=ingest_run_id,
                 ingested_at=ingested_at,
                 repo=repo,
+                session=session,
             )
             total_written += written
         except Exception as exc:  # noqa: BLE001
@@ -375,11 +398,13 @@ def fetch_and_ingest_day(
                     ingest_run_id=ingest_run_id,
                     ingested_at=ingested_at,
                     repo=repo,
+                    session=session,
                 )
             except Exception as exc:  # noqa: BLE001
                 warnings.warn(f"TPEX {date_str} 抓取/入庫失敗：{exc}", stacklevel=2)
 
-    conn.close()
+    if should_close_conn:
+        conn.close()
 
     if total_written == 0 and twse_market_closed:
         return None  # market_closed 訊號
@@ -395,6 +420,9 @@ def make_fetcher(
     db_path: str = "market_data.db",
     security_master_path: str | None = "StockID.csv",
     policy: HttpPolicy | None = None,
+    conn: sqlite3.Connection | None = None,
+    security_master: dict[str, Any] | None = None,
+    session: requests.Session | None = None,
 ) -> Callable[[str], bool | None]:
     """回傳一個 ``(date_str) -> bool | None`` 的可呼叫物件，供 `run_date_range_ingestion` 使用。
 
@@ -402,6 +430,9 @@ def make_fetcher(
         db_path: SQLite 資料庫路徑。
         security_master_path: StockID.csv 路徑。
         policy: HTTP 請求策略（``None`` 使用預設值）。
+        conn: 選用的 SQLite 連線。
+        security_master: 選用的有價證券主檔。
+        session: 選用的 requests.Session 實例。
 
     Returns:
         符合 orchestrator 介面的 fetcher callable：
@@ -415,15 +446,39 @@ def make_fetcher(
             retry_count=3,
             backoff_seconds=1.5,
             headers={"user-agent": _make_user_agent()},
-            ssl_verify=False,
+            ssl_verify=True,
         )
 
+    local_conn = conn
+    local_security_master = security_master
+    local_session = session
+    resources_initialized = False
+
     def _fetcher(date_str: str) -> bool | None:
+        nonlocal local_conn, local_security_master, local_session, resources_initialized
+        if not resources_initialized:
+            if local_conn is None:
+                local_conn = sqlite3.connect(db_path)
+                local_conn.row_factory = sqlite3.Row
+                SQLiteMarketRepository(local_conn).init_schema()
+            if local_security_master is None and security_master_path:
+                try:
+                    local_security_master = load_security_master(security_master_path)
+                except Exception as exc:  # noqa: BLE001
+                    warnings.warn(f"無法載入 {security_master_path}：{exc}", stacklevel=2)
+            if local_session is None:
+                import requests  # noqa: PLC0415
+                local_session = requests.Session()
+            resources_initialized = True
+
         return fetch_and_ingest_day(
             date_str,
             db_path=db_path,
             security_master_path=security_master_path,
             policy=policy,
+            conn=local_conn,
+            security_master=local_security_master,
+            session=local_session,
         )
 
     return _fetcher
@@ -592,7 +647,7 @@ def main(argv: list[str] | None = None) -> None:
         retry_count=args.retries,
         backoff_seconds=1.5,
         headers={"user-agent": _make_user_agent()},
-        ssl_verify=False,
+        ssl_verify=True,
     )
 
     # --- 假日集合 ---
@@ -617,13 +672,38 @@ def main(argv: list[str] | None = None) -> None:
                 )
 
     # --- 執行 ---
-    fetcher = make_fetcher(db_path=args.db, policy=policy)
-    outcomes, report = run_date_range_ingestion(
-        start_date=start_date,
-        end_date=end_date,
-        holidays=holidays,
-        fetcher=fetcher,
-    )
+    import requests  # noqa: PLC0415
+    session = requests.Session()
+    conn = sqlite3.connect(args.db)
+    conn.row_factory = sqlite3.Row
+    
+    # 預先初始化 Schema
+    SQLiteMarketRepository(conn).init_schema()
+
+    security_master = {}
+    security_master_path = "StockID.csv"
+    try:
+        security_master = load_security_master(security_master_path)
+    except Exception as exc:  # noqa: BLE001
+        warnings.warn(f"無法載入 {security_master_path}：{exc}", stacklevel=1)
+
+    try:
+        fetcher = make_fetcher(
+            db_path=args.db,
+            policy=policy,
+            conn=conn,
+            security_master=security_master,
+            session=session,
+        )
+        outcomes, report = run_date_range_ingestion(
+            start_date=start_date,
+            end_date=end_date,
+            holidays=holidays,
+            fetcher=fetcher,
+        )
+    finally:
+        conn.close()
+        session.close()
 
     # 摘要輸出
     for outcome in outcomes:
