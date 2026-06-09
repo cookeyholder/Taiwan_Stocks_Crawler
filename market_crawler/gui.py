@@ -375,11 +375,15 @@ class StockScreenerApp:
         self.t3_date_label.grid(row=0, column=2, sticky=tk.W, pady=5, padx=(15, 0))
         self.t3_date_entry = ttk.Entry(ctrl_frame, width=14)
         self.t3_date_entry.grid(row=0, column=3, sticky=tk.W, pady=5, padx=5)
+        self.t3_date_cal_btn = ttk.Button(ctrl_frame, text="📅", width=3, command=lambda: self._show_calendar(self.t3_date_entry))
+        self.t3_date_cal_btn.grid(row=0, column=4, sticky=tk.W, pady=5)
 
         self.t3_start_label = ttk.Label(ctrl_frame, text="起始日期:")
         self.t3_start_entry = ttk.Entry(ctrl_frame, width=14)
+        self.t3_start_cal_btn = ttk.Button(ctrl_frame, text="📅", width=3, command=lambda: self._show_calendar(self.t3_start_entry))
         self.t3_end_label = ttk.Label(ctrl_frame, text="結束日期:")
         self.t3_end_entry = ttk.Entry(ctrl_frame, width=14)
+        self.t3_end_cal_btn = ttk.Button(ctrl_frame, text="📅", width=3, command=lambda: self._show_calendar(self.t3_end_entry))
 
         self.t3_holiday_var = tk.BooleanVar(value=True)
         self.t3_holiday_cb = ttk.Checkbutton(ctrl_frame, text="自動跳過假日", variable=self.t3_holiday_var)
@@ -401,27 +405,131 @@ class StockScreenerApp:
         """根據選取的模式顯示/隱藏對應的日期輸入元件。"""
         mode = self.t3_mode_combo.get()
 
-        self.t3_date_label.grid_remove()
-        self.t3_date_entry.grid_remove()
-        self.t3_start_label.grid_remove()
-        self.t3_start_entry.grid_remove()
-        self.t3_end_label.grid_remove()
-        self.t3_end_entry.grid_remove()
-        self.t3_holiday_cb.grid_remove()
+        for w in (self.t3_date_label, self.t3_date_entry, self.t3_date_cal_btn,
+                  self.t3_start_label, self.t3_start_entry, self.t3_start_cal_btn,
+                  self.t3_end_label, self.t3_end_entry, self.t3_end_cal_btn,
+                  self.t3_holiday_cb):
+            w.grid_remove()
 
         if mode == "指定日期":
             self.t3_date_label.grid(row=0, column=2, sticky=tk.W, pady=5, padx=(15, 0))
             self.t3_date_entry.grid(row=0, column=3, sticky=tk.W, pady=5, padx=5)
+            self.t3_date_cal_btn.grid(row=0, column=4, sticky=tk.W, pady=5)
         elif mode == "日期區間":
             self.t3_start_label.grid(row=0, column=2, sticky=tk.W, pady=5, padx=(15, 0))
             self.t3_start_entry.grid(row=0, column=3, sticky=tk.W, pady=5, padx=5)
-            self.t3_end_label.grid(row=0, column=4, sticky=tk.W, pady=5, padx=(10, 0))
-            self.t3_end_entry.grid(row=0, column=5, sticky=tk.W, pady=5, padx=5)
-            self.t3_holiday_cb.grid(row=0, column=6, sticky=tk.W, pady=5, padx=(15, 0))
+            self.t3_start_cal_btn.grid(row=0, column=4, sticky=tk.W, pady=5)
+            self.t3_end_label.grid(row=0, column=5, sticky=tk.W, pady=5, padx=(10, 0))
+            self.t3_end_entry.grid(row=0, column=6, sticky=tk.W, pady=5, padx=5)
+            self.t3_end_cal_btn.grid(row=0, column=7, sticky=tk.W, pady=5)
+            self.t3_holiday_cb.grid(row=0, column=8, sticky=tk.W, pady=5, padx=(15, 0))
 
     def _t3_on_mode_change(self, event: Any = None) -> None:
         """模式切換時更新介面。"""
         self._t3_update_mode_visibility()
+
+    def _show_calendar(self, target_entry: ttk.Entry) -> None:
+        """彈出月曆視窗讓使用者選取日期，選取後填入 target_entry。"""
+        import calendar
+        from datetime import date
+
+        today = date.today()
+        cal_win = tk.Toplevel(self.root)
+        cal_win.title("選取日期")
+        cal_win.resizable(False, False)
+        cal_win.transient(self.root)
+        cal_win.grab_set()
+
+        cur_year = today.year
+        cur_month = today.month
+
+        header_frame = ttk.Frame(cal_win, padding=5)
+        header_frame.pack(fill=tk.X)
+
+        year_var = tk.IntVar(value=cur_year)
+        month_var = tk.IntVar(value=cur_month)
+
+        def _refresh():
+            for w in day_frame.winfo_children():
+                w.destroy()
+            cal = calendar.monthcalendar(year_var.get(), month_var.get())
+            month_name = f"{year_var.get()} 年 {month_var.get()} 月"
+            month_label.config(text=month_name)
+            for r, week in enumerate(cal):
+                for c, day in enumerate(week):
+                    if day == 0:
+                        continue
+                    btn = tk.Button(
+                        day_frame, text=str(day), width=3, padx=2, pady=1,
+                        command=lambda d=date(year_var.get(), month_var.get(), day): _pick(d),
+                    )
+                    btn.grid(row=r, column=c, padx=1, pady=1)
+
+        def _prev_month():
+            m = month_var.get()
+            y = year_var.get()
+            if m == 1:
+                month_var.set(12)
+                year_var.set(y - 1)
+            else:
+                month_var.set(m - 1)
+            _refresh()
+
+        def _next_month():
+            m = month_var.get()
+            y = year_var.get()
+            if m == 12:
+                month_var.set(1)
+                year_var.set(y + 1)
+            else:
+                month_var.set(m + 1)
+            _refresh()
+
+        def _prev_year():
+            year_var.set(year_var.get() - 1)
+            _refresh()
+
+        def _next_year():
+            year_var.set(year_var.get() + 1)
+            _refresh()
+
+        def _quick_today():
+            _pick(today)
+
+        def _pick(d: date) -> None:
+            target_entry.delete(0, tk.END)
+            target_entry.insert(0, d.isoformat())
+            cal_win.destroy()
+
+        ttk.Button(header_frame, text="◀◀", width=3, command=_prev_year).pack(side=tk.LEFT)
+        ttk.Button(header_frame, text="◀", width=3, command=_prev_month).pack(side=tk.LEFT, padx=2)
+        month_label = ttk.Label(header_frame, text="", width=18, anchor=tk.CENTER, font=("", 11, "bold"))
+        month_label.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        ttk.Button(header_frame, text="▶", width=3, command=_next_month).pack(side=tk.LEFT, padx=2)
+        ttk.Button(header_frame, text="▶▶", width=3, command=_next_year).pack(side=tk.LEFT)
+
+        # 星期標題
+        dow_frame = ttk.Frame(cal_win, padding=(5, 0, 5, 0))
+        dow_frame.pack(fill=tk.X)
+        weekdays = ["一", "二", "三", "四", "五", "六", "日"]
+        for i, d in enumerate(weekdays):
+            fg = "red" if i >= 5 else "black"
+            tk.Label(dow_frame, text=d, width=3, anchor=tk.CENTER, fg=fg).pack(side=tk.LEFT, padx=1)
+
+        day_frame = ttk.Frame(cal_win, padding=5)
+        day_frame.pack(fill=tk.BOTH)
+
+        # 底部按鈕
+        btn_frame = ttk.Frame(cal_win, padding=5)
+        btn_frame.pack(fill=tk.X)
+        ttk.Button(btn_frame, text="今天", command=_quick_today).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="取消", command=cal_win.destroy).pack(side=tk.RIGHT, padx=5)
+
+        _refresh()
+
+        x = target_entry.winfo_rootx()
+        y = target_entry.winfo_rooty() + target_entry.winfo_height()
+        cal_win.geometry(f"+{x}+{y}")
 
     def _write_log(self, message: str) -> None:
         """向日誌視窗寫入文字。"""
