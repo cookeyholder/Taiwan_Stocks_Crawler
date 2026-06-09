@@ -64,6 +64,9 @@ class StockScreenerApp:
         self.task_queue: queue.Queue[tuple[str, Any]] = queue.Queue()
         self.db_lock = threading.Lock()
 
+        # 標記程式是否正在關閉中，用於安全取消定時器防止 race condition
+        self.is_closing = False
+
         # 建立 UI 介面
         self._setup_styles()
         self._create_widgets()
@@ -378,13 +381,16 @@ class StockScreenerApp:
         except queue.Empty:
             pass
         finally:
-            try:
-                self.after_id = self.root.after(100, self._process_queue)
-            except Exception:
-                self.after_id = None
+            if not getattr(self, "is_closing", False):
+                try:
+                    self.after_id = self.root.after(100, self._process_queue)
+                except Exception:
+                    self.after_id = None
 
     def _on_closing(self) -> None:
         """在關閉視窗時，優雅釋放資料庫連線等資源並退出。"""
+        self.is_closing = True
+
         # 取消未執行的 after() 定時器，防止退出後出現 invalid command name 警告
         if hasattr(self, "after_id") and self.after_id:
             try:
@@ -397,7 +403,7 @@ class StockScreenerApp:
                 self.conn.close()
         except Exception:
             pass
-        self.root.destroy()
+        self.root.quit()
 
     def _disable_all_buttons(self) -> None:
         """執行耗時任務時禁用所有按鈕，防重複點擊。"""
@@ -811,6 +817,10 @@ def main() -> None:
     root = tk.Tk()
     _ = StockScreenerApp(root)
     root.mainloop()
+    try:
+        root.destroy()
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
