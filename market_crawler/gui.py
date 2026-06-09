@@ -72,6 +72,9 @@ class StockScreenerApp:
         self._t1_refresh_combo()
         self._t1_set_default_symbol("2330")
 
+        # 綁定視窗關閉事件以優雅釋放資源
+        self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
+
         # 啟動佇列輪詢監聽
         self.root.after(100, self._process_queue)
 
@@ -371,6 +374,15 @@ class StockScreenerApp:
             pass
         finally:
             self.root.after(100, self._process_queue)
+
+    def _on_closing(self) -> None:
+        """在關閉視窗時，優雅釋放資料庫連線等資源並退出。"""
+        try:
+            with self.db_lock:
+                self.conn.close()
+        except Exception:
+            pass
+        self.root.destroy()
 
     def _disable_all_buttons(self) -> None:
         """執行耗時任務時禁用所有按鈕，防重複點擊。"""
