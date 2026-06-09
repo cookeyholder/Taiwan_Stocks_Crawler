@@ -155,7 +155,7 @@ def test_guardrail_fetch_and_ingest_returns_none_for_market_closed(
     today = datetime.date(2026, 3, 21)
     monkeypatch.setattr("market_crawler.pipeline._get_today", lambda: today)
 
-    def mock_get(url: str, policy: Any) -> MagicMock:
+    def mock_get(url: str, policy: Any, **kwargs: Any) -> MagicMock:
         resp = MagicMock()
         # JSON API 回傳不同日期（前一交易日）
         resp.json.return_value = [{"Date": "1150318", "Code": "0050"}]

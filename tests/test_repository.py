@@ -149,12 +149,16 @@ def test_sqlite_batch_upsert(sqlite_repo: SQLiteMarketRepository) -> None:
         _quote(symbol="2330", close=950.0),
     ]
     normalized_quotes = [sqlite_repo._normalize_quote_payload(q) for q in quotes]
-    
+
     sqlite_repo.upsert_core_batch(normalized_quotes)
     sqlite_repo.upsert_extension_batch(normalized_quotes)
-    
-    count_core = sqlite_repo.connection.execute("SELECT COUNT(*) FROM market_quote_core").fetchone()[0]
-    count_ext = sqlite_repo.connection.execute("SELECT COUNT(*) FROM market_quote_extension").fetchone()[0]
-    
+
+    count_core = sqlite_repo.connection.execute(
+        "SELECT COUNT(*) FROM market_quote_core"
+    ).fetchone()[0]
+    count_ext = sqlite_repo.connection.execute(
+        "SELECT COUNT(*) FROM market_quote_extension"
+    ).fetchone()[0]
+
     assert count_core == 2
     assert count_ext == 2
