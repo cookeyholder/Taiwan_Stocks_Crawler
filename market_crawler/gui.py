@@ -233,19 +233,21 @@ class StockScreenerApp:
         table_frame = ttk.LabelFrame(left_frame, text=" 篩選符合條件股票清單 (點選可即時更新右側圖表) ", padding=5)
         table_frame.pack(fill=tk.BOTH, expand=True)
 
-        columns = ("symbol", "latest_close", "latest_volume", "max_bandwidth", "latest_bandwidth")
+        columns = ("symbol", "name", "latest_close", "latest_volume", "max_bandwidth", "latest_bandwidth")
         self.t2_tree = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="browse")
 
         self.t2_tree.heading("symbol", text="股票代號")
+        self.t2_tree.heading("name", text="股票名稱")
         self.t2_tree.heading("latest_close", text="最新收盤價")
         self.t2_tree.heading("latest_volume", text="最新成交量")
         self.t2_tree.heading("max_bandwidth", text="N日內最大頻寬")
         self.t2_tree.heading("latest_bandwidth", text="最新頻寬")
 
         # 設定欄位寬度與置中
-        self.t2_tree.column("symbol", width=80, anchor=tk.CENTER)
+        self.t2_tree.column("symbol", width=70, anchor=tk.CENTER)
+        self.t2_tree.column("name", width=90, anchor=tk.CENTER)
         self.t2_tree.column("latest_close", width=90, anchor=tk.E)
-        self.t2_tree.column("latest_volume", width=120, anchor=tk.E)
+        self.t2_tree.column("latest_volume", width=110, anchor=tk.E)
         self.t2_tree.column("max_bandwidth", width=110, anchor=tk.E)
         self.t2_tree.column("latest_bandwidth", width=90, anchor=tk.E)
 
@@ -387,7 +389,7 @@ class StockScreenerApp:
         with self.db_lock:
             df = pd.read_sql_query(
                 """
-                SELECT trade_date, close_price, volume_shares
+                SELECT trade_date, close_price, volume_shares, security_name
                 FROM market_quote_core
                 WHERE symbol_clean = ?
                 ORDER BY trade_date ASC
@@ -440,7 +442,12 @@ class StockScreenerApp:
         # 填充布林通道半透明區間
         self.t1_ax_price.fill_between(dates, df["bbl"], df["bbu"], facecolor="#ebf8ff", alpha=0.6, label="布林通道區間")
 
-        self.t1_ax_price.set_title(f"[{symbol}] 布林通道走勢圖 (20, 2)", fontsize=12, fontweight="bold", color="#1a365d")
+        # 取得最新且非空的股票名稱
+        names_non_null = df["security_name"].dropna()
+        name = names_non_null.iloc[-1] if not names_non_null.empty else None
+        title_name = f" {name}" if name else ""
+
+        self.t1_ax_price.set_title(f"[{symbol}]{title_name} 布林通道走勢圖 (20, 2)", fontsize=12, fontweight="bold", color="#1a365d")
         self.t1_ax_price.set_ylabel("股價")
         self.t1_ax_price.legend(loc="upper left", framealpha=0.9, facecolor="white", fontsize=8)
 
@@ -468,9 +475,15 @@ class StockScreenerApp:
         latest_idx = -1
         latest_row = df.iloc[latest_idx]
 
+        # 取得最新且非空的股票名稱
+        names_non_null = df["security_name"].dropna()
+        name = names_non_null.iloc[-1] if not names_non_null.empty else None
+
         info = []
         info.append("====== 基本資訊 ======")
         info.append(f"代號: {self.t1_symbol_entry.get().strip()}")
+        if name:
+            info.append(f"名稱: {name}")
         info.append(f"總資料天數: {len(df)} 天")
         info.append(f"最新交易日: {latest_row['trade_date']}")
         info.append(f"最新收盤價: {latest_row['close_price']:.2f}")
@@ -539,6 +552,7 @@ class StockScreenerApp:
                 tk.END,
                 values=(
                     row["symbol"],
+                    row["name"] or "無數據",
                     f"{row['latest_close']:.2f}",
                     f"{int(row['latest_volume']):,}",
                     f"{row['max_bandwidth'] * 100:.2f}%",
@@ -553,12 +567,14 @@ class StockScreenerApp:
             return
 
         item = selected_items[0]
-        symbol = self.t2_tree.item(item, "values")[0]
+        values = self.t2_tree.item(item, "values")
+        symbol = values[0]
+        name = values[1]
 
         with self.db_lock:
             df = pd.read_sql_query(
                 """
-                SELECT trade_date, close_price, volume_shares
+                SELECT trade_date, close_price, volume_shares, security_name
                 FROM market_quote_core
                 WHERE symbol_clean = ?
                 ORDER BY trade_date ASC
@@ -593,7 +609,8 @@ class StockScreenerApp:
         self.t2_ax_price.plot(dates, bbl, label="下軌", color="#319795", linewidth=1.0, alpha=0.8)
         self.t2_ax_price.fill_between(dates, bbl, bbu, facecolor="#ebf8ff", alpha=0.6, label="布林區間")
 
-        self.t2_ax_price.set_title(f"[{symbol}] 布林通道走勢圖 (與表格同步)", fontsize=11, fontweight="bold", color="#1a365d")
+        title_name = f" {name}" if name and name != "無數據" else ""
+        self.t2_ax_price.set_title(f"[{symbol}]{title_name} 布林通道走勢圖 (與表格同步)", fontsize=11, fontweight="bold", color="#1a365d")
         self.t2_ax_price.set_ylabel("股價")
         self.t2_ax_price.legend(loc="upper left", framealpha=0.9, facecolor="white", fontsize=8)
 

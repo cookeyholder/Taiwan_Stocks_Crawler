@@ -37,7 +37,7 @@ def screen_bollinger_squeeze(  # noqa: C901
     # 2. 載入資料
     df = pd.read_sql_query(
         """
-        SELECT symbol_clean, trade_date, close_price, volume_shares
+        SELECT symbol_clean, trade_date, close_price, volume_shares, security_name
         FROM market_quote_core
         WHERE trade_date >= ?
         ORDER BY symbol_clean, trade_date ASC
@@ -95,8 +95,14 @@ def screen_bollinger_squeeze(  # noqa: C901
         # 判斷是否符合帶寬限制
         if pd.notna(max_bw) and max_bw <= bandwidth_limit:
             latest = recent.iloc[-1]
+
+            # 取得最新且非空的股票名稱
+            names_non_null = group["security_name"].dropna()
+            security_name = names_non_null.iloc[-1] if not names_non_null.empty else None
+
             results.append({
                 "symbol": symbol,
+                "name": security_name,
                 "latest_close": latest["close_price"],
                 "latest_volume": latest["volume_shares"],
                 "max_bandwidth": float(max_bw),

@@ -18,6 +18,7 @@ def mock_db() -> sqlite3.Connection:
             market_code TEXT,
             symbol_raw TEXT,
             symbol_clean TEXT,
+            security_name TEXT,
             close_price REAL,
             volume_shares INTEGER,
             PRIMARY KEY (trade_date, market_code, symbol_clean)
@@ -38,7 +39,7 @@ def test_screen_bollinger_squeeze(mock_db: sqlite3.Connection) -> None:
 
     # 股票 A 價格都在 100 左右，bandwidth 應該極小
     records_a = [
-        ("2026-06-01" if i == 0 else dates[i], "TWSE", "A", "A", 100.0, 1000)
+        ("2026-06-01" if i == 0 else dates[i], "TWSE", "A", "A", "A公司", 100.0, 1000)
         for i in range(len(dates))
     ]
 
@@ -46,11 +47,11 @@ def test_screen_bollinger_squeeze(mock_db: sqlite3.Connection) -> None:
     records_b = []
     for i, dt in enumerate(dates):
         price = 100.0 if i % 2 == 0 else 120.0  # 波動劇烈
-        records_b.append((dt, "TWSE", "B", "B", price, 2000))
+        records_b.append((dt, "TWSE", "B", "B", "B公司", price, 2000))
 
     # 股票 C 只有 5 天資料，不足 20 日布林通道計算需求，不應被篩選
     records_c = [
-        (dates[i], "TWSE", "C", "C", 100.0, 500)
+        (dates[i], "TWSE", "C", "C", "C公司", 100.0, 500)
         for i in range(5)
     ]
 
@@ -58,8 +59,8 @@ def test_screen_bollinger_squeeze(mock_db: sqlite3.Connection) -> None:
     cur = mock_db.cursor()
     cur.executemany(
         """
-        INSERT INTO market_quote_core (trade_date, market_code, symbol_raw, symbol_clean, close_price, volume_shares)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO market_quote_core (trade_date, market_code, symbol_raw, symbol_clean, security_name, close_price, volume_shares)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         records_a + records_b + records_c
     )
@@ -78,6 +79,7 @@ def test_screen_bollinger_squeeze(mock_db: sqlite3.Connection) -> None:
 
     # 驗證結果屬性
     row_a = df_res[df_res["symbol"] == "A"].iloc[0]
+    assert row_a["name"] == "A公司"
     assert row_a["latest_close"] == 100.0
     assert row_a["latest_volume"] == 1000
     assert row_a["latest_bandwidth"] < 0.05
