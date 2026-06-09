@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 from dataclasses import dataclass
 
 
@@ -59,23 +60,24 @@ def _from_cfi(cfi_code: str | None) -> str | None:
 
 
 _RE_STOCK = re.compile(r"\d{4}")
-_RE_ETF = re.compile(r"\d{4,5}B")
+_RE_ETF_BOND = re.compile(r"\d{4,5}B")
+_RE_ETF_6DIGIT = re.compile(r"\d{6}")
 _RE_PREFERRED = re.compile(r"\d{4}[A-Y]")
 _RE_EXCHANGEABLE = re.compile(r"\d{4}Z[1-9]")
 _RE_WARRANT_CERT = re.compile(r"\d{4}G[1-9]")
 _RE_WARRANT = re.compile(r"\d{2}\d{3}[PUTFQCBXY]")
+_RE_ETF_LETTER = re.compile(r"\d{5}[KLMRSAD]")
+_RE_CONVERTIBLE_BOND = re.compile(r"\d{5}")
 _RE_BOND = re.compile(r"[BGFAHPI]\w{5}")
 _RE_FUND = re.compile(r"T\w{5}")
 
 
 def _from_ticker_pattern(symbol: str) -> str:
-    # Based on Taiwan ticker coding principles fallback rules.
     if _RE_STOCK.fullmatch(symbol):
         return "stock"
-    # Bond ETF: 4- or 5-digit code ending in B (e.g. 0050B, 00679B).
-    # Must be checked before preferred_stock (\d{4}[A-Y]) and warrant (\d{5}[...B...])
-    # rules that would otherwise capture these symbols first.
-    if _RE_ETF.fullmatch(symbol):
+    if _RE_ETF_BOND.fullmatch(symbol):
+        return "etf"
+    if _RE_ETF_6DIGIT.fullmatch(symbol):
         return "etf"
     if _RE_PREFERRED.fullmatch(symbol):
         return "preferred_stock"
@@ -85,6 +87,10 @@ def _from_ticker_pattern(symbol: str) -> str:
         return "warrant_certificate"
     if _RE_WARRANT.fullmatch(symbol):
         return "warrant"
+    if _RE_ETF_LETTER.fullmatch(symbol):
+        return "etf"
+    if _RE_CONVERTIBLE_BOND.fullmatch(symbol):
+        return "convertible_bond"
     if _RE_BOND.fullmatch(symbol):
         return "bond"
     if _RE_FUND.fullmatch(symbol):
@@ -112,3 +118,26 @@ def classify_instrument(
             return from_cfi, None, entry.section_label, entry.cfi_code
 
     return _from_ticker_pattern(symbol_clean), None, None, None
+
+
+def reclassify_database(conn: sqlite3.Connection, stock_master_path: str | None = None) -> int:
+    """對 market_quote_core 全部記錄重新分類，回傳更新的筆數。"""
+    master: dict[str, SecurityMasterEntry] = {}
+    if stock_master_path:
+        try:
+            master = load_security_master(stock_master_path)
+        except Exception:
+            pass
+    cur = conn.execute("SELECT DISTINCT symbol_clean FROM market_quote_core")
+    updates = 0
+    for (symbol,) in cur.fetchall():
+        instrument, _, _, _ = classify_instrument(
+            symbol_clean=symbol, security_master=master
+        )
+        conn.execute(
+            "UPDATE market_quote_core SET instrument_type = ? WHERE symbol_clean = ?",
+            (instrument, symbol),
+        )
+        updates += 1
+    conn.commit()
+    return updates

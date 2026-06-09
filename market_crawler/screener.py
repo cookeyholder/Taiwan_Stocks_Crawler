@@ -10,6 +10,8 @@ def screen_bollinger_squeeze(  # noqa: C901
     conn: sqlite3.Connection,
     bandwidth_limit: float = 0.08,
     consecutive_days: int = 5,
+    instrument_types: list[str] | None = None,
+    min_volume: int = 0,
 ) -> pd.DataFrame:
     """從本地 SQLite 載入歷史股價，並篩選出布林通道帶寬小於門檻值且持續 N 天的股票。
 
@@ -17,9 +19,10 @@ def screen_bollinger_squeeze(  # noqa: C901
         Bandwidth = (UpperBand - LowerBand) / MiddleBand
     門檻條件：
         最近 N 天內，最大帶寬 <= bandwidth_limit
+    篩選條件：
+        instrument_types: 只計算指定類型（None=全部）
+        min_volume: 最新交易日成交量須 >= 此值（0=不限制）
     """
-    # 為了計算 20 日布林通道，我們需要至少 (consecutive_days + 30) 個交易日。
-    # 我們多抓一些天數以確保能完整計算滾動窗口。
     required_days = consecutive_days + 40
 
     # 1. 取得資料庫中最新的交易日列表
@@ -31,19 +34,25 @@ def screen_bollinger_squeeze(  # noqa: C901
     if not dates:
         return pd.DataFrame()
 
-    # 最早的交易日
     start_date = dates[-1]
 
-    # 2. 載入資料
+    # 2. 載入資料（可選依證券類型過濾）
+    sql_params: list = [start_date]
+    type_filter_sql = ""
+    if instrument_types:
+        placeholders = ",".join("?" * len(instrument_types))
+        type_filter_sql = f" AND instrument_type IN ({placeholders})"
+        sql_params.extend(instrument_types)
+
     df = pd.read_sql_query(
-        """
+        f"""
         SELECT symbol_clean, trade_date, close_price, volume_shares, security_name
         FROM market_quote_core
-        WHERE trade_date >= ?
+        WHERE trade_date >= ?{type_filter_sql}
         ORDER BY symbol_clean, trade_date ASC
         """,
         conn,
-        params=(start_date,)
+        params=tuple(sql_params),
     )
 
     if df.empty:
@@ -95,6 +104,10 @@ def screen_bollinger_squeeze(  # noqa: C901
         # 判斷是否符合帶寬限制
         if pd.notna(max_bw) and max_bw <= bandwidth_limit:
             latest = recent.iloc[-1]
+
+            # 成交量門檻（以最新交易日為準）
+            if min_volume > 0 and (latest["volume_shares"] is None or latest["volume_shares"] < min_volume):
+                continue
 
             # 取得最新且非空的股票名稱
             names_non_null = group["security_name"].dropna()
