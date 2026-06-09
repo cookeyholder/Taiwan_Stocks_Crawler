@@ -226,6 +226,16 @@ def test_to_float_non_numeric_returns_none() -> None:
     assert to_float("abc") is None
 
 
+def test_to_int_non_numeric_returns_none() -> None:
+    """to_int 遇到非數字文字時應傳回 None，不應拋出 ValueError。"""
+    from market_crawler.normalize import to_int
+
+    assert to_int("除息") is None
+    assert to_int("除權") is None
+    assert to_int("N/A") is None
+    assert to_int("abc") is None
+
+
 def test_normalize_tpex_record_with_ex_dividend_change() -> None:
     """TPEX 除息當日的完整 normalize 流程不應拋出例外，change_sign 與 change 應為 None。"""
     record = {
