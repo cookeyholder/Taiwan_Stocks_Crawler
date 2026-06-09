@@ -67,3 +67,6 @@ uv.lock
 
 # Local SQLite3 executables
 sqlite3/
+
+
+.antigravitycli

@@ -11,14 +11,14 @@
 
 ## 3. 布林通道選股引擎 (Bollinger Screener Core)
 
-- [ ] 3.1 於 `market_crawler/` 新增 `screener.py`，實作單一 SQL 查詢撈取所有股票近 $M+30$ 天歷史股價。
-- [ ] 3.2 實作多股分組 (groupby) 運算，利用 `pandas-ta` 計算布林頻寬（Bandwidth）。
-- [ ] 3.3 實作過濾演算法，篩選出最近連續 $N$ 日之頻寬最大值低於指定門檻值的股票。
-- [ ] 3.4 新增 `tests/test_screener.py` 驗證選股核心演算法與極端值處理。
+- [x] 3.1 於 `market_crawler/` 新增 `screener.py`，實作單一 SQL 查詢撈取所有股票近 $M+30$ 天歷史股價。
+- [x] 3.2 實作多股分組 (groupby) 運算，利用 `pandas-ta` 計算布林頻寬（Bandwidth）。
+- [x] 3.3 實作過濾演算法，篩選出最近連續 $N$ 日之頻寬最大值低於指定門檻值的股票。
+- [x] 3.4 新增 `tests/test_screener.py` 驗證選股核心演算法與極端值處理。
 
 ## 4. GUI 介面與圖表視覺化 (GUI & Matplotlib Visualization)
 
-- [ ] 4.1 建立 `market_crawler/gui.py` 主程式，使用 Tkinter 實作雙分頁主視窗。
-- [ ] 4.2 實作後台背景執行緒 Worker (利用 `threading.Thread` 與 `queue.Queue`），在下載歷史資料與選股時避免介面卡死。
-- [ ] 4.3 於「單股分析」分頁，使用 `FigureCanvasTkAgg` 繪製主圖（股價、20 MA 與布林通道半透明陰影填滿區間）以及副圖（成交量）。
-- [ ] 4.4 於「布林擠壓篩選器」分頁，實作 Treeview 表格展示選股結果，並串接 Click 事件，實現點選表格即時更新右側圖表功能。
+- [x] 4.1 建立 `market_crawler/gui.py` 主程式，使用 Tkinter 實作雙分頁主視窗。
+- [x] 4.2 實作後台背景執行緒 Worker (利用 `threading.Thread` 與 `queue.Queue`），在下載歷史資料與選股時避免介面卡死。
+- [x] 4.3 於「單股分析」分頁，使用 `FigureCanvasTkAgg` 繪製主圖（股價、20 MA 與布林通道半透明陰影填滿區間）以及副圖（成交量）。
+- [x] 4.4 於「布林擠壓篩選器」分頁，實作 Treeview 表格展示選股結果，並串接 Click 事件，實現點選表格即時更新右側圖表功能。

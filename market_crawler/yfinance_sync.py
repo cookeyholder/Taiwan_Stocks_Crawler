@@ -21,14 +21,14 @@ def fetch_yfinance_history(
     """
     suffix = ".TW" if market_code.upper() == "TWSE" else ".TWO"
     ticker_symbol = f"{symbol}{suffix}"
-    
+
     # 進行歷史下載
     df = yf.download(ticker_symbol, period=period, progress=False)
-    
+
     # 處理多層 Columns 指標（有些版本的 yfinance 會回傳 MultiIndex）
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
-        
+
     return df
 
 
@@ -110,15 +110,15 @@ def sync_yfinance_to_db(
 
     if ingest_run_id is None:
         ingest_run_id = str(uuid.uuid4())
-    
+
     ingested_at = _dt.datetime.now(_dt.timezone.utc).isoformat()
-    
+
     quotes: list[dict[str, Any]] = []
-    
+
     for date_idx, row in df.iterrows():
         # yfinance index 為 DatetimeIndex，需轉為 YYYY-MM-DD
         date_str = date_idx.strftime("%Y-%m-%d")
-        
+
         quote = map_yfinance_to_canonical(
             symbol=symbol,
             market_code=market_code,
@@ -129,9 +129,9 @@ def sync_yfinance_to_db(
         )
         normalized_quote = repo._normalize_quote_payload(quote)
         quotes.append(normalized_quote)
-        
+
     if quotes:
         repo.upsert_core_batch(quotes)
         repo.upsert_extension_batch(quotes)
-        
+
     return len(quotes)
