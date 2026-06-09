@@ -179,5 +179,9 @@ def sync_yfinance_to_db(
     if quotes:
         repo.upsert_core_batch(quotes)
         repo.upsert_extension_batch(quotes)
+        try:
+            repo.connection.commit()
+        except Exception:
+            pass
 
     return len(quotes)

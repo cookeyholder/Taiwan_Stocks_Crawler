@@ -59,11 +59,13 @@ class StockScreenerApp:
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.repo = SQLiteMarketRepository(self.conn)
         self.repo.init_schema()
-        self._patch_missing_security_names()
 
         # 線程安全佇列與鎖
         self.task_queue: queue.Queue[tuple[str, Any]] = queue.Queue()
         self.db_lock = threading.Lock()
+
+        # 補齊歷史股票名稱，需在 db_lock 初始化後執行
+        self._patch_missing_security_names()
 
         # 標記程式是否正在關閉中，用於安全取消定時器防止 race condition
         self.is_closing = False
