@@ -1151,19 +1151,23 @@ class StockScreenerApp:
         try:
             if mode == "下載今日":
                 today = _dt.date.today().isoformat()
-                self.task_queue.put(("BULK_PROGRESS", today, 1, 1))
+                self.task_queue.put(("BULK_PROGRESS", today, (1, 1)))
+                self.task_queue.put(("BULK_LOG", f"  正在下載 {today}（TWSE + TPEX）..."))
 
                 result = fetch_and_ingest_day(today, db_path=self.db_path, policy=policy)
                 if result is True:
+                    self.task_queue.put(("BULK_LOG", "  ✓ 下載成功"))
                     self.task_queue.put(("BULK_DONE", "success", {"success": 1, "market_closed": 0, "failed": 0}))
                 elif result is None:
+                    self.task_queue.put(("BULK_LOG", "  - 當日休市"))
                     self.task_queue.put(("BULK_DONE", "warning", {"success": 0, "market_closed": 1, "failed": 0}))
                 else:
+                    self.task_queue.put(("BULK_LOG", "  ✗ 下載失敗"))
                     self.task_queue.put(("BULK_DONE", "failed", {"success": 0, "market_closed": 0, "failed": 1}))
 
             elif mode == "指定日期":
                 date_str = self.t3_date_entry.get().strip()
-                self.task_queue.put(("BULK_PROGRESS", date_str, 1, 1))
+                self.task_queue.put(("BULK_PROGRESS", date_str, (1, 1)))
                 self.task_queue.put(("BULK_LOG", f"  正在下載 {date_str}（TWSE + TPEX）..."))
 
                 result = fetch_and_ingest_day(date_str, db_path=self.db_path, policy=policy)
@@ -1203,7 +1207,7 @@ class StockScreenerApp:
                         skipped += 1
                         continue
 
-                    self.task_queue.put(("BULK_PROGRESS", day, i + 1, total))
+                    self.task_queue.put(("BULK_PROGRESS", day, (i + 1, total)))
                     self.task_queue.put(("BULK_LOG", f"  [{i + 1 - skipped}/{total}] 處理 {day}..."))
 
                     try:
