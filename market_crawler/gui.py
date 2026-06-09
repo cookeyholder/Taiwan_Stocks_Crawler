@@ -124,10 +124,6 @@ class StockScreenerApp:
                             "UPDATE market_quote_core SET security_name = ? WHERE symbol_clean = ? AND (security_name IS NULL OR security_name = '')",
                             (name, sym)
                         )
-                        cur.execute(
-                            "UPDATE market_quote_extension SET security_name = ? WHERE symbol_clean = ? AND (security_name IS NULL OR security_name = '')",
-                            (name, sym)
-                        )
                 self.conn.commit()
         except Exception as e:
             # 僅靜默處理，不影響主程式啟動
