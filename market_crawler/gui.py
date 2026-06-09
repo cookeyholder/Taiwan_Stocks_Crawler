@@ -122,6 +122,11 @@ class StockScreenerApp:
 
         # 狀態與進度條區
         self.status_var = tk.StringVar(value="系統就緒")
+
+        # 結束程式按鈕（擺在最右側）
+        self.exit_btn = ttk.Button(title_frame, text="🚪 結束程式", style="Action.TButton", command=self._on_closing)
+        self.exit_btn.pack(side=tk.RIGHT, padx=(10, 0))
+
         self.status_label = ttk.Label(title_frame, textvariable=self.status_var, font=("Microsoft JhengHei", 10, "italic"), foreground="#4a5568")
         self.status_label.pack(side=tk.RIGHT, padx=10)
 
@@ -390,6 +395,7 @@ class StockScreenerApp:
         self.t1_plot_btn.config(state=tk.DISABLED)
         self.t2_screen_btn.config(state=tk.DISABLED)
         self.t2_batch_btn.config(state=tk.DISABLED)
+        self.exit_btn.config(state=tk.DISABLED)
 
     def _enable_all_buttons(self) -> None:
         """任務結束後啟用所有按鈕。"""
@@ -397,6 +403,7 @@ class StockScreenerApp:
         self.t1_plot_btn.config(state=tk.NORMAL)
         self.t2_screen_btn.config(state=tk.NORMAL)
         self.t2_batch_btn.config(state=tk.NORMAL)
+        self.exit_btn.config(state=tk.NORMAL)
 
     # ==================== 單股分析事件 ====================
     def _t1_sync_data(self) -> None:
