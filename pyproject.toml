@@ -3,13 +3,13 @@ name = "stock-trading"
 version = "0.1.0"
 description = "台灣股票交易程式化系統"
 authors = [
-    { name = "cookeyholder", email = "cookeyholder@gmail.com" }
+    { name = "cookeyholder" }
 ]
 requires-python = ">=3.13"
 dependencies = [
     "pandas>=1.5.0",
     "numpy>=1.23.0",
-    "requests>=2.28.0",
+    "requests>=2.31.0",
     "fake-useragent>=2.2.0",
 ]
 
@@ -17,6 +17,11 @@ dependencies = [
 twse-crawler = "market_crawler.pipeline:main"
 
 [project.optional-dependencies]
+viz = [
+    "matplotlib>=3.5.0",
+    "pandas-ta>=0.3.0b",
+    "yfinance>=0.2.0",
+]
 dev = [
     "ruff>=0.1.0",
     "pytest>=7.4.0",

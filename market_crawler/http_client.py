@@ -19,18 +19,22 @@ class HttpPolicy:
     ssl_verify: bool = True
 
 
-def get_with_retry(url: str, policy: HttpPolicy) -> requests.Response:
+def get_with_retry(
+    url: str,
+    policy: HttpPolicy,
+    session: requests.Session | None = None,
+) -> requests.Response:
     last_exception: Exception | None = None
     for attempt in range(policy.retry_count + 1):
         try:
-            response = requests.get(
+            getter = session.get if session is not None else requests.get
+            response = getter(
                 url,
                 timeout=policy.timeout_seconds,
                 headers=policy.headers,
                 verify=policy.ssl_verify,
             )
-            if response.status_code >= 500:
-                raise requests.HTTPError(f"server error {response.status_code}")
+            response.raise_for_status()
             return response
         except Exception as exc:  # noqa: BLE001
             last_exception = exc

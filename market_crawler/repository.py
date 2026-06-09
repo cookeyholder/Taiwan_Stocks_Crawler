@@ -17,7 +17,15 @@ class MarketRepository(ABC):
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
+    def upsert_core_batch(self, quotes: list[dict[str, Any]]) -> None:
+        raise NotImplementedError  # pragma: no cover
+
+    @abstractmethod
     def upsert_extension(self, quote: dict[str, Any]) -> None:
+        raise NotImplementedError  # pragma: no cover
+
+    @abstractmethod
+    def upsert_extension_batch(self, quotes: list[dict[str, Any]]) -> None:
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
@@ -161,8 +169,65 @@ class SQLiteMarketRepository(MarketRepository):
             normalized_quote,
         )
 
+    def upsert_core_batch(self, quotes: list[dict[str, Any]]) -> None:
+        normalized_quotes = [self._normalize_quote_payload(q) for q in quotes]
+        self.connection.executemany(
+            """
+            INSERT INTO market_quote_core (
+                trade_date, market_code, symbol_raw, symbol_clean, security_name,
+                instrument_type, instrument_subtype, isin_code, cfi_code, section_label,
+                open_price, high_price, low_price, close_price, volume_shares,
+                turnover_value, trade_count, change_sign, change_value, last_bid_price,
+                last_bid_qty_raw, last_ask_price, last_ask_qty_raw, pe_ratio,
+                issued_shares, next_limit_up, next_limit_down, source_file,
+                source_encoding, source_line_no, ingest_run_id, ingested_at
+            ) VALUES (
+                :trade_date, :market_code, :symbol_raw, :symbol_clean, :security_name,
+                :instrument_type, :instrument_subtype, :isin_code, :cfi_code, :section_label,
+                :open_price, :high_price, :low_price, :close_price, :volume_shares,
+                :turnover_value, :trade_count, :change_sign, :change_value, :last_bid_price,
+                :last_bid_qty_raw, :last_ask_price, :last_ask_qty_raw, :pe_ratio,
+                :issued_shares, :next_limit_up, :next_limit_down, :source_file,
+                :source_encoding, :source_line_no, :ingest_run_id, :ingested_at
+            )
+            ON CONFLICT(trade_date, market_code, symbol_clean) DO UPDATE SET
+                symbol_raw=excluded.symbol_raw,
+                security_name=excluded.security_name,
+                instrument_type=excluded.instrument_type,
+                instrument_subtype=excluded.instrument_subtype,
+                isin_code=excluded.isin_code,
+                cfi_code=excluded.cfi_code,
+                section_label=excluded.section_label,
+                open_price=excluded.open_price,
+                high_price=excluded.high_price,
+                low_price=excluded.low_price,
+                close_price=excluded.close_price,
+                volume_shares=excluded.volume_shares,
+                turnover_value=excluded.turnover_value,
+                trade_count=excluded.trade_count,
+                change_sign=excluded.change_sign,
+                change_value=excluded.change_value,
+                last_bid_price=excluded.last_bid_price,
+                last_bid_qty_raw=excluded.last_bid_qty_raw,
+                last_ask_price=excluded.last_ask_price,
+                last_ask_qty_raw=excluded.last_ask_qty_raw,
+                pe_ratio=excluded.pe_ratio,
+                issued_shares=excluded.issued_shares,
+                next_limit_up=excluded.next_limit_up,
+                next_limit_down=excluded.next_limit_down,
+                source_file=excluded.source_file,
+                source_encoding=excluded.source_encoding,
+                source_line_no=excluded.source_line_no,
+                ingest_run_id=excluded.ingest_run_id,
+                ingested_at=excluded.ingested_at
+            """,
+            normalized_quotes,
+        )
+
     def upsert_extension(self, quote: dict[str, Any]) -> None:
-        normalized_quote = self._normalize_quote_payload(quote)
+        raw_payload = quote.get("raw_payload")
+        if raw_payload is not None:
+            raw_payload = self._normalize_value(raw_payload)
         self.connection.execute(
             """
             INSERT INTO market_quote_extension (
@@ -175,12 +240,41 @@ class SQLiteMarketRepository(MarketRepository):
                 raw_payload=excluded.raw_payload
             """,
             {
-                "trade_date": normalized_quote["trade_date"],
-                "market_code": normalized_quote["market_code"],
-                "symbol_clean": normalized_quote["symbol_clean"],
-                "raw_change": normalized_quote.get("raw_change"),
-                "raw_payload": json.dumps(normalized_quote.get("raw_payload"), ensure_ascii=False),
+                "trade_date": quote["trade_date"],
+                "market_code": quote["market_code"],
+                "symbol_clean": quote["symbol_clean"],
+                "raw_change": quote.get("raw_change"),
+                "raw_payload": json.dumps(raw_payload, ensure_ascii=False),
             },
+        )
+
+    def upsert_extension_batch(self, quotes: list[dict[str, Any]]) -> None:
+        batch_data = []
+        for q in quotes:
+            raw_payload = q.get("raw_payload")
+            if raw_payload is not None:
+                raw_payload = self._normalize_value(raw_payload)
+            batch_data.append(
+                {
+                    "trade_date": q["trade_date"],
+                    "market_code": q["market_code"],
+                    "symbol_clean": q["symbol_clean"],
+                    "raw_change": q.get("raw_change"),
+                    "raw_payload": json.dumps(raw_payload, ensure_ascii=False),
+                }
+            )
+        self.connection.executemany(
+            """
+            INSERT INTO market_quote_extension (
+                trade_date, market_code, symbol_clean, raw_change, raw_payload
+            ) VALUES (
+                :trade_date, :market_code, :symbol_clean, :raw_change, :raw_payload
+            )
+            ON CONFLICT(trade_date, market_code, symbol_clean) DO UPDATE SET
+                raw_change=excluded.raw_change,
+                raw_payload=excluded.raw_payload
+            """,
+            batch_data,
         )
 
     def fetch_by_trade_date(self, trade_date: str) -> list[dict[str, Any]]:

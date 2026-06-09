@@ -10,6 +10,7 @@
 - **自動假日抓取**：每次執行自動從 TWSE `holidaySchedule` API 取得當年假日清單
 - **冪等寫入**：重複匯入同一日期不會產生重複資料（SQLite `UPSERT`）
 - **編碼容錯**：cp950 → big5hkscs → utf-8-sig → utf-8 依序嘗試解碼
+- **高效能與安全性**：預設啟用安全 SSL/TLS 連線憑證驗證；多日批次補檔時自動複用資料庫連線與 HTTP Session 連線池，採用 `executemany` 批次寫入並在記憶體中快取有價證券主檔與日期解析，大幅減少 I/O 與連線延遲
 - **品質報告**：每批次執行後輸出 `BatchQualityReport`（trading／source_error／market_closed 計數），holiday／weekend 會保留在 outcomes 明細
 
 ## 快速開始

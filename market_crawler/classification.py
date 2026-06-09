@@ -58,26 +58,36 @@ def _from_cfi(cfi_code: str | None) -> str | None:
     return None
 
 
+_RE_STOCK = re.compile(r"\d{4}")
+_RE_ETF = re.compile(r"\d{4,5}B")
+_RE_PREFERRED = re.compile(r"\d{4}[A-Y]")
+_RE_EXCHANGEABLE = re.compile(r"\d{4}Z[1-9]")
+_RE_WARRANT_CERT = re.compile(r"\d{4}G[1-9]")
+_RE_WARRANT = re.compile(r"\d{2}\d{3}[PUTFQCBXY]")
+_RE_BOND = re.compile(r"[BGFAHPI]\w{5}")
+_RE_FUND = re.compile(r"T\w{5}")
+
+
 def _from_ticker_pattern(symbol: str) -> str:
     # Based on Taiwan ticker coding principles fallback rules.
-    if re.fullmatch(r"\d{4}", symbol):
+    if _RE_STOCK.fullmatch(symbol):
         return "stock"
     # Bond ETF: 4- or 5-digit code ending in B (e.g. 0050B, 00679B).
     # Must be checked before preferred_stock (\d{4}[A-Y]) and warrant (\d{5}[...B...])
     # rules that would otherwise capture these symbols first.
-    if re.fullmatch(r"\d{4,5}B", symbol):
+    if _RE_ETF.fullmatch(symbol):
         return "etf"
-    if re.fullmatch(r"\d{4}[A-Y]", symbol):
+    if _RE_PREFERRED.fullmatch(symbol):
         return "preferred_stock"
-    if re.fullmatch(r"\d{4}Z[1-9]", symbol):
+    if _RE_EXCHANGEABLE.fullmatch(symbol):
         return "exchangeable_preferred_stock"
-    if re.fullmatch(r"\d{4}G[1-9]", symbol):
+    if _RE_WARRANT_CERT.fullmatch(symbol):
         return "warrant_certificate"
-    if re.fullmatch(r"\d{2}\d{3}[PUTFQCBXY]", symbol):
+    if _RE_WARRANT.fullmatch(symbol):
         return "warrant"
-    if re.fullmatch(r"[BGFAHPI]\w{5}", symbol):
+    if _RE_BOND.fullmatch(symbol):
         return "bond"
-    if re.fullmatch(r"T\w{5}", symbol):
+    if _RE_FUND.fullmatch(symbol):
         return "fund"
     return "other"
 

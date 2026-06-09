@@ -57,7 +57,7 @@ class TestTwseDateRouting:
 
         captured: list[str] = []
 
-        def mock_get(url: str, policy: Any) -> MagicMock:
+        def mock_get(url: str, policy: Any, **kwargs: Any) -> MagicMock:
             captured.append(url)
             if "STOCK_DAY_ALL" in url:
                 return _mock_response(json_data=[])
@@ -72,9 +72,9 @@ class TestTwseDateRouting:
         _pipeline.fetch_and_ingest_day("2026-03-21", db_path=":memory:", security_master_path=None)
 
         assert any("STOCK_DAY_ALL" in url for url in captured), f"JSON API not called: {captured}"
-        assert not any(
-            "MI_INDEX" in url for url in captured
-        ), "CSV API should NOT be called for today"
+        assert not any("MI_INDEX" in url for url in captured), (
+            "CSV API should NOT be called for today"
+        )
 
     def test_historical_route_calls_csv_api(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """date < today → 呼叫 TWSE CSV API（MI_INDEX），不呼叫 JSON API"""
@@ -83,7 +83,7 @@ class TestTwseDateRouting:
 
         captured: list[str] = []
 
-        def mock_get(url: str, policy: Any) -> MagicMock:
+        def mock_get(url: str, policy: Any, **kwargs: Any) -> MagicMock:
             captured.append(url)
             return _mock_response(content=b"")
 
@@ -96,9 +96,9 @@ class TestTwseDateRouting:
         _pipeline.fetch_and_ingest_day("2026-03-18", db_path=":memory:", security_master_path=None)
 
         assert any("MI_INDEX" in url for url in captured), f"CSV API not called: {captured}"
-        assert not any(
-            "STOCK_DAY_ALL" in url for url in captured
-        ), "JSON API should NOT be called for historical"
+        assert not any("STOCK_DAY_ALL" in url for url in captured), (
+            "JSON API should NOT be called for historical"
+        )
 
     def test_csv_api_url_has_yyyymmdd_format(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """CSV API URL 中的日期參數為 YYYYMMDD（無連字號）"""
@@ -107,7 +107,7 @@ class TestTwseDateRouting:
 
         captured: list[str] = []
 
-        def mock_get(url: str, policy: Any) -> MagicMock:
+        def mock_get(url: str, policy: Any, **kwargs: Any) -> MagicMock:
             captured.append(url)
             return _mock_response(content=b"")
 
@@ -131,7 +131,7 @@ class TestTwseDateRouting:
 
         captured: list[str] = []
 
-        def mock_get(url: str, policy: Any) -> MagicMock:
+        def mock_get(url: str, policy: Any, **kwargs: Any) -> MagicMock:
             captured.append(url)
             return _mock_response(content=b"", json_data={})
 
@@ -158,7 +158,7 @@ class TestTwseDateRouting:
             lambda: datetime.date(2026, 3, 21),
         )
 
-        def mock_get(url: str, policy: Any) -> MagicMock:
+        def mock_get(url: str, policy: Any, **kwargs: Any) -> MagicMock:
             if "STOCK_DAY_ALL" in url:
                 return _mock_response(json_data=[{"Date": "bad-format"}])
             raise ConnectionError("TPEX unavailable")
