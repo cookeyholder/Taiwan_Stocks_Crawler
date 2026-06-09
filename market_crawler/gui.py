@@ -1105,6 +1105,11 @@ class StockScreenerApp:
         """按下「開始下載」按鈕，啟動背景執行緒下載所有上市/上櫃股票。"""
         mode = self.t3_mode_combo.get()
 
+        date_str: str | None = None
+        start: str | None = None
+        end: str | None = None
+        use_holidays = self.t3_holiday_var.get()
+
         if mode == "指定日期":
             date_str = self.t3_date_entry.get().strip()
             if not date_str:
@@ -1128,7 +1133,11 @@ class StockScreenerApp:
         self._t3_write_log(f"▶ 模式：{mode}")
         self._t3_write_log(f"  資料庫：{self.db_path}\n")
 
-        threading.Thread(target=self._t3_download_worker, args=(mode,), daemon=True).start()
+        threading.Thread(
+            target=self._t3_download_worker,
+            args=(mode, date_str, start, end, use_holidays),
+            daemon=True,
+        ).start()
 
     def _t3_write_log(self, message: str) -> None:
         """寫入 tab3 日誌框。"""
@@ -1137,16 +1146,20 @@ class StockScreenerApp:
         self.t3_log_text.see(tk.END)
         self.t3_log_text.config(state=tk.DISABLED)
 
-    def _t3_download_worker(self, mode: str) -> None:
+    def _t3_download_worker(self, mode: str, date_str: str | None,
+                            start: str | None, end: str | None, use_holidays: bool) -> None:
         """背景下載執行緒：複用 Pipeline 下載所有上市/上櫃股票。"""
         import datetime as _dt
-        import sqlite3
-
-        import requests
 
         from market_crawler.pipeline import _fetch_twse_holidays, fetch_and_ingest_day
 
-        policy = HttpPolicy()
+        policy = HttpPolicy(
+            headers={"user-agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/123.0.0.0 Safari/537.36"
+            }
+        )
 
         try:
             if mode == "下載今日":
@@ -1166,7 +1179,7 @@ class StockScreenerApp:
                     self.task_queue.put(("BULK_DONE", "failed", {"success": 0, "market_closed": 0, "failed": 1}))
 
             elif mode == "指定日期":
-                date_str = self.t3_date_entry.get().strip()
+                assert date_str is not None
                 self.task_queue.put(("BULK_PROGRESS", date_str, (1, 1)))
                 self.task_queue.put(("BULK_LOG", f"  正在下載 {date_str}（TWSE + TPEX）..."))
 
@@ -1182,10 +1195,7 @@ class StockScreenerApp:
                     self.task_queue.put(("BULK_DONE", "failed", {"success": 0, "market_closed": 0, "failed": 1}))
 
             elif mode == "日期區間":
-                start = self.t3_start_entry.get().strip()
-                end = self.t3_end_entry.get().strip()
-                use_holidays = self.t3_holiday_var.get()
-
+                assert start is not None and end is not None
                 holidays: set[str] = set()
                 if use_holidays:
                     try:
