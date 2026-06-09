@@ -1,13 +1,13 @@
 ## 1. 環境設定與套件管理 (Setup & Dependencies)
 
-- [ ] 1.1 於 `pyproject.toml` 中的 `project.optional-dependencies` 新增 `viz = ["matplotlib", "pandas-ta", "yfinance"]`，並同步安裝。
-- [ ] 1.2 於 `Makefile` 中新增 `make gui` 啟動指令，並於 `make install` 流程中支援可選安裝。
+- [x] 1.1 於 `pyproject.toml` 中的 `project.optional-dependencies` 新增 `viz = ["matplotlib", "pandas-ta", "yfinance"]`，並同步安裝。
+- [x] 1.2 於 `Makefile` 中新增 `make gui` 啟動指令，並於 `make install` 流程中支援可選安裝。
 
 ## 2. yfinance 歷史數據補檔核心 (yfinance Sync Engine)
 
-- [ ] 2.1 建立 `market_crawler/yfinance_sync.py` 模組，實作將台股代號轉換為 Yahoo 格式並呼叫 `yf.download` 取得歷史日 K 資料。
-- [ ] 2.2 將抓取結果轉換為標準 `CanonicalQuote` 結構，呼叫 `SQLiteMarketRepository.upsert_core_batch` 寫入本地資料庫。
-- [ ] 2.3 於 `tests/` 新增 `test_yfinance_sync.py` 單元測試，驗證格式解析與資料入庫。
+- [x] 2.1 建立 `market_crawler/yfinance_sync.py` 模組，實作將台股代號轉換為 Yahoo 格式並呼叫 `yf.download` 取得歷史日 K 資料。
+- [x] 2.2 將抓取結果轉換為標準 `CanonicalQuote` 結構，呼叫 `SQLiteMarketRepository.upsert_core_batch` 寫入本地資料庫。
+- [x] 2.3 於 `tests/` 新增 `test_yfinance_sync.py` 單元測試，驗證格式解析與資料入庫。
 
 ## 3. 布林通道選股引擎 (Bollinger Screener Core)
 

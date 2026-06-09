@@ -17,6 +17,11 @@ dependencies = [
 twse-crawler = "market_crawler.pipeline:main"
 
 [project.optional-dependencies]
+viz = [
+    "matplotlib>=3.5.0",
+    "pandas-ta>=0.3.0b",
+    "yfinance>=0.2.0",
+]
 dev = [
     "ruff>=0.1.0",
     "pytest>=7.4.0",

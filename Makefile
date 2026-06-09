@@ -59,6 +59,10 @@ test:
 	@echo "🧪 Running pytest..."
 	uv run pytest
 
+gui:
+	@echo "🖥️ Starting GUI Application..."
+	.venv/bin/python -m market_crawler.gui
+
 test-cov:
 	@echo "🧪 Running pytest with coverage..."
 	uv run pytest --cov=. --cov-report=html
