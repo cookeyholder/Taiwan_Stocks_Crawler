@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+import os
 import uuid
 from typing import Any
 
@@ -8,6 +9,23 @@ import pandas as pd
 import yfinance as yf
 
 from market_crawler.repository import SQLiteMarketRepository
+
+_STATIC_SYMBOL_NAMES: dict[str, str] = {
+    # 台灣 50 成份股
+    "0050": "元大台灣50", "2330": "台積電", "2317": "鴻海", "2454": "聯發科", "2308": "台達電",
+    "2881": "富邦金", "2882": "國泰金", "2303": "聯電", "2891": "中信金", "2886": "兆豐金",
+    "2884": "玉山金", "1216": "統一", "2892": "第一金", "2885": "元大金", "3711": "日月光投控",
+    "2382": "廣達", "2880": "華南金", "2883": "開發金", "2890": "永豐金", "2002": "中鋼",
+    "5880": "合庫金", "2357": "華碩", "2301": "光寶科", "2603": "長榮", "2327": "國巨",
+    "2409": "友達", "3045": "台灣大", "2609": "陽明", "2408": "南亞科", "3008": "大立光",
+    "2615": "萬海", "5876": "上海商銀", "4938": "和碩", "2395": "研華", "2379": "瑞昱",
+    "3231": "緯創", "2474": "可成", "1301": "台塑", "1303": "南亞", "1326": "台化",
+    "6505": "台塑化", "9904": "寶成", "1101": "台泥", "1402": "遠東新", "2105": "建大",
+    "2912": "統一超", "3034": "聯詠", "3037": "欣興", "4904": "遠傳", "9910": "豐泰",
+    # 常見熱門 ETF
+    "0056": "元大高股息", "00878": "國泰永續高股息", "00919": "群益台灣精選高息",
+    "00929": "復華台灣科技優息", "00713": "元大台灣高息低波", "0050B": "元大美債20年"
+}
 
 
 def fetch_yfinance_history(
@@ -39,6 +57,7 @@ def map_yfinance_to_canonical(
     row: pd.Series,
     ingest_run_id: str,
     ingested_at: str,
+    security_name: str | None = None,
 ) -> dict[str, Any]:
     """將 yfinance 的單日 Series 資料對接轉換為本地符合 CanonicalQuote 格式的 dict。"""
     # 預防 row 中可能缺漏部分欄位
@@ -63,7 +82,7 @@ def map_yfinance_to_canonical(
         "market_code": market_code.upper(),
         "symbol_raw": symbol,
         "symbol_clean": symbol,
-        "security_name": None,
+        "security_name": security_name,
         "instrument_type": "stock",
         "instrument_subtype": None,
         "isin_code": None,
@@ -108,6 +127,32 @@ def sync_yfinance_to_db(
     if df.empty:
         return 0
 
+    # 1. 嘗試從 StockID.csv 載入股票名稱
+    security_name = None
+    csv_path = "StockID.csv"
+    if os.path.exists(csv_path):
+        try:
+            from market_crawler.classification import load_security_master
+            master = load_security_master(csv_path)
+            if symbol in master:
+                security_name = master[symbol].name
+        except Exception:
+            pass
+
+    # 2. 嘗試從靜態常見表載入
+    if not security_name:
+        security_name = _STATIC_SYMBOL_NAMES.get(symbol)
+
+    # 3. 嘗試從 yfinance API 動態取得名稱（作為單股下載的最後 fallback）
+    if not security_name:
+        try:
+            suffix = ".TW" if market_code.upper() == "TWSE" else ".TWO"
+            ticker_symbol = f"{symbol}{suffix}"
+            ticker = yf.Ticker(ticker_symbol)
+            security_name = ticker.info.get("shortName") or ticker.info.get("longName")
+        except Exception:
+            pass
+
     if ingest_run_id is None:
         ingest_run_id = str(uuid.uuid4())
 
@@ -126,6 +171,7 @@ def sync_yfinance_to_db(
             row=row,
             ingest_run_id=ingest_run_id,
             ingested_at=ingested_at,
+            security_name=security_name,
         )
         normalized_quote = repo._normalize_quote_payload(quote)
         quotes.append(normalized_quote)

@@ -59,6 +59,7 @@ class StockScreenerApp:
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.repo = SQLiteMarketRepository(self.conn)
         self.repo.init_schema()
+        self._patch_missing_security_names()
 
         # 線程安全佇列與鎖
         self.task_queue: queue.Queue[tuple[str, Any]] = queue.Queue()
@@ -80,6 +81,55 @@ class StockScreenerApp:
 
         # 啟動佇列輪詢監聽
         self.after_id = self.root.after(100, self._process_queue)
+
+    def _patch_missing_security_names(self) -> None:
+        """修補資料庫中 security_name 為空或 NULL 的歷史記錄。"""
+        import os
+        try:
+            # 1. 取得所有名稱為空或 NULL 的 symbols
+            with self.db_lock:
+                cur = self.conn.cursor()
+                cur.execute("SELECT DISTINCT symbol_clean FROM market_quote_core WHERE security_name IS NULL OR security_name = ''")
+                symbols = [r[0] for r in cur.fetchall()]
+
+            if not symbols:
+                return
+
+            # 2. 載入對照表
+            name_map = {}
+            csv_path = "StockID.csv"
+            if os.path.exists(csv_path):
+                try:
+                    from market_crawler.classification import load_security_master
+                    master = load_security_master(csv_path)
+                    name_map = {sym: entry.name for sym, entry in master.items()}
+                except Exception:
+                    pass
+
+            # 再融合靜態表作為 fallback
+            from market_crawler.yfinance_sync import _STATIC_SYMBOL_NAMES
+            for sym, name in _STATIC_SYMBOL_NAMES.items():
+                if sym not in name_map:
+                    name_map[sym] = name
+
+            # 3. 批次更新
+            with self.db_lock:
+                cur = self.conn.cursor()
+                for sym in symbols:
+                    name = name_map.get(sym)
+                    if name:
+                        cur.execute(
+                            "UPDATE market_quote_core SET security_name = ? WHERE symbol_clean = ? AND (security_name IS NULL OR security_name = '')",
+                            (name, sym)
+                        )
+                        cur.execute(
+                            "UPDATE market_quote_extension SET security_name = ? WHERE symbol_clean = ? AND (security_name IS NULL OR security_name = '')",
+                            (name, sym)
+                        )
+                self.conn.commit()
+        except Exception as e:
+            # 僅靜默處理，不影響主程式啟動
+            logging.error(f"自動補齊股票名稱失敗：{e}")
 
     def _setup_styles(self) -> None:
         """設定 ttk 風格樣式，提升介面美觀度。"""
