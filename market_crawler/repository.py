@@ -115,6 +115,7 @@ class SQLiteMarketRepository(MarketRepository):
         return {key: self._normalize_value(value) for key, value in quote.items()}
 
     def upsert_core(self, quote: dict[str, Any]) -> None:
+        normalized_quote = self._normalize_quote_payload(quote)
         self.connection.execute(
             """
             INSERT INTO market_quote_core (
@@ -165,10 +166,11 @@ class SQLiteMarketRepository(MarketRepository):
                 ingest_run_id=excluded.ingest_run_id,
                 ingested_at=excluded.ingested_at
             """,
-            quote,
+            normalized_quote,
         )
 
     def upsert_core_batch(self, quotes: list[dict[str, Any]]) -> None:
+        normalized_quotes = [self._normalize_quote_payload(q) for q in quotes]
         self.connection.executemany(
             """
             INSERT INTO market_quote_core (
@@ -219,10 +221,13 @@ class SQLiteMarketRepository(MarketRepository):
                 ingest_run_id=excluded.ingest_run_id,
                 ingested_at=excluded.ingested_at
             """,
-            quotes,
+            normalized_quotes,
         )
 
     def upsert_extension(self, quote: dict[str, Any]) -> None:
+        raw_payload = quote.get("raw_payload")
+        if raw_payload is not None:
+            raw_payload = self._normalize_value(raw_payload)
         self.connection.execute(
             """
             INSERT INTO market_quote_extension (
@@ -239,21 +244,25 @@ class SQLiteMarketRepository(MarketRepository):
                 "market_code": quote["market_code"],
                 "symbol_clean": quote["symbol_clean"],
                 "raw_change": quote.get("raw_change"),
-                "raw_payload": json.dumps(quote.get("raw_payload"), ensure_ascii=False),
+                "raw_payload": json.dumps(raw_payload, ensure_ascii=False),
             },
         )
 
     def upsert_extension_batch(self, quotes: list[dict[str, Any]]) -> None:
-        batch_data = [
-            {
-                "trade_date": q["trade_date"],
-                "market_code": q["market_code"],
-                "symbol_clean": q["symbol_clean"],
-                "raw_change": q.get("raw_change"),
-                "raw_payload": json.dumps(q.get("raw_payload"), ensure_ascii=False),
-            }
-            for q in quotes
-        ]
+        batch_data = []
+        for q in quotes:
+            raw_payload = q.get("raw_payload")
+            if raw_payload is not None:
+                raw_payload = self._normalize_value(raw_payload)
+            batch_data.append(
+                {
+                    "trade_date": q["trade_date"],
+                    "market_code": q["market_code"],
+                    "symbol_clean": q["symbol_clean"],
+                    "raw_change": q.get("raw_change"),
+                    "raw_payload": json.dumps(raw_payload, ensure_ascii=False),
+                }
+            )
         self.connection.executemany(
             """
             INSERT INTO market_quote_extension (

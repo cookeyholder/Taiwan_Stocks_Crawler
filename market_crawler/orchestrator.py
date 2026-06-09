@@ -79,7 +79,9 @@ def run_date_range_ingestion(
             try:
                 result = fetcher(day)
             except Exception as exc:  # noqa: BLE001
-                outcomes.append(IngestionOutcome(day_type="source_error", ok=False, message=str(exc)))
+                outcomes.append(
+                    IngestionOutcome(day_type="source_error", ok=False, message=str(exc))
+                )
                 report.record_failure("source_error")
                 continue
 
@@ -93,7 +95,9 @@ def run_date_range_ingestion(
                 outcomes.append(IngestionOutcome(day_type="trading", ok=True, message="ok"))
                 report.record_success()
             else:
-                outcomes.append(IngestionOutcome(day_type="source_error", ok=False, message="failed"))
+                outcomes.append(
+                    IngestionOutcome(day_type="source_error", ok=False, message="failed")
+                )
                 report.record_failure("source_error")
     finally:
         if hasattr(fetcher, "close") and callable(fetcher.close):
