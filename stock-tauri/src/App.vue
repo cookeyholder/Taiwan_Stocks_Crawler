@@ -15,7 +15,7 @@ function pad(n: number): string { return n.toString().padStart(2, "0"); }
 
 const tabs = [
   { path: "/analysis", label: "個股分析" },
-  { path: "/screener", label: "布林擠壓選股器" },
+  { path: "/screener", label: "布林通道選股" },
   { path: "/download", label: "下載管理" },
 ];
 </script>

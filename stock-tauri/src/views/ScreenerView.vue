@@ -40,7 +40,7 @@ async function onRowSelected(symbol: string) {
         <h3>篩選結果 ({{ store.results.length }})</h3>
         <ScreenerTable :results="store.results" @select="onRowSelected" />
       </div>
-      <div v-if="analysisStore.data" class="chart-section">
+      <div v-if="selectedSymbol && analysisStore.data" class="chart-section">
         <KlineChart :data="analysisStore.data" />
       </div>
     </div>
