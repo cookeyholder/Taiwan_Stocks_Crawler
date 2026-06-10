@@ -1,12 +1,12 @@
 ## 1. 專案 Scaffolding
 
-- [ ] 1.1 在 repo 根目錄初始化 Cargo workspace，納入 stock-core、stock-cli、stock-tauri
-- [ ] 1.2 定義 stock-core 的 Cargo.toml 與相依套件（serde、chrono、rusqlite、reqwest、scraper、encoding_rs、thiserror、log、tokio）
-- [ ] 1.3 定義 stock-cli 的 Cargo.toml 與 clap 相依
-- [ ] 1.4 以 `npm create tauri-app`（Vue 3 + TypeScript 模板）初始化 stock-tauri
-- [ ] 1.5 設定 tauri.conf.json：視窗標題、尺寸 1200x800、最小尺寸 900x600、app identifier
-- [ ] 1.6 設定 stock-tauri/Cargo.toml 加入 tauri 2.x、serde、tokio 相依及 stock-core path 依賴
-- [ ] 1.7 在 repo 根目錄建立 Rust workspace Cargo.toml，連結三個 crate
+- [x] 1.1 在 repo 根目錄初始化 Cargo workspace，納入 stock-core、stock-cli、stock-tauri
+- [x] 1.2 定義 stock-core 的 Cargo.toml 與相依套件（serde、chrono、rusqlite、reqrewst、scraper、encoding_rs、thiserror、log、tokio）
+- [x] 1.3 定義 stock-cli 的 Cargo.toml 與 clap 相依
+- [x] 1.4 以手動方式初始化 stock-tauri（因 create-tauri-app 需要互動終端機）：Vue 3 + TypeScript 模板 + Vite + Pinia
+- [x] 1.5 設定 tauri.conf.json：視窗標題、尺寸 1200x800、最小尺寸 900x600、app identifier
+- [x] 1.6 設定 stock-tauri/Cargo.toml 加入 tauri 2.x、serde、tokio 相依及 stock-core path 依賴
+- [x] 1.7 在 repo 根目錄建立 Rust workspace Cargo.toml，連結三個 crate
 - [ ] 1.8 驗證 `cargo build` 在 workspace 層級成功
 
 ## 2. Stock-Core：資料模型與錯誤型別

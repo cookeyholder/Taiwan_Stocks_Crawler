@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+    "stock-core",
+    "stock-cli",
+    "stock-tauri/src-tauri",
+]
