@@ -19,6 +19,7 @@ const props = defineProps<{
   data: AnalysisData;
   showCandlestick?: boolean;
   showBollinger?: boolean;
+  showMA?: boolean;
 }>();
 
 function buildOption(data: AnalysisData): any {
@@ -82,27 +83,27 @@ function buildOption(data: AnalysisData): any {
     series.push({
       name: "上軌", type: "line", xAxisIndex: 0, yAxisIndex: 0,
       data: data.bollinger_upper, smooth: true, symbol: "none",
-      lineStyle: { width: 1, type: "dashed", color: "#9ccc65" },
+      lineStyle: { width: 2, type: "dashed", color: "#9ccc65" },
     });
     series.push({
       name: "中軌", type: "line", xAxisIndex: 0, yAxisIndex: 0,
       data: data.bollinger_middle, smooth: true, symbol: "none",
-      lineStyle: { width: 1, color: "#ffa726" },
+      lineStyle: { width: 1.5, color: "#ffa726" },
     });
     series.push({
       name: "下軌", type: "line", xAxisIndex: 0, yAxisIndex: 0,
       data: data.bollinger_lower, smooth: true, symbol: "none",
-      lineStyle: { width: 1, type: "dashed", color: "#ef5350" },
+      lineStyle: { width: 2, type: "dashed", color: "#ef5350" },
     });
   }
 
-  if (data.ma5.some(v => v !== null)) {
+  if (props.showMA !== false && data.ma5.some(v => v !== null)) {
     series.push({ name: "MA5", type: "line", xAxisIndex: 0, yAxisIndex: 0, data: data.ma5, smooth: true, symbol: "none", lineStyle: { width: 1 } });
   }
-  if (data.ma10.some(v => v !== null)) {
+  if (props.showMA !== false && data.ma10.some(v => v !== null)) {
     series.push({ name: "MA10", type: "line", xAxisIndex: 0, yAxisIndex: 0, data: data.ma10, smooth: true, symbol: "none", lineStyle: { width: 1 } });
   }
-  if (data.ma20.some(v => v !== null)) {
+  if (props.showMA !== false && data.ma20.some(v => v !== null)) {
     series.push({ name: "MA20", type: "line", xAxisIndex: 0, yAxisIndex: 0, data: data.ma20, smooth: true, symbol: "none", lineStyle: { width: 1 } });
   }
 
@@ -154,7 +155,7 @@ function buildOption(data: AnalysisData): any {
       text: `${data.symbol}${data.name ? ` — ${data.name}` : ""}`,
       left: 70,
       top: 6,
-      textStyle: { fontSize: 13, fontWeight: "bold", color: "#333" },
+      textStyle: { fontSize: 16, fontWeight: "bold", color: "#333" },
     },
     animationDurationUpdate: 100,
     animationEasingUpdate: "linear",
@@ -167,29 +168,29 @@ function buildOption(data: AnalysisData): any {
         const lines: string[] = [`${date}`];
         for (const p of params) {
           if (p.seriesName === "K線" && Array.isArray(p.value)) {
-            lines.push(`開盤價: ${Number(p.value[0]).toFixed(1)}`);
-            lines.push(`收盤價: ${Number(p.value[1]).toFixed(1)}`);
-            lines.push(`最低價: ${Number(p.value[2]).toFixed(1)}`);
-            lines.push(`最高價: ${Number(p.value[3]).toFixed(1)}`);
+            lines.push(`開盤價: ${Number(p.value[0]).toFixed(2)}`);
+            lines.push(`收盤價: ${Number(p.value[1]).toFixed(2)}`);
+            lines.push(`最低價: ${Number(p.value[2]).toFixed(2)}`);
+            lines.push(`最高價: ${Number(p.value[3]).toFixed(2)}`);
           } else if (p.seriesName === "超買" || p.seriesName === "超賣") {
             continue;
           } else {
             const raw = Array.isArray(p.value) ? p.value[0] : p.value;
-            lines.push(`${p.seriesName}: ${raw == null ? "-" : Number(raw).toFixed(1)}`);
+            lines.push(`${p.seriesName}: ${raw == null ? "-" : Number(raw).toFixed(2)}`);
           }
         }
         if (idx != null) {
           if (data.rsi?.[idx] != null) {
-            lines.push(`RSI: ${Number(data.rsi[idx]).toFixed(1)}`);
+            lines.push(`RSI: ${Number(data.rsi[idx]).toFixed(2)}`);
           }
           if (data.macd_line?.[idx] != null) {
-            lines.push(`MACD: ${Number(data.macd_line[idx]).toFixed(1)}`);
+            lines.push(`MACD: ${Number(data.macd_line[idx]).toFixed(2)}`);
           }
           if (data.macd_signal?.[idx] != null) {
-            lines.push(`訊號: ${Number(data.macd_signal[idx]).toFixed(1)}`);
+            lines.push(`訊號: ${Number(data.macd_signal[idx]).toFixed(2)}`);
           }
           if (data.macd_histogram?.[idx] != null) {
-            lines.push(`柱狀: ${Number(data.macd_histogram[idx]).toFixed(1)}`);
+            lines.push(`柱狀: ${Number(data.macd_histogram[idx]).toFixed(2)}`);
           }
         }
         return lines.join("<br/>");

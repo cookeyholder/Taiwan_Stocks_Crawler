@@ -72,17 +72,17 @@ function onParamsChange() {
 .sidebar { width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
 .chart-area { flex: 1; min-width: 0; position: relative; }
 .control-group { display: flex; flex-direction: column; gap: 4px; }
-.control-group label { font-weight: 600; font-size: 13px; color: #555; }
-.symbol-select { width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
-.selected-info { display: flex; gap: 6px; align-items: center; font-size: 13px; margin-top: 2px; }
+.control-group label { font-weight: 600; font-size: 14px; color: #555; }
+.symbol-select { width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 15px; }
+.selected-info { display: flex; gap: 6px; align-items: center; font-size: 14px; margin-top: 2px; }
 .sel-symbol { font-weight: 700; color: #1976d2; }
 .sel-name { color: #555; }
-.sel-market { color: #999; font-size: 11px; }
-.chart-header { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 14px; display: flex; gap: 8px; align-items: baseline; }
-.chart-symbol { font-weight: 700; color: #1976d2; font-size: 16px; }
+.sel-market { color: #999; font-size: 12px; }
+.chart-header { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 15px; display: flex; gap: 8px; align-items: baseline; }
+.chart-symbol { font-weight: 700; color: #1976d2; font-size: 18px; }
 .chart-name { color: #555; }
-.chart-market { color: #999; font-size: 12px; }
-.loading-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.7); color: #888; font-size: 16px; z-index: 10; }
-.error, .empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #888; font-size: 16px; }
+.chart-market { color: #999; font-size: 13px; }
+.loading-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.7); color: #888; font-size: 17px; z-index: 10; }
+.error, .empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #888; font-size: 17px; }
 .error { color: #d32f2f; }
 </style>

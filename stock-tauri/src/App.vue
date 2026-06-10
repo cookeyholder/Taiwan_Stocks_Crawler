@@ -47,7 +47,7 @@ const tabs = [
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body, #app, #app-root { height: 100%; width: 100%; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; }
 #app-root { display: flex; flex-direction: column; }
 .tab-bar {
   display: flex; align-items: center; justify-content: space-between;
@@ -56,7 +56,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .tab-group { display: flex; gap: 0; }
 .tab-bar button {
   padding: 10px 24px; border: none; background: transparent; cursor: pointer;
-  font-size: 14px; border-bottom: 2px solid transparent; transition: all 0.2s;
+  font-size: 15px; border-bottom: 2px solid transparent; transition: all 0.2s;
 }
 .tab-bar button.active { background: #fff; border-bottom-color: #1976d2; color: #1976d2; font-weight: 600; }
 .tab-bar button:hover:not(.active) { background: #e8e8e8; }

@@ -86,3 +86,7 @@ node_modules/
 
 # Tauri generated platform schemas
 stock-tauri/src-tauri/gen/schemas/windows-schema.json
+
+# Local data directory
+data/
+

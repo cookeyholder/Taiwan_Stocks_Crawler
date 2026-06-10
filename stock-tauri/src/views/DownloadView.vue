@@ -139,23 +139,23 @@ onUnmounted(() => store.cleanup());
 <style scoped>
 .download-view { display: flex; flex-direction: column; gap: 16px; }
 .info-card { background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 16px; }
-.info-text { font-size: 14px; color: #333; display: flex; gap: 20px; flex-wrap: wrap; }
+.info-text { font-size: 15px; color: #333; display: flex; gap: 20px; flex-wrap: wrap; }
 .controls-card, .progress-card, .result-card { background: #f9f9f9; border: 1px solid #eee; border-radius: 8px; padding: 16px; }
-h3 { font-size: 15px; margin-bottom: 12px; color: #333; }
+h3 { font-size: 16px; margin-bottom: 12px; color: #333; }
 .date-inputs { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
 .param-group { display: flex; flex-direction: column; gap: 2px; }
-.param-group label { font-size: 12px; color: #666; font-weight: 600; }
-.param-group input { padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
-.btn-primary { padding: 8px 20px; background: #1976d2; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+.param-group label { font-size: 14px; color: #666; font-weight: 600; }
+.param-group input { padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 15px; }
+.btn-primary { padding: 8px 20px; background: #1976d2; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; }
 .btn-primary:hover { background: #1565c0; }
 .btn-primary:disabled { background: #90caf9; cursor: not-allowed; }
 .danger-card { border-color: #ef9a9a; }
-.btn-danger { padding: 8px 20px; background: #d32f2f; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+.btn-danger { padding: 8px 20px; background: #d32f2f; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; }
 .btn-danger:hover { background: #b71c1c; }
 .btn-danger:disabled { background: #ef9a9a; cursor: not-allowed; }
-.delete-message { margin-top: 8px; font-size: 13px; color: #d32f2f; }
+.delete-message { margin-top: 8px; font-size: 14px; color: #d32f2f; }
 .progress-bar { height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
 .progress-fill { height: 100%; background: #1976d2; transition: width 0.3s; }
-.progress-text { font-size: 13px; color: #666; }
-pre { font-size: 13px; white-space: pre-wrap; word-break: break-all; }
+.progress-text { font-size: 14px; color: #666; }
+pre { font-size: 14px; white-space: pre-wrap; word-break: break-all; }
 </style>

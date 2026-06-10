@@ -100,7 +100,7 @@ function formatPct(v: number): string {
 
 <style scoped>
 .table-wrapper { overflow: auto; flex: 1; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th { position: sticky; top: 0; background: #f5f5f5; padding: 8px 10px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; user-select: none; }
 th.sortable { cursor: pointer; }
 th.sortable:hover { background: #e0e0e0; }

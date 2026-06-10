@@ -231,6 +231,6 @@ fn dirs_data_dir() -> std::path::PathBuf {
     if let Ok(dir) = std::env::var("STOCK_DATA_DIR") {
         return std::path::PathBuf::from(dir);
     }
-    let base = dirs::data_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    base.join("stock-screener")
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    cwd.join("data")
 }
