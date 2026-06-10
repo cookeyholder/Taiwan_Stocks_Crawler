@@ -161,6 +161,7 @@ function buildOption(data: AnalysisData): any {
       trigger: "axis",
       axisPointer: { type: "cross" },
       formatter: (params: any[]) => {
+        const idx = params[0]?.dataIndex;
         const date = params[0]?.axisValue ?? "";
         const lines: string[] = [`${date}`];
         for (const p of params) {
@@ -174,6 +175,20 @@ function buildOption(data: AnalysisData): any {
           } else {
             const raw = Array.isArray(p.value) ? p.value[0] : p.value;
             lines.push(`${p.seriesName}: ${raw == null ? "-" : Number(raw).toFixed(1)}`);
+          }
+        }
+        if (idx != null) {
+          if (data.rsi?.[idx] != null) {
+            lines.push(`RSI: ${Number(data.rsi[idx]).toFixed(1)}`);
+          }
+          if (data.macd_line?.[idx] != null) {
+            lines.push(`MACD: ${Number(data.macd_line[idx]).toFixed(1)}`);
+          }
+          if (data.macd_signal?.[idx] != null) {
+            lines.push(`訊號: ${Number(data.macd_signal[idx]).toFixed(1)}`);
+          }
+          if (data.macd_histogram?.[idx] != null) {
+            lines.push(`柱狀: ${Number(data.macd_histogram[idx]).toFixed(1)}`);
           }
         }
         return lines.join("<br/>");
