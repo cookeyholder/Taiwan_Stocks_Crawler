@@ -71,3 +71,6 @@ sqlite3/
 
 .antigravitycli
 .worktrees/gui_venv/
+*.db-journal
+*.db-wal
+*.db-shm
