@@ -30,17 +30,20 @@ const sorted = computed(() => {
     const aIsStock = /^[1-9]\d{3}$/.test(a.symbol);
     const bIsStock = /^[1-9]\d{3}$/.test(b.symbol);
     if (aIsStock !== bIsStock) return aIsStock ? -1 : 1;
-    let va: any = a[sortKey.value];
-    let vb: any = b[sortKey.value];
+    const va = a[sortKey.value];
+    const vb = b[sortKey.value];
     if (va == null) return 1;
     if (vb == null) return -1;
+    if (va === vb) return 0;
     if (typeof va === "boolean") {
-      return asc ? (va === vb ? 0 : va ? -1 : 1) : (va === vb ? 0 : va ? 1 : -1);
+      return asc ? (va ? -1 : 1) : (va ? 1 : -1);
     }
-    if (typeof va === "string") {
+    if (typeof va === "string" && typeof vb === "string") {
       return asc ? va.localeCompare(vb) : vb.localeCompare(va);
     }
-    return asc ? va - vb : vb - va;
+    const na = Number(va);
+    const nb = Number(vb);
+    return asc ? na - nb : nb - na;
   });
   return arr;
 });

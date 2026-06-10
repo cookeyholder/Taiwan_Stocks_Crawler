@@ -21,7 +21,8 @@ async function onRowSelected(symbol: string) {
       macdSlow: 26,
       macdSignal: 9,
     });
-  } catch {
+  } catch (e) {
+    console.error("Failed to fetch chart data:", e);
     chartData.value = null;
   }
 }

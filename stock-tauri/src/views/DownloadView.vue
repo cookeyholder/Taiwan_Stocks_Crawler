@@ -21,7 +21,7 @@ async function refreshDbInfo() {
     dbFirstDate.value = min ?? "";
     dbLastDate.value = max ?? "";
     dbDayCount.value = count;
-  } catch (_) {
+  } catch {
   }
 }
 
