@@ -69,7 +69,7 @@ function buildOption(data: AnalysisData): any {
     });
   }
 
-  if (props.showBollinger !== false && data.bollinger_upper[0] !== null) {
+  if (props.showBollinger !== false && data.bollinger_upper.some(v => v !== null)) {
     series.push({
       name: "上軌", type: "line", xAxisIndex: 0, yAxisIndex: 0,
       data: data.bollinger_upper, smooth: true, symbol: "none",
@@ -87,13 +87,13 @@ function buildOption(data: AnalysisData): any {
     });
   }
 
-  if (data.ma5[0] !== null) {
+  if (data.ma5.some(v => v !== null)) {
     series.push({ name: "MA5", type: "line", xAxisIndex: 0, yAxisIndex: 0, data: data.ma5, smooth: true, symbol: "none", lineStyle: { width: 1 } });
   }
-  if (data.ma10[0] !== null) {
+  if (data.ma10.some(v => v !== null)) {
     series.push({ name: "MA10", type: "line", xAxisIndex: 0, yAxisIndex: 0, data: data.ma10, smooth: true, symbol: "none", lineStyle: { width: 1 } });
   }
-  if (data.ma20[0] !== null) {
+  if (data.ma20.some(v => v !== null)) {
     series.push({ name: "MA20", type: "line", xAxisIndex: 0, yAxisIndex: 0, data: data.ma20, smooth: true, symbol: "none", lineStyle: { width: 1 } });
   }
 
