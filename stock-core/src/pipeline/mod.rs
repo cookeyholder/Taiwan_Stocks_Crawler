@@ -1,0 +1,269 @@
+use std::sync::atomic::AtomicBool;
+
+use crate::db::MarketRepository;
+use crate::fetcher::twse;
+use crate::models::*;
+use crate::{date_utils, fetcher::HttpClient};
+
+use chrono::NaiveDate;
+
+pub struct Pipeline {
+    pub http: HttpClient,
+    pub repo: MarketRepository,
+    pub cancel_flag: Option<AtomicBool>,
+}
+
+impl Pipeline {
+    pub fn new(http: HttpClient, repo: MarketRepository) -> Self {
+        Self {
+            http,
+            repo,
+            cancel_flag: None,
+        }
+    }
+
+    pub async fn fetch_today(&self) -> Result<IngestionOutcome, PipelineError> {
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        self.fetch_date(&today).await
+    }
+
+    pub async fn fetch_date(&self, date_str: &str) -> Result<IngestionOutcome, PipelineError> {
+        let mut outcome = IngestionOutcome {
+            day_type: DayType::Unknown,
+            ok: false,
+            message: String::new(),
+            records_inserted: 0,
+        };
+
+        let mut total = 0;
+        let mut has_data = false;
+        let ingest_run_id = uuid();
+        let ingested_at = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+
+        // TWSE today JSON
+        if date_str == chrono::Local::now().format("%Y-%m-%d").to_string() {
+            match twse::fetch_today_json(&self.http).await {
+                Ok(records) if !records.is_empty() => {
+                    let quotes = normalize_records("TWSE", date_str, &records, "utf-8", &ingest_run_id, &ingested_at);
+                    total += self.repo.upsert_core_batch(&quotes)?;
+                    has_data = true;
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    outcome.message = format!("TWSE today API: {}", e);
+                }
+            }
+        }
+
+        if has_data {
+            outcome.day_type = DayType::Trading;
+            outcome.ok = true;
+            outcome.message = format!("OK: {} records", total);
+        } else {
+            outcome.day_type = DayType::MarketClosed;
+            outcome.message = "no data (market closed or error)".into();
+        }
+        outcome.records_inserted = total;
+        Ok(outcome)
+    }
+
+    pub async fn screen(
+        &self,
+        bandwidth_limit: f64,
+        consecutive_days: i32,
+        instrument_types: Option<Vec<String>>,
+        min_volume: i64,
+    ) -> Result<Vec<ScreenResult>, PipelineError> {
+        let results = self.repo.screen_bollinger_squeeze(
+            bandwidth_limit,
+            consecutive_days,
+            instrument_types.as_deref(),
+            min_volume,
+        )?;
+        Ok(results)
+    }
+
+    pub async fn get_analysis(
+        &self,
+        symbol: &str,
+        ma_periods: &[usize],
+        rsi_period: Option<usize>,
+        macd_fast: Option<usize>,
+        macd_slow: Option<usize>,
+        macd_signal: Option<usize>,
+    ) -> Result<AnalysisOutput, PipelineError> {
+        let end = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let start = {
+            let d = NaiveDate::parse_from_str(&end, "%Y-%m-%d")
+                .map_err(|e| PipelineError::Internal(e.to_string()))?;
+            let start = d - chrono::Duration::days(365 * 2);
+            start.format("%Y-%m-%d").to_string()
+        };
+        let ohlcv = self.repo.get_ohlcv(symbol, &start, &end)?;
+        if ohlcv.is_empty() {
+            return Err(PipelineError::NoData(symbol.to_string()));
+        }
+        let prices: Vec<f64> = ohlcv.iter().filter_map(|r| r.close_price).collect();
+        let mut output = AnalysisOutput {
+            ohlcv: ohlcv.clone(),
+            ma_lines: Vec::new(),
+            bollinger: None,
+            rsi: None,
+            macd: None,
+        };
+        if !ma_periods.is_empty() {
+            for &p in ma_periods {
+                let line = crate::analysis::sma(&prices, p);
+                output.ma_lines.push(line);
+            }
+        }
+        if prices.len() >= 20 {
+            output.bollinger = Some(crate::analysis::bollinger(&prices, 20, 2.0));
+        }
+        if let Some(period) = rsi_period {
+            if prices.len() > period {
+                output.rsi = Some(crate::analysis::rsi(&prices, period));
+            }
+        }
+        if let (Some(f), Some(s), Some(sig)) = (macd_fast, macd_slow, macd_signal) {
+            if prices.len() > s {
+                output.macd = Some(crate::analysis::macd(&prices, f, s, sig));
+            }
+        }
+        Ok(output)
+    }
+}
+
+fn normalize_records(
+    market_code: &str,
+    trade_date: &str,
+    records: &[ParsedRecord],
+    encoding: &str,
+    ingest_run_id: &str,
+    ingested_at: &str,
+) -> Vec<CanonicalQuote> {
+    records
+        .iter()
+        .map(|r| {
+            let symbol_clean = r.symbol.trim_matches('=').trim_matches('"').to_string();
+            let td = date_utils::roc_to_ad_date(trade_date).unwrap_or_else(|| trade_date.to_string());
+            let (change_sign, change_value) = parse_change_field(r.change.as_deref());
+            CanonicalQuote {
+                trade_date: td,
+                market_code: market_code.to_string(),
+                symbol_raw: r.symbol.clone(),
+                symbol_clean,
+                security_name: r.name.clone(),
+                instrument_type: "other".to_string(),
+                instrument_subtype: None,
+                isin_code: None,
+                cfi_code: None,
+                section_label: None,
+                open_price: parse_float(r.open.as_deref()),
+                high_price: parse_float(r.high.as_deref()),
+                low_price: parse_float(r.low.as_deref()),
+                close_price: parse_float(r.close.as_deref()),
+                volume_shares: parse_int(r.volume.as_deref()),
+                turnover_value: parse_float(r.turnover.as_deref()),
+                trade_count: parse_int(r.trade_count.as_deref()),
+                change_sign,
+                change_value,
+                last_bid_price: parse_float(r.last_bid.as_deref()),
+                last_bid_qty_raw: r.last_bid_qty.clone(),
+                last_ask_price: parse_float(r.last_ask.as_deref()),
+                last_ask_qty_raw: r.last_ask_qty.clone(),
+                pe_ratio: parse_float(r.pe_ratio.as_deref()),
+                issued_shares: parse_int(r.issued_shares.as_deref()),
+                next_limit_up: parse_float(r.next_limit_up.as_deref()),
+                next_limit_down: parse_float(r.next_limit_down.as_deref()),
+                source_file: r.source_file.clone(),
+                source_encoding: encoding.to_string(),
+                source_line_no: r.source_line_no,
+                ingest_run_id: ingest_run_id.to_string(),
+                ingested_at: ingested_at.to_string(),
+                extension: std::collections::HashMap::new(),
+            }
+        })
+        .collect()
+}
+
+fn parse_float(s: Option<&str>) -> Option<f64> {
+    let s = s?.trim();
+    if s.is_empty() || s == "--" || s == "---" {
+        return None;
+    }
+    let cleaned = s.replace(",", "");
+    cleaned.parse::<f64>().ok()
+}
+
+fn parse_int(s: Option<&str>) -> Option<i64> {
+    let s = s?.trim();
+    if s.is_empty() || s == "--" || s == "---" {
+        return None;
+    }
+    let cleaned = s.replace(",", "");
+    cleaned.parse::<i64>().ok()
+}
+
+fn parse_change_field(change: Option<&str>) -> (Option<String>, Option<f64>) {
+    let s = match change {
+        Some(s) if !s.trim().is_empty() && s.trim() != "--" => s.trim(),
+        _ => return (None, None),
+    };
+    if s.starts_with('+') || s.starts_with('-') {
+        let sign = s[..1].to_string();
+        let magnitude = s[1..].parse::<f64>().ok();
+        (Some(sign), magnitude)
+    } else if s.starts_with('－') || s.starts_with('＋') {
+        let sign = if s.starts_with('＋') { "+" } else { "-" };
+        let magnitude = s[3..].parse::<f64>().ok();
+        (Some(sign.to_string()), magnitude)
+    } else {
+        (None, s.parse::<f64>().ok())
+    }
+}
+
+fn uuid() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("{:x}", nanos)
+}
+
+#[derive(Debug)]
+pub struct IngestionOutcome {
+    pub day_type: DayType,
+    pub ok: bool,
+    pub message: String,
+    pub records_inserted: usize,
+}
+
+#[derive(Debug)]
+pub enum DayType {
+    Unknown,
+    Trading,
+    MarketClosed,
+}
+
+#[derive(Debug)]
+pub struct AnalysisOutput {
+    pub ohlcv: Vec<OhlcvRecord>,
+    pub ma_lines: Vec<Vec<Option<f64>>>,
+    pub bollinger: Option<crate::models::BollingerResult>,
+    pub rsi: Option<crate::models::RsiResult>,
+    pub macd: Option<crate::models::MacdResult>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum PipelineError {
+    #[error("DB error: {0}")]
+    Db(#[from] rusqlite::Error),
+    #[error("HTTP error: {0}")]
+    Http(#[from] crate::fetcher::HttpError),
+    #[error("No data for {0}")]
+    NoData(String),
+    #[error("Internal: {0}")]
+    Internal(String),
+}
