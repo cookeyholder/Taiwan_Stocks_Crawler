@@ -1,78 +1,51 @@
-# twse-crawler CLI 使用說明
+# stock-cli CLI 使用說明
 
-`twse-crawler` 是臺股每日收盤行情爬蟲的命令列入口，
-安裝後可直接使用 `twse-crawler` 指令抓取 TWSE 與 TPEX 資料並寫入 SQLite。
+`stock-cli` 是臺股選股工具的 Rust 命令列入口，
+支援資料抓取、布林擠壓選股與批次補檔。
 
 ## 安裝
 
 ```bash
-uv sync --all-extras
-# 之後直接使用：
-twse-crawler --help
+cargo build -p stock-cli --release
+# 輸出：target/release/stock-cli
 ```
 
-## 執行模式
+## 子指令
 
-四種模式互斥，擇一使用。
-
-### --today（建議排程使用）
-
-抓取今日資料。**建議排程在 18:00 後執行**，確保收盤資料已更新。
+### fetch — 抓取收盤資料
 
 ```bash
-twse-crawler --today
-twse-crawler --today --db /data/market.db
+# 今日資料
+stock-cli fetch --today
+
+# 指定日期
+stock-cli fetch --date 2026-06-10
+
+# 客製資料庫路徑
+stock-cli fetch --today --db-path /tmp/market.db
 ```
 
-### --date YYYY-MM-DD
-
-抓取指定單日。
+### screen — 布林擠壓選股
 
 ```bash
-twse-crawler --date 2026-03-17
-twse-crawler --date 2026-03-17 --db /data/market.db
+# 預設條件（bandwidth <= 0.1、連續 3 天）
+stock-cli screen
+
+# 自訂條件
+stock-cli screen --bandwidth-limit 0.05 --consecutive-days 5 --min-volume 1000000 --instrument-types stock,etf
 ```
 
-### --backfill N
-
-從今日往前 N 天（含今日），適合首次建立歷史資料。
+### sync — 批次補檔
 
 ```bash
-twse-crawler --backfill 30
-twse-crawler --backfill 90 --db /data/market.db
+stock-cli sync --start 2026-01-01 --end 2026-06-10
 ```
 
-### --start / --end
+## 共用選項
 
-指定任意日期區間。
-
-```bash
-twse-crawler --start 2026-01-01 --end 2026-03-31
-```
-
-## 共用引數
-
-| 引數 | 說明 | 預設值 |
+| 選項 | 說明 | 預設值 |
 |------|------|--------|
-| `--db PATH` | SQLite 資料庫路徑 | `market_data.db` |
-| `--holidays DATE ...` | 手動指定假日（ISO 格式，可多個） | 無 |
-| `--no-auto-holidays` | 停用自動抓取 TWSE holidaySchedule | 否 |
-| `--timeout SECS` | HTTP 逾時秒數 | 30 |
-| `--retries N` | HTTP 重試次數 | 3 |
-
-## 自動假日抓取
-
-預設情況下，每次執行都會嘗試從 TWSE `holidaySchedule` API 抓取當年國定假日，
-並與 `--holidays` 指定的手動清單合併。
-
-若 API 失敗，系統會發出 warning 但繼續執行（不中斷）。
-
-如需停用自動抓取（例如離線環境或 CI 環境）：
-
-```bash
-twse-crawler --today --no-auto-holidays
-twse-crawler --today --no-auto-holidays --holidays 2026-04-04 2026-04-05
-```
+| `--db-path PATH` | SQLite 資料庫路徑 | `~/.local/share/stock-screener/market_data.db` |
 
 ## 資料來源路由
 
@@ -85,25 +58,39 @@ twse-crawler --today --no-auto-holidays --holidays 2026-04-04 2026-04-05
 
 ```cron
 # 每個工作日 18:30 抓取當日資料
-30 18 * * 1-5 /path/to/.venv/bin/twse-crawler --today --db /data/market.db
+30 18 * * 1-5 /path/to/stock-cli fetch --today
 ```
 
-若要在 18:00 前執行（收盤資料尚未刷新），TWSE JSON API 可能回傳前一交易日資料，
-此時該日會被標為 `market_closed`，不計入 `source_error`。
+---
 
-## 輸出格式
+## 歷史參考：twse-crawler（Python 版）
 
+Python 版 `twse-crawler` 已於 2026-06 停止維護，以下內容僅供參考。
+
+### 安裝方式
+
+```bash
+uv sync --all-extras
+twse-crawler --help
 ```
-  ✓ trading        ok
-  ✓ trading        ok
-  ✗ weekend        skip
 
-完成：成功 2 天，休市 0 天，失敗 0 天
+### 執行模式
+
+```bash
+# 今日資料
+twse-crawler --today
+
+# 指定日期
+twse-crawler --date 2026-03-17
+
+# 批次補檔
+twse-crawler --backfill 30
+
+# 日期區間
+twse-crawler --start 2026-01-01 --end 2026-03-31
 ```
 
-## python -m 執行方式
-
-不安裝套件時也可直接執行：
+### Python 執行方式
 
 ```bash
 python -m market_crawler.pipeline --today
