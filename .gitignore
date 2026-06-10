@@ -83,3 +83,6 @@ node_modules/
 
 # MSYS2
 .cargo/config.toml
+
+# Tauri generated platform schemas
+stock-tauri/src-tauri/gen/schemas/windows-schema.json
