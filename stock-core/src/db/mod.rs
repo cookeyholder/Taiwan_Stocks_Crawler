@@ -294,6 +294,14 @@ impl MarketRepository {
                 }
             }
             let security_name = name_map.get(symbol).and_then(|n| n.clone());
+            let break_upper = match (latest.open_price, latest.close_price) {
+                (Some(o), Some(c)) if c > o => {
+                    bollinger.upper.last().map_or(false, |u| {
+                        u.map_or(false, |upper| o < upper && c > upper)
+                    })
+                }
+                _ => false,
+            };
             results.push(ScreenResult {
                 symbol: symbol.clone(),
                 name: security_name,
@@ -301,6 +309,7 @@ impl MarketRepository {
                 latest_volume: latest.volume_shares,
                 max_bandwidth: max_bw,
                 latest_bandwidth: *recent.last().unwrap_or(&0.0),
+                break_upper,
             });
         }
         Ok(results)

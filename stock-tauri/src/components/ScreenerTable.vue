@@ -5,7 +5,7 @@ import { ref, computed } from "vue";
 const props = defineProps<{ results: ScreenResult[] }>();
 const emit = defineEmits<{ select: [symbol: string] }>();
 
-type SortKey = "symbol" | "name" | "latest_close" | "latest_volume" | "max_bandwidth" | "latest_bandwidth";
+type SortKey = "symbol" | "name" | "latest_close" | "latest_volume" | "max_bandwidth" | "latest_bandwidth" | "break_upper";
 const sortKey = ref<SortKey>("symbol");
 const sortOrder = ref<"asc" | "desc">("asc");
 
@@ -29,6 +29,9 @@ const sorted = computed(() => {
     let vb: any = b[sortKey.value];
     if (va == null) return 1;
     if (vb == null) return -1;
+    if (typeof va === "boolean") {
+      return asc ? (va === vb ? 0 : va ? -1 : 1) : (va === vb ? 0 : va ? 1 : -1);
+    }
     if (typeof va === "string") {
       return asc ? va.localeCompare(vb) : vb.localeCompare(va);
     }
@@ -64,6 +67,7 @@ function formatPct(v: number): string {
           <th @click="toggleSort('latest_volume')" class="sortable">成交量{{ sortIndicator('latest_volume') }}</th>
           <th @click="toggleSort('max_bandwidth')" class="sortable">最大頻寬{{ sortIndicator('max_bandwidth') }}</th>
           <th @click="toggleSort('latest_bandwidth')" class="sortable">最新頻寬{{ sortIndicator('latest_bandwidth') }}</th>
+          <th @click="toggleSort('break_upper')" class="sortable">突破上通道{{ sortIndicator('break_upper') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -79,9 +83,10 @@ function formatPct(v: number): string {
           <td>{{ formatVolume(r.latest_volume) }}</td>
           <td>{{ formatPct(r.max_bandwidth) }}</td>
           <td>{{ formatPct(r.latest_bandwidth) }}</td>
+          <td>{{ r.break_upper ? "✓" : "" }}</td>
         </tr>
         <tr v-if="sorted.length === 0">
-          <td colspan="6" class="empty-row">尚無資料</td>
+          <td colspan="7" class="empty-row">尚無資料</td>
         </tr>
       </tbody>
     </table>
