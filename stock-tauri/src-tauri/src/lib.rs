@@ -223,8 +223,10 @@ fn dirs_data_dir() -> std::path::PathBuf {
         let mut v = Vec::new();
         if let Ok(cwd) = std::env::current_dir() {
             v.push(cwd.join("data"));
+            v.push(cwd.join("stock-tauri").join("data"));
             if let Some(parent) = cwd.parent() {
                 v.push(parent.join("data"));
+                v.push(parent.join("stock-tauri").join("data"));
             }
         }
         if let Ok(exe) = std::env::current_exe() {
