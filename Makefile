@@ -1,4 +1,5 @@
-.PHONY: help install dev-install format check test lint clean jupyter docker-help docker-version docker-ps docker-clean
+.PHONY: help install dev-install format check test lint clean jupyter docker-help docker-version docker-ps docker-clean \
+        tauri-dev tauri-build stock-cli stock-cli-help cargo-test
 
 help:
 	@echo "🚀 Stock Trading System - Available commands:"
@@ -30,6 +31,12 @@ help:
 	@echo "  make clean        - Remove cache and temporary files"
 	@echo "  make pre-commit   - Run pre-commit checks"
 	@echo ""
+	@echo "Tauri / Rust:"
+	@echo "  make tauri-dev    - Start Tauri desktop app (dev mode)"
+	@echo "  make tauri-build  - Build Tauri desktop app for production"
+	@echo "  make stock-cli    - Run Rust CLI (pass args via ARGS=)"
+	@echo "  make cargo-test   - Run Rust unit tests"
+	@echo ""
 
 install:
 	@echo "📦 Installing dependencies with uv..."
@@ -60,8 +67,27 @@ test:
 	uv run pytest
 
 gui:
-	@echo "🖥️ Starting GUI Application..."
+	@echo "🖥️ Starting Python GUI Application..."
 	.venv/bin/python -m market_crawler.gui
+
+tauri-dev:
+	@echo "🖥️ Starting Tauri desktop app (dev mode)..."
+	cd stock-tauri && npm run tauri dev
+
+tauri-build:
+	@echo "🔨 Building Tauri desktop app..."
+	cd stock-tauri && npm run tauri build
+
+stock-cli:
+	@echo "🏗️ Running Rust CLI..."
+	cargo run -p stock-cli -- $(ARGS)
+
+stock-cli-help: ARGS=--help
+stock-cli-help: stock-cli
+
+cargo-test:
+	@echo "🧪 Running Rust unit tests..."
+	cargo test -p stock-core
 
 build-deps:
 	@echo "📦 Installing build dependencies..."
