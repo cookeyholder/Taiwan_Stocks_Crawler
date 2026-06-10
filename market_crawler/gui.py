@@ -101,9 +101,9 @@ class StockScreenerApp:
         self._setup_styles()
         self._create_widgets()
 
-        # 載入下拉選單初始資料
-        self._t1_refresh_combo()
-        self._t1_set_default_symbol("2330")
+        # 延遲載入下拉選單（視窗先顯示再查詢，避免 3.7M 列 GROUP BY 阻塞 UI）
+        self.root.after_idle(self._t1_refresh_combo)
+        self.root.after_idle(lambda: self._t1_set_default_symbol("2330"))
 
         # 綁定視窗關閉事件以優雅釋放資源
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
@@ -115,17 +115,7 @@ class StockScreenerApp:
         """修補資料庫中 security_name 為空或 NULL 的歷史記錄。"""
         import os
         try:
-            # 1. 取得所有名稱為空或 NULL 的 symbols
-            with self.db_lock:
-                cur = self.conn.cursor()
-                cur.execute("SELECT DISTINCT symbol_clean FROM market_quote_core WHERE security_name IS NULL OR security_name = ''")
-                symbols = [r[0] for r in cur.fetchall()]
-
-            if not symbols:
-                return
-
-            # 2. 載入對照表
-            name_map = {}
+            name_map: dict[str, str] = {}
             csv_path = "StockID.csv"
             if os.path.exists(csv_path):
                 try:
@@ -135,25 +125,36 @@ class StockScreenerApp:
                 except Exception:
                     pass
 
-            # 再融合靜態表作為 fallback
             from market_crawler.yfinance_sync import _STATIC_SYMBOL_NAMES
             for sym, name in _STATIC_SYMBOL_NAMES.items():
-                if sym not in name_map:
-                    name_map[sym] = name
+                name_map.setdefault(sym, name)
 
-            # 3. 批次更新
             with self.db_lock:
                 cur = self.conn.cursor()
-                for sym in symbols:
-                    name = name_map.get(sym)
-                    if name:
-                        cur.execute(
-                            "UPDATE market_quote_core SET security_name = ? WHERE symbol_clean = ? AND (security_name IS NULL OR security_name = '')",
-                            (name, sym)
-                        )
+                cur.execute("SELECT DISTINCT symbol_clean FROM market_quote_core WHERE security_name IS NULL OR security_name = ''")
+                symbols = [r[0] for r in cur.fetchall()]
+
+            if not symbols:
+                return
+
+            # 批次更新：只掃描一次資料表
+            updates: list[tuple[str, str]] = []
+            for sym in symbols:
+                name = name_map.get(sym)
+                if name:
+                    updates.append((name, sym))
+
+            if not updates:
+                return
+
+            with self.db_lock:
+                cur = self.conn.cursor()
+                cur.executemany(
+                    "UPDATE market_quote_core SET security_name = ? WHERE symbol_clean = ? AND (security_name IS NULL OR security_name = '')",
+                    updates,
+                )
                 self.conn.commit()
         except Exception as e:
-            # 僅靜默處理，不影響主程式啟動
             logging.error(f"自動補齊股票名稱失敗：{e}")
 
     def _setup_styles(self) -> None:
