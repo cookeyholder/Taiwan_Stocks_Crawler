@@ -1,30 +1,33 @@
 # 貢獻指南
 
-感謝您對本專案的興趣！本指南將幫助您在 dev container 開發環境中進行貢獻。
+感謝您對本專案的興趣！本指南將幫助您設定開發環境並進行貢獻。
 
 ## 開發環境設置
 
-### 使用 Dev Container (推薦)
-
-1. 安裝 VS Code 和 Docker Desktop
-2. 安裝 "Dev Containers" 擴充套件
-3. 開啟此專案資料夾
-4. 執行命令: `Dev Containers: Reopen in Container`
-5. 等待環境設置完成
-
-### 本機開發 (替代方案)
+### Rust 開發環境
 
 ```bash
-# 安裝 uv
-pip install uv
+# 安裝 Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# 同步依賴
-uv sync --all-extras
+# 安裝 Tauri Linux 依賴（Ubuntu/Debian）
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev
 
-# 驗證安裝
-ruff --version
-pytest --version
+# 安裝 Node.js 相依
+cd stock-tauri && npm install
+
+# 驗證
+cargo --version
+node --version
+npm --version
 ```
+
+### 使用 Dev Container（歷史 Python 開發）
+
+Dev Container 仍保留於 `.devcontainer/`，僅供參考 Python 版原始碼。
+Rust/Tauri 開發建議在本機環境進行。
+
+---
 
 ## 開發工作流程
 
@@ -38,192 +41,115 @@ git checkout -b fix/bug名稱
 
 ### 2. 進行變更
 
-在編輯程式碼時:
-- 儲存時會自動使用 ruff 格式化
-- VS Code 會顯示任何 linting 問題
+修改 Rust 程式碼（`stock-core/`、`stock-cli/`、`stock-tauri/src-tauri/`）
+或 Vue 前端（`stock-tauri/src/`）。
 
 ### 3. 執行測試
 
 ```bash
-# 執行所有測試
+# Rust 單元測試（29 項）
+cargo test -p stock-core
+
+# Lint
+cargo clippy -p stock-core
+cargo clippy -p stock-cli
+cargo clippy -p stock-tauri
+
+# 格式化
+cargo fmt -p stock-core
+cargo fmt -p stock-cli
+cargo fmt -p stock-tauri
+
+# Python 測試（已停止維護，僅供歷史參考）
 make test
-
-# 執行特定測試檔案
-uv run pytest tests/test_file.py
-
-# 執行測試並查看覆蓋率
-make test-cov
 ```
 
-### 4. 程式碼審查
+### 4. 執行前端建置檢查
 
 ```bash
-# 檢查程式碼風格
-make check
-
-# 自動修復風格問題
-make fix
-
-# 執行 pre-commit 檢查
-make pre-commit
+cd stock-tauri
+npm run build
+npm run typecheck   # 若已設定
 ```
 
 ### 5. 提交變更
 
 ```bash
-# Pre-commit 會自動執行檢查
 git add .
 git commit -m "說明性的提交訊息"
 ```
 
 提交訊息應遵循以下格式:
-- `feat: 新功能說明`
-- `fix: bug 修復說明`
-- `docs: 文件更新`
-- `test: 測試相關變更`
-- `refactor: 程式碼重構`
+- `feat:` 新功能說明
+- `fix:` bug 修復說明
+- `docs:` 文件更新
+- `test:` 測試相關變更
+- `refactor:` 程式碼重構
 
-## 代碼風格
+---
 
-本專案使用 **ruff** 進行程式碼格式化:
-
-### 配置 (pyproject.toml)
-- **行長度**: 88 字元 (PEP 8)
-- **Python 版本**: 3.10+
-- **Lint 規則**: E, W, F, I, C, B
-
-### 常見風格規則
-
-```python
-# ❌ 不推薦
-import os,sys
-from module import a,b,c
-x = 1 ;
-
-# ✅ 推薦
-import os
-import sys
-from module import a, b, c
-x = 1
-```
-
-## 使用 uv 管理依賴
-
-### 新增依賴
+## Tauri 開發模式
 
 ```bash
-# 執行時依賴
-uv add 套件名稱
-
-# 開發用依賴
-uv add --dev 套件名稱
+cd stock-tauri
+npm run tauri dev
 ```
 
-### 查看依賴
+這會啟動：
+1. Vite dev server（Vue 前端 hot-reload）
+2. Tauri Rust 後端（含自動重新編譯）
+
+### 常用開發指令
 
 ```bash
-# 顯示已安裝套件
-uv pip list
+# 建置正式版本
+npm run tauri build
 
-# 顯示依賴樹
-uv tree
+# 預覽 Rust 後端日誌
+# 可在 src-tauri/src 中加入 println! 或 tauri::log 輸出
 ```
 
-## Docker-in-Docker 開發
-
-Dev Container 內建 Docker-in-Docker 支援，可以直接構建和執行 Docker 映像。
-
-### 常見 Docker 操作
-
-```bash
-# 檢查 Docker 安裝
-docker --version
-
-# 構建映像
-docker build -t myapp:latest .
-
-# 執行容器
-docker run -d -p 8000:8000 myapp:latest
-
-# 查看執行中的容器
-docker ps
-
-# 檢查日誌
-docker logs <container_id>
-
-# 停止容器
-docker stop <container_id>
-
-# 使用 Docker Compose
-docker-compose up -d
-docker-compose down
-```
-
-### Docker 在 CI/CD 中的應用
-
-- 本地測試容器化應用
-- 構建和推送映像到 Registry
-- 使用 Docker Compose 管理相依服務
-- 測試多容器應用部署
+---
 
 ## 常用命令速查
 
-| 命令               | 說明                     |
-| ------------------ | ------------------------ |
-| `make help`        | 顯示所有可用命令         |
-| `make install`     | 安裝依賴                 |
-| `make dev-install` | 安裝所有依賴(含開發)     |
-| `make format`      | 格式化程式碼             |
-| `make check`       | 檢查程式碼風格           |
-| `make fix`         | 自動修復程式碼           |
-| `make test`        | 執行測試                 |
-| `make test-cov`    | 執行測試並產生覆蓋率報告 |
-| `make clean`       | 清理快取檔案             |
-| `make jupyter`     | 啟動 Jupyter Lab         |
+### Rust / Tauri
 
-## Jupyter Notebook 開發
+| 命令 | 說明 |
+|------|------|
+| `cargo test -p stock-core` | 執行 Rust 單元測試 |
+| `cargo clippy -p stock-core` | Rust lint |
+| `cargo fmt -p stock-core` | Rust 格式化 |
+| `cd stock-tauri && npm run tauri dev` | 啟動桌面應用開發模式 |
+| `cd stock-tauri && npm run tauri build` | 建置正式桌面應用 |
+| `cargo build -p stock-cli --release` | 建置 CLI |
 
-對於互動式開發:
+### Makefile
 
-```bash
-# 啟動 Jupyter Lab
-make jupyter
+| 命令 | 說明 |
+|------|------|
+| `make tauri-dev` | 啟動 Tauri 開發模式 |
+| `make tauri-build` | 建置正式版 |
+| `make stock-cli ARGS="--help"` | 執行 CLI |
+| `make cargo-test` | Rust 單元測試 |
+| `make help` | 顯示所有命令 |
 
-# 或
-jupyter lab --ip=0.0.0.0 --allow-root
-```
+---
 
-然後在 VS Code 中存取 `http://localhost:8888`
+## 歷史參考（Python 開發流程）
 
-### Notebook 格式化
+Python 原始碼已於 2026-06 停止主動維護，保留於 `market_crawler/` 目錄僅供參考。
+以下內容保留為歷史參考：
 
-VS Code 會自動格式化 Notebook 中的程式碼 (在儲存時使用 ruff)。
+### 原始開發環境
 
-## 疑難排解
+- Python 3.13+、uv 套件管理
+- `uv sync --all-extras` 安裝依賴
+- `make test` 執行 pytest（181 項測試）
+- `make check` ruff lint
+- `make format` ruff format
 
-### 問題: ruff 無法找到
-```bash
-# 檢查 ruff 是否安裝
-which ruff
-uv pip list | grep ruff
-
-# 重裝依賴
-uv sync --all-extras --force
-```
-
-### 問題: pytest 無法執行
-```bash
-# 驗證 pytest 安裝
-uv run pytest --version
-
-# 檢查測試檔案結構
-# tests/ 目錄下應有 test_*.py 的檔案
-```
-
-### 問題: 容器無法啟動
-- 確保 Docker 正在執行
-- 執行 "Dev Containers: Rebuild Container"
-- 檢查系統資源 (磁碟空間、記憶體)
+---
 
 ## 提交 Pull Request
 
@@ -239,10 +165,16 @@ uv run pytest --version
 
 ## 資源連結
 
-- [uv GitHub](https://github.com/astral-sh/uv)
-- [ruff 文檔](https://docs.astral.sh/ruff/)
-- [pytest 文檔](https://docs.pytest.org/)
-- [Python PEP 8](https://pep8.org/)
+### Rust / Tauri
+
+- [Rust 官方](https://www.rust-lang.org/)
+- [Tauri v2 文檔](https://v2.tauri.app/)
+- [clap CLI 框架](https://docs.rs/clap/)
+
+### 前端
+
+- [Vue 3](https://vuejs.org/)
+- [ECharts](https://echarts.apache.org/)
 
 ---
 

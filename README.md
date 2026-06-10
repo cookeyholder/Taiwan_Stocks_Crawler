@@ -1,145 +1,162 @@
-# 臺股成交資訊收集
+# 臺股選股工具
 
-臺灣股市每日收盤行情自動抓取與入庫系統。支援 TWSE（臺灣證券交易所）與 TPEX（證券櫃買中心）資料，提供命令列工具 `twse-crawler`，可排程執行、回補歷史資料並自動辨識例假日與休市日。
+臺灣股市每日收盤行情自動抓取、入庫與技術分析桌面應用。
+支援 **TWSE**（臺灣證券交易所）與 **TPEX**（證券櫃買中心）資料，
+提供圖形化介面與命令列工具進行資料查詢與布林擠壓選股。
 
 ## 功能特色
 
 - **雙來源支援**：自動抓取 TWSE 與 TPEX 每日收盤行情
 - **智慧路由**：今日資料走 JSON API，歷史資料走 CSV API（日期前後自動切換）
-- **休市偵測**：自動辨識 `holiday`、`weekend`、`market_closed`（颱風假等臨時休市）、`source_error`
-- **自動假日抓取**：每次執行自動從 TWSE `holidaySchedule` API 取得當年假日清單
-- **冪等寫入**：重複匯入同一日期不會產生重複資料（SQLite `UPSERT`）
-- **編碼容錯**：cp950 → big5hkscs → utf-8-sig → utf-8 依序嘗試解碼
-- **高效能與安全性**：預設啟用安全 SSL/TLS 連線憑證驗證；多日批次補檔時自動複用資料庫連線與 HTTP Session 連線池，採用 `executemany` 批次寫入並在記憶體中快取有價證券主檔與日期解析，大幅減少 I/O 與連線延遲
-- **品質報告**：每批次執行後輸出 `BatchQualityReport`（trading／source_error／market_closed 計數），holiday／weekend 會保留在 outcomes 明細
+- **桌面應用**：Tauri v2 桌面殼層 + Vue 3 前端（ECharts 四圖格：K 線、成交量、RSI、MACD）
+- **布林擠壓選股**：以 bandwidth 門檻篩選 squeezed 標的，支援成交量與商品類型過濾
+- **技術指標**：SMA / EMA / Bollinger Bands / RSI / MACD（Rust 純函式計算，含單元測試）
+- **CLI 工具**：`stock-cli` 支援 fetch、screen、sync 子指令
+- **跨平台打包**：Linux（deb / rpm）與 Windows（msi / nsis）
+
+---
+
+## 技術架構
+
+```
+Cargo workspace
+├── stock-core/          # Rust 核心函式庫
+│   ├── analysis/        # 技術指標（SMA/EMA/Bollinger/RSI/MACD）
+│   ├── db/              # SQLite CRUD + migration
+│   ├── fetcher/         # HTTP 爬蟲（TWSE/TPEX，含 Big5 解碼）
+│   └── pipeline/        # 端到端管線
+├── stock-cli/           # Rust CLI（clap derive）
+└── stock-tauri/         # Tauri v2 桌面殼層
+    ├── src-tauri/       # Rust 後端（7 個 Tauri commands）
+    └── src/             # Vue 3 + TypeScript 前端
+        ├── views/       # 三頁簽（分析/選股/下載）
+        └── components/  # ECharts 圖表、參數表單、篩選表格
+```
+
+---
+
+## 建置指南
+
+### 前置需求
+
+| 平台 | 需求 |
+|------|------|
+| **Linux** | Rust、Node.js >= 18、`libwebkit2gtk-4.1-dev` 等系統套件 |
+| **Windows** | Rust、Node.js >= 18、VS Build Tools（C++ 桌面開發）、WebView2 |
+
+#### Linux
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+#### Windows
+
+1. 安裝 [rustup](https://rustup.rs)
+2. 安裝 [Node.js](https://nodejs.org/) >= 18
+3. 安裝 Visual Studio Build Tools，勾選「Desktop development with C++」
+4. WebView2 已內建於 Windows 10 以上
+
+### 建置桌面應用
+
+```bash
+cd stock-tauri
+npm install
+npm run tauri build
+```
+
+輸出路徑：
+- Linux：`src-tauri/target/release/bundle/deb/`、`rpm/`
+- Windows：`src-tauri/target/release/bundle/msi/`、`nsis/`
+
+### 建置 CLI
+
+```bash
+cargo build -p stock-cli --release
+# 輸出：target/release/stock-cli（Linux）或 stock-cli.exe（Windows）
+```
+
+---
 
 ## 快速開始
 
-### 環境需求
-
-- Python 3.13+
-- [uv](https://docs.astral.sh/uv/) 套件管理工具
-- Docker Desktop（使用 Dev Container 時）
-
-### 安裝
-
-**建議：使用 Dev Container（含 Python 3.13、uv、pre-commit）**
-
-1. 安裝 VS Code 與 [Dev Containers 擴充套件](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-2. 開啟此資料夾，執行 `Dev Containers: Reopen in Container`
-3. 同步相依套件：
+### Tauri 桌面模式
 
 ```bash
-uv sync --all-extras
+cd stock-tauri
+npm install
+npm run tauri dev
 ```
 
-**本機安裝（替代方案）**
+### CLI 模式
 
 ```bash
-pip install uv
-uv sync --all-extras
+# 今日資料
+cargo run -p stock-cli -- fetch --today
+
+# 布林擠壓選股
+cargo run -p stock-cli -- screen --bandwidth-limit 0.1 --consecutive-days 3
+
+# 批次補檔
+cargo run -p stock-cli -- sync --start 2026-01-01 --end 2026-06-10
 ```
 
-安裝後可直接執行 `twse-crawler --help` 確認安裝成功。
-
-## 命令列工具
-
-`twse-crawler` 提供四種執行模式，互斥擇一使用。
-
-### 抓取今日資料（排程推薦）
-
-建議在每日 **18:00 後**執行，確保收盤資料已更新。
+### Rust 測試
 
 ```bash
-twse-crawler --today
-twse-crawler --today --db /data/market.db
+cargo test -p stock-core
 ```
 
-或等效使用：
+---
+
+## 命令列工具（stock-cli）
+
+`stock-cli` 為 Rust 實作的 CLI，提供以下子指令：
+
+### fetch
 
 ```bash
-python -m market_crawler.pipeline --today
+stock-cli fetch --today
+stock-cli fetch --date 2026-06-10
 ```
 
-### 抓取指定日期
+### screen
 
 ```bash
-twse-crawler --date 2026-03-17
+stock-cli screen --bandwidth-limit 0.1 --consecutive-days 3
+stock-cli screen --bandwidth-limit 0.05 --consecutive-days 5 --min-volume 1000000 --instrument-types stock,etf
 ```
 
-注意：`--date` 格式必須為 `YYYY-MM-DD`，不接受 `YYYYMMDD`。
-
-### 回補近 N 天資料
+### sync
 
 ```bash
-twse-crawler --backfill 30    # 從今日往前 30 天
-twse-crawler --backfill 90    # 初次建立歷史資料
-```
-
-### 指定任意日期區間
-
-```bash
-twse-crawler --start 2026-01-01 --end 2026-03-31
+stock-cli sync --start 2026-01-01 --end 2026-06-10
 ```
 
 ### 共用選項
 
 | 選項 | 說明 | 預設值 |
 |------|------|--------|
-| `--db PATH` | SQLite 資料庫路徑 | `market_data.db` |
-| `--holidays DATE …` | 手動補充假日（可多個，ISO 格式） | 無 |
-| `--no-auto-holidays` | 停用自動假日抓取 | 否 |
-| `--timeout SECS` | HTTP 請求逾時秒數 | `30` |
-| `--retries N` | HTTP 重試次數 | `3` |
+| `--db-path PATH` | SQLite 資料庫路徑 | `~/.local/share/stock-screener/market_data.db` |
 
 ### 排程範例（cron）
 
 ```cron
 # 每日 18:10 自動抓取今日收盤資料
-10 18 * * 1-5 /path/to/.venv/bin/twse-crawler --today --db /data/market.db
+10 18 * * 1-5 /path/to/stock-cli fetch --today
 ```
+
+---
 
 ## 資料來源路由
 
 | 請求日期 | TWSE 來源 | TPEX 來源 |
 |----------|----------|----------|
 | 今日 | JSON API（`openapi.twse.com.tw`） | JSON API（`dailyQuotes?response=json`） |
-| 歷史日期 | CSV API（`MI_INDEX?response=csv&date=YYYYMMDD`） | JSON API（`dailyQuotes?response=json`） |
+| 歷史日期 | CSV API（`MI_INDEX?response=csv`） | JSON API（`dailyQuotes?response=json`） |
 
-> TWSE JSON API 固定回傳最新交易日資料，不接受日期參數。若回傳日期與請求日期不符，系統自動標記為 `market_closed`。
-
-## 架構概述
-
-```
-market_crawler/
-├── http_client.py        # HTTP 抓取（RetryPolicy、get_with_retry）
-├── parsers.py            # TWSE / TPEX 原始資料解析，回傳 ParseResult(records, errors)
-├── encoding.py           # 編碼 fallback：cp950 → big5hkscs → utf-8-sig → utf-8
-├── normalize.py          # 統一格式化（民國年轉西元、數值清理）→ CanonicalQuote
-├── classification.py     # 商品分類（override → StockID.csv → CFICode → 樣式規則）
-├── repository.py         # SQLiteMarketRepository（market_quote_core / _extension）
-├── orchestrator.py       # 批次匯入流程、classify_day()、BatchQualityReport
-├── pipeline.py           # 端對端整合、make_fetcher()、fetch_and_ingest_day()、main()
-├── quality.py            # BatchQualityReport 資料類別
-├── models.py             # CanonicalQuote、ParseError 資料類別
-└── fetch_security_master.py  # 下載最新 StockID.csv
-```
-
-### 處理流程
-
-```
-HTTP 抓取 (http_client)
-    ↓
-原始解析 (parsers)  ←── 收集 ParseError，不中斷流程
-    ↓
-正規化 (normalize)  ←── 民國年→西元、數值清理、symbol_raw & symbol_clean
-    ↓
-商品分類 (classification)  ←── StockID.csv 優先，fallback 樣式規則
-    ↓
-SQLite 寫入 (repository)  ←── UPSERT，重複匯入不產生重複資料
-    ↓
-品質報告 (orchestrator)  ←── trading/holiday/market_closed/source_error 計數
-```
+---
 
 ## 資料庫 Schema
 
@@ -151,57 +168,84 @@ SQLite 寫入 (repository)  ←── UPSERT，重複匯入不產生重複資料
 |------|------|
 | `trade_date` | 西元格式交易日（`YYYY-MM-DD`） |
 | `market_code` | `TWSE` 或 `TPEX` |
-| `symbol_clean` | 標準股票代號（去除 Excel `="..."` 格式） |
-| `symbol_raw` | 原始代號（保留 `="0050"` 格式） |
+| `symbol_clean` | 標準股票代號 |
+| `symbol_raw` | 原始代號 |
 | `instrument_type` | 商品類型（`stock`、`etf`、`warrant` 等） |
 | `close_price` | 收盤價 |
 | `volume_shares` | 成交股數 |
-| `turnover_value` | 成交金額 |
 
-**`market_quote_extension`** — 原始 payload 與附加中繼資料（外鍵關聯 `market_quote_core`）
+**`market_quote_extension`** — 原始 payload 與附加中繼資料
 
-## 休市分類邏輯
-
-`classify_day()` 依下列優先順序判斷：
-
-1. **`holiday`** — 日期在已知假日集合中（國定假日或手動指定）
-2. **`weekend`** — 星期六或日
-3. **`market_closed`** — 工作日但 API 回傳日期與請求日期不符（颱風假等臨時休市）
-4. **`trading`** — 正常交易日
-
-`market_closed` **不計入** `source_error_count`，兩者分開統計。
+---
 
 ## 開發
 
-### 執行測試
+### Rust 開發
 
 ```bash
-make test              # 所有測試
-make test-cov          # 含覆蓋率報告
-uv run pytest tests/test_pipeline.py -v   # 單一測試檔
+# 單元測試（29 項）
+cargo test -p stock-core
+
+# Lint
+cargo clippy -p stock-core
+
+# 格式化
+cargo fmt -p stock-core
 ```
 
-### Lint 與格式化
+### Tauri 開發模式
 
 ```bash
-make check             # ruff check（只檢查）
-make fix               # ruff check --fix
-make format            # ruff format
-make pre-commit        # 執行全部 pre-commit hooks
+cd stock-tauri && npm run tauri dev
 ```
 
-### 測試結構
+### Makefile 指令
 
-| 測試檔案 | 涵蓋範圍 |
-|----------|---------|
-| `test_parsers.py` | TWSE / TPEX 解析邏輯、ParseError 收集 |
-| `test_normalize.py` | 民國年轉換、數值清理、symbol_clean |
-| `test_classification.py` | 商品分類優先順序 |
-| `test_repository.py` | SQLite UPSERT 冪等性 |
-| `test_orchestrator.py` | classify_day()、BatchQualityReport |
-| `test_pipeline.py` | 日期路由、CLI 引數、假日抓取 |
-| `test_guardrails_and_regressions.py` | 防呆測試、端對端整合測試 |
-| `test_quality_and_encoding.py` | 品質報告計數、編碼 fallback |
+| 指令 | 說明 |
+|------|------|
+| `make tauri-dev` | 啟動 Tauri 開發模式 |
+| `make tauri-build` | 建置正式版 |
+| `make stock-cli ARGS="--help"` | 執行 CLI |
+| `make cargo-test` | Rust 單元測試 |
+
+---
+
+## 歷史參考（Python 版）
+
+本專案原為 Python Tkinter 實作，已於 2026-06 遷移至 Tauri + Rust。
+Python 原始碼保留於 `market_crawler/` 目錄，不再主動維護。
+
+### 原始架構
+
+```
+market_crawler/
+├── http_client.py
+├── parsers.py
+├── encoding.py
+├── normalize.py
+├── classification.py
+├── repository.py
+├── orchestrator.py
+├── pipeline.py
+├── quality.py
+├── models.py
+└── fetch_security_master.py
+```
+
+### 原始 CLI（twse-crawler）
+
+```bash
+twse-crawler --today
+twse-crawler --date 2026-03-17
+twse-crawler --backfill 30
+twse-crawler --start 2026-01-01 --end 2026-03-31
+```
+
+### 原始測試（181 項 Python pytest）
+
+詳見 [docs/testing_matrix.md](docs/testing_matrix.md)。
+
+---
 
 ## 貢獻
 
