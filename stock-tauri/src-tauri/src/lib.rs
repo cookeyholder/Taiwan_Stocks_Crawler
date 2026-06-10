@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use stock_core::analysis;
+
 use stock_core::db::MarketRepository;
 use stock_core::fetcher::{HttpClient, HttpPolicy};
 use stock_core::models::*;
@@ -31,9 +31,11 @@ struct AnalysisResponse {
 #[tauri::command]
 async fn fetch_today(state: State<'_, AppState>) -> Result<String, String> {
     let pipeline = state.pipeline.lock().await;
-    pipeline.fetch_today().await
-        .map(|o| format!("{}: {} records", o.message, o.records_inserted))
-        .map_err(|e| e.to_string())
+    let outcome = pipeline.fetch_today().await.map_err(|e| e.to_string())?;
+    if outcome.records_inserted > 0 {
+        let _ = pipeline.repo.sync_securities();
+    }
+    Ok(format!("{}: {} records", outcome.message, outcome.records_inserted))
 }
 
 #[tauri::command]
@@ -68,30 +70,27 @@ async fn get_analysis(
     macd_slow: Option<usize>,
     macd_signal: Option<usize>,
 ) -> Result<AnalysisResponse, String> {
+    eprintln!("[get_analysis] START: symbol={}, ma={:?}, rsi={:?}, macd=({:?},{:?},{:?})",
+        symbol, ma_periods, rsi_period, macd_fast, macd_slow, macd_signal);
     let pipeline = state.pipeline.lock().await;
+    eprintln!("[get_analysis] pipeline lock acquired");
     let output = pipeline.get_analysis(&symbol, &ma_periods, rsi_period, macd_fast, macd_slow, macd_signal)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| { eprintln!("[get_analysis] ERROR: {}", e); e.to_string() })?;
+    eprintln!("[get_analysis] got {} OHLCV records", output.ohlcv.len());
 
-    let prices: Vec<f64> = output.ohlcv.iter().filter_map(|r| r.close_price).collect();
-    let bollinger = if prices.len() >= 20 {
-        Some(analysis::bollinger(&prices, 20, 2.0))
-    } else {
-        None
-    };
-
-    let name = pipeline.repo.get_distinct_symbols().ok().and_then(|syms| {
-        syms.iter().find(|(s, _)| s == &symbol).map(|(_, m)| m.clone())
-    });
+    let name = pipeline.repo.get_symbol_name(&symbol).ok().flatten();
+    eprintln!("[get_analysis] symbol_name={:?}", name);
 
     let empty = vec![];
-    Ok(AnalysisResponse {
+    eprintln!("[get_analysis] building response...");
+    let resp = AnalysisResponse {
         symbol,
         name,
         ohlcv: output.ohlcv,
-        bollinger_upper: bollinger.as_ref().map(|b| b.upper.clone()).unwrap_or(empty.clone()),
-        bollinger_middle: bollinger.as_ref().map(|b| b.middle.clone()).unwrap_or(empty.clone()),
-        bollinger_lower: bollinger.as_ref().map(|b| b.lower.clone()).unwrap_or(empty),
+        bollinger_upper: output.bollinger.as_ref().map(|b| b.upper.clone()).unwrap_or(empty.clone()),
+        bollinger_middle: output.bollinger.as_ref().map(|b| b.middle.clone()).unwrap_or(empty.clone()),
+        bollinger_lower: output.bollinger.as_ref().map(|b| b.lower.clone()).unwrap_or(empty),
         ma5: output.ma_lines.get(0).cloned().unwrap_or_default(),
         ma10: output.ma_lines.get(1).cloned().unwrap_or_default(),
         ma20: output.ma_lines.get(2).cloned().unwrap_or_default(),
@@ -99,19 +98,40 @@ async fn get_analysis(
         macd_line: output.macd.as_ref().map(|m| m.macd_line.clone()).unwrap_or_default(),
         macd_signal: output.macd.as_ref().map(|m| m.signal_line.clone()).unwrap_or_default(),
         macd_histogram: output.macd.as_ref().map(|m| m.histogram.clone()).unwrap_or_default(),
-    })
+    };
+    eprintln!("[get_analysis] response ready, sending back");
+    Ok(resp)
 }
 
 #[tauri::command]
-async fn get_symbols(state: State<'_, AppState>) -> Result<Vec<(String, String)>, String> {
+async fn get_symbols(state: State<'_, AppState>) -> Result<Vec<(String, String, Option<String>)>, String> {
     let pipeline = state.pipeline.lock().await;
-    pipeline.repo.get_distinct_symbols().map_err(|e| e.to_string())
+    let securities = pipeline.repo.get_securities().map_err(|e| e.to_string())?;
+    if !securities.is_empty() {
+        return Ok(securities);
+    }
+    pipeline.repo.sync_securities().map_err(|e| e.to_string())?;
+    pipeline.repo.get_securities().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn get_latest_trade_date(state: State<'_, AppState>) -> Result<Option<String>, String> {
     let pipeline = state.pipeline.lock().await;
     pipeline.repo.get_latest_trade_date().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_date_range(state: State<'_, AppState>, start: String, end: String) -> Result<String, String> {
+    let pipeline = state.pipeline.lock().await;
+    let count = pipeline.repo.delete_date_range(&start, &end).map_err(|e| e.to_string())?;
+    let _ = pipeline.repo.sync_securities();
+    Ok(format!("已刪除 {} 筆記錄（{} ~ {}）", count, start, end))
+}
+
+#[tauri::command]
+async fn get_date_range(state: State<'_, AppState>) -> Result<(Option<String>, Option<String>, usize), String> {
+    let pipeline = state.pipeline.lock().await;
+    pipeline.repo.get_date_range().map_err(|e| e.to_string())
 }
 
 #[derive(Clone, Serialize)]
@@ -135,12 +155,13 @@ async fn batch_download(
 
     let mut current = start;
     let total_days = (end - start).num_days() as usize + 1;
-    let mut processed = 0usize;
+    let mut days_done = 0usize;
+    let mut total_records = 0usize;
 
     while current <= end {
         let date_str = current.format("%Y-%m-%d").to_string();
         let _ = app.emit("download-progress", DownloadProgress {
-            current: processed,
+            current: days_done,
             total: total_days,
             date: date_str.clone(),
         });
@@ -148,11 +169,17 @@ async fn batch_download(
         let pipeline = state.pipeline.lock().await;
         match pipeline.fetch_date(&date_str).await {
             Ok(outcome) => {
-                processed += outcome.records_inserted;
+                total_records += outcome.records_inserted;
             }
             Err(_) => {}
         }
+        days_done += 1;
         current += chrono::Duration::days(1);
+    }
+
+    if total_records > 0 {
+        let pipeline = state.pipeline.lock().await;
+        let _ = pipeline.repo.sync_securities();
     }
 
     let _ = app.emit("download-progress", DownloadProgress {
@@ -161,7 +188,7 @@ async fn batch_download(
         date: "完成".into(),
     });
 
-    Ok(format!("Downloaded {} records across {} dates", processed, total_days))
+    Ok(format!("Downloaded {} records across {} dates", total_records, total_days))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -187,6 +214,8 @@ pub fn run() {
             get_analysis,
             get_symbols,
             get_latest_trade_date,
+            get_date_range,
+            delete_date_range,
             batch_download,
         ])
         .run(tauri::generate_context!())

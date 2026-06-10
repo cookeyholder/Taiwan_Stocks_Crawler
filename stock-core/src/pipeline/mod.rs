@@ -112,6 +112,7 @@ impl Pipeline {
         macd_slow: Option<usize>,
         macd_signal: Option<usize>,
     ) -> Result<AnalysisOutput, PipelineError> {
+        eprintln!("[pipeline::get_analysis] symbol={}, ma_periods={:?}", symbol, ma_periods);
         let end = chrono::Local::now().format("%Y-%m-%d").to_string();
         let start = {
             let d = NaiveDate::parse_from_str(&end, "%Y-%m-%d")
@@ -119,7 +120,9 @@ impl Pipeline {
             let start = d - chrono::Duration::days(365 * 2);
             start.format("%Y-%m-%d").to_string()
         };
+        eprintln!("[pipeline::get_analysis] date range: {} -> {}", start, end);
         let ohlcv = self.repo.get_ohlcv(symbol, &start, &end)?;
+        eprintln!("[pipeline::get_analysis] got {} OHLCV rows from DB", ohlcv.len());
         if ohlcv.is_empty() {
             return Err(PipelineError::NoData(symbol.to_string()));
         }
@@ -150,6 +153,9 @@ impl Pipeline {
                 output.macd = Some(crate::analysis::macd(&prices, f, s, sig));
             }
         }
+        eprintln!("[pipeline::get_analysis] DONE: {} prices, {} ma_lines, bollinger={}, rsi={}, macd={}",
+            prices.len(), output.ma_lines.len(),
+            output.bollinger.is_some(), output.rsi.is_some(), output.macd.is_some());
         Ok(output)
     }
 }

@@ -75,6 +75,20 @@ watch([localMa5, localMa10, localMa20, localRsiPeriod, localMacdFast, localMacdS
       <label>訊號</label>
       <input v-model.number="localMacdSignal" type="number" min="1" />
     </div>
+
+    <h4>顯示選項</h4>
+    <div class="param-row">
+      <label>
+        <input v-model="store.showCandlestick" type="checkbox" />
+        K 線
+      </label>
+    </div>
+    <div class="param-row">
+      <label>
+        <input v-model="store.showBollinger" type="checkbox" />
+        布林通道
+      </label>
+    </div>
   </div>
 </template>
 

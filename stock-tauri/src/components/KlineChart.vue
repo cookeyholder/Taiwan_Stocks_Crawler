@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, computed, nextTick } from "vue";
+import { computed } from "vue";
 import VChart from "vue-echarts";
 import { use } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
@@ -14,13 +14,20 @@ use([
   GridComponent, DataZoomComponent, TooltipComponent, LegendComponent,
 ]);
 
-const props = defineProps<{ data: AnalysisData }>();
+const props = defineProps<{
+  data: AnalysisData;
+  showCandlestick?: boolean;
+  showBollinger?: boolean;
+}>();
 
 function buildOption(data: AnalysisData): any {
   const dates = data.ohlcv.map((d) => d.trade_date);
   const ohlc = data.ohlcv.map((d) => [d.open_price, d.close_price, d.low_price, d.high_price]);
   const volume = data.ohlcv.map((d) => d.volume_shares ?? 0);
-  const maxVol = Math.max(...volume, 1);
+
+  const total = dates.length;
+  const defaultWindow = Math.min(30, Math.max(10, total));
+  const zoomStartValue = Math.max(0, total - defaultWindow);
 
   const gridTop = 40;
   const gridGap = 8;
@@ -29,7 +36,7 @@ function buildOption(data: AnalysisData): any {
   const grids: any[] = [];
   const xAxes: any[] = [];
   const yAxes: any[] = [];
-  const datazooms: any[] = [];
+  const axisIndices: number[] = [];
 
   function addPane(height: number, idx: number) {
     const top = idx === 0 ? gridTop : grids.reduce((s, g) => s + g.height + gridGap, gridTop);
@@ -39,14 +46,11 @@ function buildOption(data: AnalysisData): any {
       axisLabel: { rotate: 45, fontSize: 10 },
     });
     yAxes.push({ gridIndex: idx, scale: true, splitLine: { lineStyle: { type: "dashed" } } });
-    datazooms.push({
-      type: "inside", xAxisIndex: idx, start: 0, end: 100,
-      minSpan: 5, maxSpan: 100,
-    });
+    axisIndices.push(idx);
   }
 
-  addPane(60, 0); // price
-  addPane(12, 1); // volume
+  addPane(60, 0);
+  addPane(12, 1);
   let rsiIdx = -1;
   let macdIdx = -1;
   if (data.rsi && data.rsi.some((v) => v !== null)) {
@@ -58,12 +62,14 @@ function buildOption(data: AnalysisData): any {
     addPane(14, macdIdx);
   }
 
-  series.push({
-    name: "K線", type: "candlestick", xAxisIndex: 0, yAxisIndex: 0,
-    data: ohlc, itemStyle: { color: "#ef5350", color0: "#26a69a" },
-  });
+  if (props.showCandlestick !== false) {
+    series.push({
+      name: "K線", type: "candlestick", xAxisIndex: 0, yAxisIndex: 0,
+      data: ohlc, itemStyle: { color: "#ef5350", color0: "#26a69a" },
+    });
+  }
 
-  if (data.bollinger_upper[0] !== null) {
+  if (props.showBollinger !== false && data.bollinger_upper[0] !== null) {
     series.push({
       name: "上軌", type: "line", xAxisIndex: 0, yAxisIndex: 0,
       data: data.bollinger_upper, smooth: true, symbol: "none",
@@ -141,7 +147,14 @@ function buildOption(data: AnalysisData): any {
     grid: grids,
     xAxis: xAxes,
     yAxis: yAxes,
-    dataZoom: datazooms,
+    dataZoom: [{
+      type: "inside",
+      xAxisIndex: axisIndices,
+      startValue: zoomStartValue,
+      endValue: total - 1,
+      minValueSpan: 5,
+      maxValueSpan: total,
+    }],
     series,
   };
 }

@@ -10,8 +10,11 @@
 # 安裝 Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# 安裝 Tauri Linux 依賴（Ubuntu/Debian）
-sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev
+# Tauri 系統依賴（Ubuntu/Debian）
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev \
+                 libsoup-3.0-dev libjavascriptcoregtk-4.1-dev librsvg2-dev \
+                 libdbus-1-dev libssl-dev libayatana-appindicator3-dev \
+                 build-essential curl wget file pkg-config
 
 # 安裝 Node.js 相依
 cd stock-tauri && npm install
