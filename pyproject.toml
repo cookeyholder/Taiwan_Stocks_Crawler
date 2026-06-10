@@ -11,6 +11,11 @@ dependencies = [
     "numpy>=1.23.0",
     "requests>=2.31.0",
     "fake-useragent>=2.2.0",
+    "matplotlib>=3.10.9",
+    "mplfinance>=0.12.10b0",
+    "pandas-ta>=0.4.71b0",
+    "yfinance>=1.4.1",
+    "tqdm>=4.68.1",
 ]
 
 [project.scripts]
@@ -79,3 +84,10 @@ line-ending = "auto"
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.16",
+]

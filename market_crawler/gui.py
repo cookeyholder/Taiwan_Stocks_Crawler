@@ -61,7 +61,7 @@ class StockScreenerApp:
 
         # 初始化資料庫連線與 Repository
         self.db_path = "market_data.db"
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10)
         self.repo = SQLiteMarketRepository(self.conn)
         self.repo.init_schema()
 
@@ -76,7 +76,11 @@ class StockScreenerApp:
         self._patch_missing_security_names()
 
         # 背景重新分類既有資料（非阻塞）
-        threading.Thread(target=reclassify_database, args=(self.conn,), daemon=True).start()
+        def _reclassify_task() -> None:
+            with self.db_lock:
+                reclassify_database(self.conn)
+
+        threading.Thread(target=_reclassify_task, daemon=True).start()
 
         # 標記程式是否正在關閉中，用於安全取消定時器防止 race condition
         self.is_closing = False
