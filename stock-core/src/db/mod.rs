@@ -296,6 +296,7 @@ impl MarketRepository {
                 }
                 _ => false,
             };
+            let latest_upper_band = bollinger.upper.last().and_then(|v| *v);
             results.push(ScreenResult {
                 symbol: symbol.clone(),
                 name: security_name,
@@ -303,6 +304,7 @@ impl MarketRepository {
                 latest_volume: latest.volume_shares,
                 max_bandwidth: max_bw,
                 latest_bandwidth: *recent.last().unwrap_or(&0.0),
+                latest_upper_band,
                 break_upper,
             });
         }

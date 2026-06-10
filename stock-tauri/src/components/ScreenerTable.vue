@@ -10,7 +10,7 @@ function openYahoo(symbol: string) {
   open(`https://tw.stock.yahoo.com/quote/${symbol}.TW`);
 }
 
-type SortKey = "symbol" | "name" | "latest_close" | "latest_volume" | "max_bandwidth" | "latest_bandwidth" | "break_upper";
+type SortKey = "symbol" | "name" | "latest_close" | "latest_volume" | "latest_upper_band" | "latest_bandwidth" | "break_upper";
 const sortKey = ref<SortKey>("symbol");
 const sortOrder = ref<"asc" | "desc">("asc");
 
@@ -73,7 +73,7 @@ function formatPct(v: number): string {
           <th @click="toggleSort('name')" class="sortable">名稱{{ sortIndicator('name') }}</th>
           <th @click="toggleSort('latest_close')" class="sortable">最新價{{ sortIndicator('latest_close') }}</th>
           <th @click="toggleSort('latest_volume')" class="sortable">成交量{{ sortIndicator('latest_volume') }}</th>
-          <th @click="toggleSort('max_bandwidth')" class="sortable">最大頻寬{{ sortIndicator('max_bandwidth') }}</th>
+          <th @click="toggleSort('latest_upper_band')" class="sortable">最新上通道{{ sortIndicator('latest_upper_band') }}</th>
           <th @click="toggleSort('latest_bandwidth')" class="sortable">最新頻寬{{ sortIndicator('latest_bandwidth') }}</th>
           <th @click="toggleSort('break_upper')" class="sortable">突破上通道{{ sortIndicator('break_upper') }}</th>
         </tr>
@@ -89,7 +89,7 @@ function formatPct(v: number): string {
           <td @click.stop="openYahoo(r.symbol)" class="link">{{ r.name ?? "-" }}</td>
           <td>{{ formatPrice(r.latest_close) }}</td>
           <td>{{ formatVolume(r.latest_volume) }}</td>
-          <td>{{ formatPct(r.max_bandwidth) }}</td>
+          <td>{{ formatPrice(r.latest_upper_band) }}</td>
           <td>{{ formatPct(r.latest_bandwidth) }}</td>
           <td>{{ r.break_upper ? "✓" : "" }}</td>
         </tr>

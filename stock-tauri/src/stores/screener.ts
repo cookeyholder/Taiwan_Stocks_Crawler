@@ -9,6 +9,7 @@ export interface ScreenResult {
   latest_volume: number | null;
   max_bandwidth: number;
   latest_bandwidth: number;
+  latest_upper_band: number | null;
   break_upper: boolean;
 }
 

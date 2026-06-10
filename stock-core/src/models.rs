@@ -72,6 +72,7 @@ pub struct ScreenResult {
     pub latest_volume: Option<i64>,
     pub max_bandwidth: f64,
     pub latest_bandwidth: f64,
+    pub latest_upper_band: Option<f64>,
     pub break_upper: bool,
 }
 
