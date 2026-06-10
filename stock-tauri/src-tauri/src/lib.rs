@@ -218,31 +218,6 @@ fn dirs_data_dir() -> std::path::PathBuf {
     if let Ok(dir) = std::env::var("STOCK_DATA_DIR") {
         return std::path::PathBuf::from(dir);
     }
-
-    let candidates: Vec<std::path::PathBuf> = {
-        let mut v = Vec::new();
-        if let Ok(cwd) = std::env::current_dir() {
-            v.push(cwd.join("data"));
-            v.push(cwd.join("stock-tauri").join("data"));
-            if let Some(parent) = cwd.parent() {
-                v.push(parent.join("data"));
-                v.push(parent.join("stock-tauri").join("data"));
-            }
-        }
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                v.push(dir.join("data"));
-            }
-        }
-        let base = dirs::data_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-        v.push(base.join("stock-screener"));
-        v
-    };
-
-    for p in &candidates {
-        if p.join("market_data.db").exists() {
-            return p.clone();
-        }
-    }
-    candidates.into_iter().next().unwrap_or_else(|| std::path::PathBuf::from("data"))
+    let base = dirs::data_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    base.join("stock-screener")
 }
