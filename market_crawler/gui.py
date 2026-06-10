@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import platform
 import queue
 import sqlite3
@@ -38,6 +39,14 @@ if _system == "Darwin":  # macOS
 elif _system == "Windows":
     matplotlib.rc("font", family="Microsoft JhengHei")
 else:  # Linux / Unix
+    # 將 Noto CJK 字型加入 matplotlib 字型管理
+    for _dir in ("/usr/share/fonts/opentype/noto", "/tmp/noto_cjk"):
+        if os.path.isdir(_dir):
+            for _fname in os.listdir(_dir):
+                if _fname.endswith((".ttf", ".otf", ".ttc")):
+                    matplotlib.font_manager.fontManager.addfont(os.path.join(_dir, _fname))
+    # 清除字型快取令新字型生效
+    matplotlib.font_manager._load_fontmanager(try_read_cache=False)
     # 使用常見的 Linux 繁體中文/中文字型
     matplotlib.rc("font", family=["Noto Sans CJK TC", "Noto Sans CJK SC", "Source Han Sans TC", "Droid Sans Fallback", "sans-serif"])
 matplotlib.rcParams["axes.unicode_minus"] = False  # 正常顯示負號
@@ -61,7 +70,7 @@ class StockScreenerApp:
 
         # 初始化資料庫連線與 Repository
         self.db_path = "market_data.db"
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10)
         self.repo = SQLiteMarketRepository(self.conn)
         self.repo.init_schema()
 
@@ -75,8 +84,15 @@ class StockScreenerApp:
         # 補齊歷史股票名稱，需在 db_lock 初始化後執行
         self._patch_missing_security_names()
 
-        # 背景重新分類既有資料（非阻塞）
-        threading.Thread(target=reclassify_database, args=(self.conn,), daemon=True).start()
+        # 背景重新分類既有資料（使用獨立連線避免鎖住主執行緒）
+        def _reclassify_task() -> None:
+            bg_conn = sqlite3.connect(self.db_path, timeout=10)
+            try:
+                reclassify_database(bg_conn)
+            finally:
+                bg_conn.close()
+
+        threading.Thread(target=_reclassify_task, daemon=True).start()
 
         # 標記程式是否正在關閉中，用於安全取消定時器防止 race condition
         self.is_closing = False
@@ -85,9 +101,9 @@ class StockScreenerApp:
         self._setup_styles()
         self._create_widgets()
 
-        # 載入下拉選單初始資料
-        self._t1_refresh_combo()
-        self._t1_set_default_symbol("2330")
+        # 延遲載入下拉選單（視窗先顯示再查詢，避免 3.7M 列 GROUP BY 阻塞 UI）
+        self.root.after_idle(self._t1_refresh_combo)
+        self.root.after_idle(lambda: self._t1_set_default_symbol("2330"))
 
         # 綁定視窗關閉事件以優雅釋放資源
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
@@ -99,17 +115,7 @@ class StockScreenerApp:
         """修補資料庫中 security_name 為空或 NULL 的歷史記錄。"""
         import os
         try:
-            # 1. 取得所有名稱為空或 NULL 的 symbols
-            with self.db_lock:
-                cur = self.conn.cursor()
-                cur.execute("SELECT DISTINCT symbol_clean FROM market_quote_core WHERE security_name IS NULL OR security_name = ''")
-                symbols = [r[0] for r in cur.fetchall()]
-
-            if not symbols:
-                return
-
-            # 2. 載入對照表
-            name_map = {}
+            name_map: dict[str, str] = {}
             csv_path = "StockID.csv"
             if os.path.exists(csv_path):
                 try:
@@ -119,25 +125,36 @@ class StockScreenerApp:
                 except Exception:
                     pass
 
-            # 再融合靜態表作為 fallback
             from market_crawler.yfinance_sync import _STATIC_SYMBOL_NAMES
             for sym, name in _STATIC_SYMBOL_NAMES.items():
-                if sym not in name_map:
-                    name_map[sym] = name
+                name_map.setdefault(sym, name)
 
-            # 3. 批次更新
             with self.db_lock:
                 cur = self.conn.cursor()
-                for sym in symbols:
-                    name = name_map.get(sym)
-                    if name:
-                        cur.execute(
-                            "UPDATE market_quote_core SET security_name = ? WHERE symbol_clean = ? AND (security_name IS NULL OR security_name = '')",
-                            (name, sym)
-                        )
+                cur.execute("SELECT DISTINCT symbol_clean FROM market_quote_core WHERE security_name IS NULL OR security_name = ''")
+                symbols = [r[0] for r in cur.fetchall()]
+
+            if not symbols:
+                return
+
+            # 批次更新：只掃描一次資料表
+            updates: list[tuple[str, str]] = []
+            for sym in symbols:
+                name = name_map.get(sym)
+                if name:
+                    updates.append((name, sym))
+
+            if not updates:
+                return
+
+            with self.db_lock:
+                cur = self.conn.cursor()
+                cur.executemany(
+                    "UPDATE market_quote_core SET security_name = ? WHERE symbol_clean = ? AND (security_name IS NULL OR security_name = '')",
+                    updates,
+                )
                 self.conn.commit()
         except Exception as e:
-            # 僅靜默處理，不影響主程式啟動
             logging.error(f"自動補齊股票名稱失敗：{e}")
 
     def _setup_styles(self) -> None:
@@ -1144,11 +1161,25 @@ class StockScreenerApp:
             ylabel_lower="成交量",
             xrotation=0,
             returnfig=True,
-            figsize=(6, 6),
+            figsize=(6.5, 6),
             style="charles",
             tight_layout=True,
             title=f"[{symbol}]{title_name} 布林通道走勢圖",
         )
+        fig.subplots_adjust(right=0.88)
+
+        # 修正 mplfinance style 覆蓋字型設定，手動套用中文字型
+        _fp = matplotlib.font_manager.FontProperties(family="Noto Sans CJK TC")
+        _fp_bold = matplotlib.font_manager.FontProperties(family="Noto Sans CJK TC", weight="bold")
+        if fig._suptitle:
+            fig._suptitle.set_fontproperties(_fp_bold)
+        for ax in axes:
+            for label in ax.get_xticklabels() + ax.get_yticklabels():
+                label.set_fontproperties(_fp)
+            if ax.get_ylabel():
+                ax.yaxis.label.set_fontproperties(_fp)
+            if ax.get_xlabel():
+                ax.xaxis.label.set_fontproperties(_fp)
 
         # 取代原本的 figure/axes
         self.t2_fig.clf()
