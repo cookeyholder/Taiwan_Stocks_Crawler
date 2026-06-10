@@ -70,21 +70,15 @@ async fn get_analysis(
     macd_slow: Option<usize>,
     macd_signal: Option<usize>,
 ) -> Result<AnalysisResponse, String> {
-    eprintln!("[get_analysis] START: symbol={}, ma={:?}, rsi={:?}, macd=({:?},{:?},{:?})",
-        symbol, ma_periods, rsi_period, macd_fast, macd_slow, macd_signal);
     let pipeline = state.pipeline.lock().await;
-    eprintln!("[get_analysis] pipeline lock acquired");
     let output = pipeline.get_analysis(&symbol, &ma_periods, rsi_period, macd_fast, macd_slow, macd_signal)
         .await
-        .map_err(|e| { eprintln!("[get_analysis] ERROR: {}", e); e.to_string() })?;
-    eprintln!("[get_analysis] got {} OHLCV records", output.ohlcv.len());
+        .map_err(|e| e.to_string())?;
 
     let name = pipeline.repo.get_symbol_name(&symbol).ok().flatten();
-    eprintln!("[get_analysis] symbol_name={:?}", name);
 
     let empty = vec![];
-    eprintln!("[get_analysis] building response...");
-    let resp = AnalysisResponse {
+    Ok(AnalysisResponse {
         symbol,
         name,
         ohlcv: output.ohlcv,
@@ -98,19 +92,12 @@ async fn get_analysis(
         macd_line: output.macd.as_ref().map(|m| m.macd_line.clone()).unwrap_or_default(),
         macd_signal: output.macd.as_ref().map(|m| m.signal_line.clone()).unwrap_or_default(),
         macd_histogram: output.macd.as_ref().map(|m| m.histogram.clone()).unwrap_or_default(),
-    };
-    eprintln!("[get_analysis] response ready, sending back");
-    Ok(resp)
+    })
 }
 
 #[tauri::command]
 async fn get_symbols(state: State<'_, AppState>) -> Result<Vec<(String, String, Option<String>)>, String> {
     let pipeline = state.pipeline.lock().await;
-    let securities = pipeline.repo.get_securities().map_err(|e| e.to_string())?;
-    if !securities.is_empty() {
-        return Ok(securities);
-    }
-    pipeline.repo.sync_securities().map_err(|e| e.to_string())?;
     pipeline.repo.get_securities().map_err(|e| e.to_string())
 }
 

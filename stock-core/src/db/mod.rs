@@ -133,9 +133,7 @@ impl MarketRepository {
         start_date: &str,
         end_date: &str,
     ) -> SqlResult<Vec<OhlcvRecord>> {
-        eprintln!("[get_ohlcv] query: symbol={}, start={}, end={}", symbol, start_date, end_date);
         let conn = self.conn.lock().unwrap();
-        eprintln!("[get_ohlcv] db lock acquired");
         let mut stmt = conn.prepare_cached(
             "SELECT trade_date, open_price, high_price, low_price, close_price, volume_shares
              FROM market_quote_core
@@ -152,11 +150,7 @@ impl MarketRepository {
                 volume_shares: row.get(5)?,
             })
         })?;
-        let result: SqlResult<Vec<OhlcvRecord>> = rows.collect();
-        if let Ok(ref v) = result {
-            eprintln!("[get_ohlcv] returned {} rows", v.len());
-        }
-        result
+        rows.collect()
     }
 
     pub fn screen_bollinger_squeeze(
