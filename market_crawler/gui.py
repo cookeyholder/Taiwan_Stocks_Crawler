@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import platform
 import queue
 import sqlite3
@@ -38,6 +39,14 @@ if _system == "Darwin":  # macOS
 elif _system == "Windows":
     matplotlib.rc("font", family="Microsoft JhengHei")
 else:  # Linux / Unix
+    # 將 Noto CJK 字型加入 matplotlib 字型管理
+    for _dir in ("/usr/share/fonts/opentype/noto", "/tmp/noto_cjk"):
+        if os.path.isdir(_dir):
+            for _fname in os.listdir(_dir):
+                if _fname.endswith((".ttf", ".otf", ".ttc")):
+                    matplotlib.font_manager.fontManager.addfont(os.path.join(_dir, _fname))
+    # 清除字型快取令新字型生效
+    matplotlib.font_manager._load_fontmanager(try_read_cache=False)
     # 使用常見的 Linux 繁體中文/中文字型
     matplotlib.rc("font", family=["Noto Sans CJK TC", "Noto Sans CJK SC", "Source Han Sans TC", "Droid Sans Fallback", "sans-serif"])
 matplotlib.rcParams["axes.unicode_minus"] = False  # 正常顯示負號
@@ -1148,11 +1157,12 @@ class StockScreenerApp:
             ylabel_lower="成交量",
             xrotation=0,
             returnfig=True,
-            figsize=(6, 6),
+            figsize=(6.5, 6),
             style="charles",
             tight_layout=True,
             title=f"[{symbol}]{title_name} 布林通道走勢圖",
         )
+        fig.subplots_adjust(right=0.88)
 
         # 取代原本的 figure/axes
         self.t2_fig.clf()
