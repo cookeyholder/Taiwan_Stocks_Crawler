@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import type { ScreenResult } from "../stores/screener";
 import { ref, computed } from "vue";
+import { open } from "@tauri-apps/plugin-shell";
 
 const props = defineProps<{ results: ScreenResult[] }>();
 const emit = defineEmits<{ select: [symbol: string] }>();
+
+function openYahoo(symbol: string) {
+  open(`https://tw.stock.yahoo.com/quote/${symbol}.TW`);
+}
 
 type SortKey = "symbol" | "name" | "latest_close" | "latest_volume" | "max_bandwidth" | "latest_bandwidth" | "break_upper";
 const sortKey = ref<SortKey>("symbol");
@@ -77,8 +82,8 @@ function formatPct(v: number): string {
           @click="emit('select', r.symbol)"
           class="clickable"
         >
-          <td>{{ r.symbol }}</td>
-          <td>{{ r.name ?? "-" }}</td>
+          <td @click.stop="openYahoo(r.symbol)" class="link">{{ r.symbol }}</td>
+          <td @click.stop="openYahoo(r.symbol)" class="link">{{ r.name ?? "-" }}</td>
           <td>{{ formatPrice(r.latest_close) }}</td>
           <td>{{ formatVolume(r.latest_volume) }}</td>
           <td>{{ formatPct(r.max_bandwidth) }}</td>
@@ -102,5 +107,7 @@ th.sortable:hover { background: #e0e0e0; }
 td { padding: 6px 10px; border-bottom: 1px solid #eee; }
 tr.clickable { cursor: pointer; }
 tr.clickable:hover { background: #e3f2fd; }
+td.link { color: #1976d2; text-decoration: underline; cursor: pointer; }
+td.link:hover { color: #1565c0; }
 .empty-row { text-align: center; color: #999; padding: 40px; }
 </style>

@@ -10,15 +10,16 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "vue": "^3.5",
     "@tauri-apps/api": "^2",
-    "vue-router": "^4",
-    "pinia": "^2",
-    "vue-sonner": "^1",
-    "echarts": "^5",
-    "vue-echarts": "^7",
+    "@tauri-apps/plugin-shell": "^2.3.5",
+    "ag-grid-community": "^31",
     "ag-grid-vue3": "^31",
-    "ag-grid-community": "^31"
+    "echarts": "^5",
+    "pinia": "^2",
+    "vue": "^3.5",
+    "vue-echarts": "^7",
+    "vue-router": "^4",
+    "vue-sonner": "^1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
