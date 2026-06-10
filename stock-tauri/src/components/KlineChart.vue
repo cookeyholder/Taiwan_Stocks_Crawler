@@ -37,10 +37,12 @@ function buildOption(data: AnalysisData): any {
   const xAxes: any[] = [];
   const yAxes: any[] = [];
   const axisIndices: number[] = [];
+  let paneY = gridTop;
 
-  function addPane(height: number, idx: number) {
-    const top = idx === 0 ? gridTop : grids.reduce((s, g) => s + g.height + gridGap, gridTop);
-    grids.push({ left: 60, right: 20, top, height: `${height}%` });
+  function addPane(heightPx: number) {
+    const idx = grids.length;
+    grids.push({ left: 60, right: 20, top: paneY, height: heightPx });
+    paneY += heightPx + gridGap;
     xAxes.push({
       gridIndex: idx, type: "category", data: dates, show: false, boundaryGap: false,
       axisLabel: { rotate: 45, fontSize: 10 },
@@ -49,17 +51,22 @@ function buildOption(data: AnalysisData): any {
     axisIndices.push(idx);
   }
 
-  addPane(60, 0);
-  addPane(12, 1);
+  // approximate pixel heights for a typical 700px chart container
+  const mainH = 340;
+  const volH = 60;
+  const indH = 100;
+
+  addPane(mainH);
+  addPane(volH);
   let rsiIdx = -1;
   let macdIdx = -1;
   if (data.rsi && data.rsi.some((v) => v !== null)) {
     rsiIdx = grids.length;
-    addPane(14, rsiIdx);
+    addPane(indH);
   }
   if (data.macd_line && data.macd_line.some((v) => v !== null)) {
     macdIdx = grids.length;
-    addPane(14, macdIdx);
+    addPane(indH);
   }
 
   if (props.showCandlestick !== false) {
@@ -134,7 +141,8 @@ function buildOption(data: AnalysisData): any {
     });
     series.push({
       name: "柱狀", type: "bar", xAxisIndex: macdIdx, yAxisIndex: macdIdx,
-      data: data.macd_histogram.map((v) => [(v ?? 0) >= 0 ? v : v]),
+      data: data.macd_histogram.map((v) => v == null ? null : [v]),
+      barWidth: "60%",
       itemStyle: { color: (p: any) => (p.value[0] >= 0 ? "#ef5350" : "#26a69a") },
     });
   }
@@ -142,7 +150,28 @@ function buildOption(data: AnalysisData): any {
   return {
     animationDurationUpdate: 100,
     animationEasingUpdate: "linear",
-    tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "cross" },
+      formatter: (params: any[]) => {
+        const date = params[0]?.axisValue ?? "";
+        const lines: string[] = [`${date}`];
+        for (const p of params) {
+          if (p.seriesName === "K線" && Array.isArray(p.value)) {
+            lines.push(`開盤價: ${Number(p.value[0]).toFixed(1)}`);
+            lines.push(`收盤價: ${Number(p.value[1]).toFixed(1)}`);
+            lines.push(`最低價: ${Number(p.value[2]).toFixed(1)}`);
+            lines.push(`最高價: ${Number(p.value[3]).toFixed(1)}`);
+          } else if (p.seriesName === "超買" || p.seriesName === "超賣") {
+            continue;
+          } else {
+            const raw = Array.isArray(p.value) ? p.value[0] : p.value;
+            lines.push(`${p.seriesName}: ${raw == null ? "-" : Number(raw).toFixed(1)}`);
+          }
+        }
+        return lines.join("<br/>");
+      },
+    },
     legend: { top: 5, left: "center", selectedMode: "multiple" },
     grid: grids,
     xAxis: xAxes,
@@ -151,7 +180,7 @@ function buildOption(data: AnalysisData): any {
       type: "inside",
       xAxisIndex: axisIndices,
       startValue: zoomStartValue,
-      endValue: total - 1,
+      endValue: total,
       minValueSpan: 5,
       maxValueSpan: total,
     }],
