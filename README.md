@@ -213,7 +213,7 @@ cd stock-tauri && npm run tauri dev
 ## 歷史參考（Python 版）
 
 本專案原為 Python Tkinter 實作，已於 2026-06 遷移至 Tauri + Rust。
-Python 原始碼保留於 `market_crawler/` 目錄，不再主動維護。
+Python 原始碼已於 2026-06 移除，歷史版本可透過 Git 檢視。
 
 ### 原始架構
 
