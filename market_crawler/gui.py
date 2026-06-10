@@ -84,10 +84,13 @@ class StockScreenerApp:
         # 補齊歷史股票名稱，需在 db_lock 初始化後執行
         self._patch_missing_security_names()
 
-        # 背景重新分類既有資料（非阻塞）
+        # 背景重新分類既有資料（使用獨立連線避免鎖住主執行緒）
         def _reclassify_task() -> None:
-            with self.db_lock:
-                reclassify_database(self.conn)
+            bg_conn = sqlite3.connect(self.db_path, timeout=10)
+            try:
+                reclassify_database(bg_conn)
+            finally:
+                bg_conn.close()
 
         threading.Thread(target=_reclassify_task, daemon=True).start()
 
