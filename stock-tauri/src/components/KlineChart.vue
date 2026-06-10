@@ -56,6 +56,7 @@ function buildOption(data: AnalysisData): any {
   const mainH = 300;
   const volH = 50;
   const indH = 80;
+  const indHMacd = 120;
 
   addPane(mainH);
   addPane(volH);
@@ -67,7 +68,7 @@ function buildOption(data: AnalysisData): any {
   }
   if (data.macd_line && data.macd_line.some((v) => v !== null)) {
     macdIdx = grids.length;
-    addPane(indH);
+    addPane(indHMacd);
   }
 
   if (props.showCandlestick !== false) {

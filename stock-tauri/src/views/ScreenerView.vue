@@ -41,7 +41,11 @@ async function onRowSelected(symbol: string) {
         <ScreenerTable :results="store.results" @select="onRowSelected" />
       </div>
       <div v-if="selectedSymbol && analysisStore.data" class="chart-section">
-        <KlineChart :data="analysisStore.data" />
+        <KlineChart
+          :data="analysisStore.data"
+          :show-candlestick="true"
+          :show-bollinger="true"
+        />
       </div>
     </div>
   </div>
