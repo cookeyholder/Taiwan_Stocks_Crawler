@@ -48,6 +48,16 @@ const MIGRATIONS: &[&str] = &[
         FOREIGN KEY (trade_date, market_code, symbol_clean)
           REFERENCES market_quote_core(trade_date, market_code, symbol_clean)
     );",
+    // V3: securities dimension table
+    "CREATE TABLE IF NOT EXISTS securities (
+        symbol_clean  TEXT NOT NULL PRIMARY KEY,
+        market_code   TEXT NOT NULL,
+        security_name TEXT,
+        updated_at    TEXT NOT NULL DEFAULT ''
+    );",
+    // V4: index on symbol_clean + trade_date for fast stock lookup
+    "CREATE INDEX IF NOT EXISTS idx_market_quote_core_symbol_date
+     ON market_quote_core(symbol_clean, trade_date);",
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -75,6 +85,7 @@ mod tests {
         assert_eq!(version, MIGRATIONS.len() as i32);
         conn.execute("SELECT 1 FROM market_quote_core LIMIT 1", []).unwrap();
         conn.execute("SELECT 1 FROM market_quote_extension LIMIT 1", []).unwrap();
+        conn.execute("SELECT 1 FROM securities LIMIT 1", []).unwrap();
     }
 
     #[test]

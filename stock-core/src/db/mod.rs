@@ -288,6 +288,15 @@ impl MarketRepository {
                 }
             }
             let security_name = name_map.get(symbol).and_then(|n| n.clone());
+            let break_upper = match (latest.open_price, latest.close_price) {
+                (Some(o), Some(c)) if c > o => {
+                    bollinger.upper.last().map_or(false, |u| {
+                        u.map_or(false, |upper| o < upper && c > upper)
+                    })
+                }
+                _ => false,
+            };
+            let latest_upper_band = bollinger.upper.last().and_then(|v| *v);
             results.push(ScreenResult {
                 symbol: symbol.clone(),
                 name: security_name,
@@ -295,18 +304,27 @@ impl MarketRepository {
                 latest_volume: latest.volume_shares,
                 max_bandwidth: max_bw,
                 latest_bandwidth: *recent.last().unwrap_or(&0.0),
+                latest_upper_band,
+                break_upper,
             });
         }
         Ok(results)
     }
 
-    pub fn get_distinct_symbols(&self) -> SqlResult<Vec<(String, String)>> {
+    pub fn get_distinct_symbols(&self) -> SqlResult<Vec<(String, String, Option<String>)>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare_cached(
-            "SELECT DISTINCT symbol_clean, market_code FROM market_quote_core ORDER BY symbol_clean"
+            "SELECT symbol_clean, MAX(market_code), MAX(security_name)
+             FROM market_quote_core
+             GROUP BY symbol_clean
+             ORDER BY symbol_clean"
         )?;
         let rows = stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
         })?;
         rows.collect()
     }
@@ -317,6 +335,81 @@ impl MarketRepository {
             "SELECT MAX(trade_date) FROM market_quote_core"
         )?;
         stmt.query_row([], |row| row.get(0))
+    }
+
+    pub fn sync_securities(&self) -> SqlResult<usize> {
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        let tx = conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM securities", [])?;
+        tx.execute(
+            "INSERT INTO securities (symbol_clean, market_code, security_name, updated_at)
+             SELECT symbol_clean, MAX(market_code), MAX(security_name), ?1
+             FROM market_quote_core
+             WHERE symbol_clean LIKE '00%'
+                OR (symbol_clean GLOB '[1-9]???')
+             GROUP BY symbol_clean",
+            params![now],
+        )?;
+        let count: usize = tx.changes().try_into().unwrap();
+        tx.commit()?;
+        Ok(count)
+    }
+
+    pub fn get_securities(&self) -> SqlResult<Vec<(String, String, Option<String>)>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT symbol_clean, market_code, security_name
+             FROM securities
+             ORDER BY
+               CASE WHEN symbol_clean GLOB '[1-9]???' THEN 0 ELSE 1 END,
+               symbol_clean"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })?;
+        rows.collect()
+    }
+
+    pub fn get_symbol_name(&self, symbol: &str) -> SqlResult<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT security_name FROM market_quote_core
+             WHERE symbol_clean = ?1 AND security_name IS NOT NULL
+             LIMIT 1"
+        )?;
+        stmt.query_row(params![symbol], |row| row.get(0))
+    }
+
+    pub fn delete_date_range(&self, start: &str, end: &str) -> SqlResult<usize> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM market_quote_extension WHERE trade_date >= ?1 AND trade_date <= ?2",
+            params![start, end],
+        )?;
+        let count = conn.execute(
+            "DELETE FROM market_quote_core WHERE trade_date >= ?1 AND trade_date <= ?2",
+            params![start, end],
+        )?;
+        Ok(count)
+    }
+
+    pub fn get_date_range(&self) -> SqlResult<(Option<String>, Option<String>, usize)> {
+        let conn = self.conn.lock().unwrap();
+        let min: Option<String> = conn.query_row(
+            "SELECT MIN(trade_date) FROM market_quote_core", [], |row| row.get(0)
+        )?;
+        let max: Option<String> = conn.query_row(
+            "SELECT MAX(trade_date) FROM market_quote_core", [], |row| row.get(0)
+        )?;
+        let count: usize = conn.query_row(
+            "SELECT COUNT(DISTINCT trade_date) FROM market_quote_core", [], |row| row.get(0)
+        )?;
+        Ok((min, max, count))
     }
 }
 

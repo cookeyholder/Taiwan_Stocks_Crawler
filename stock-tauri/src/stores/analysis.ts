@@ -40,6 +40,8 @@ export const useAnalysisStore = defineStore("analysis", () => {
   const macdSlow = ref(26);
   const macdSignal = ref(9);
   const showMacd = ref(true);
+  const showCandlestick = ref(true);
+  const showBollinger = ref(true);
 
   async function fetchAnalysis(symbol: string) {
     if (!symbol) return;
@@ -67,6 +69,7 @@ export const useAnalysisStore = defineStore("analysis", () => {
   return {
     data, loading, error, selectedSymbol,
     maPeriods, rsiPeriod, showRsi, macdFast, macdSlow, macdSignal, showMacd,
+    showCandlestick, showBollinger,
     fetchAnalysis,
   };
 });
