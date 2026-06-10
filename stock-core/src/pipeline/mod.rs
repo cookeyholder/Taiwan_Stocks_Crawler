@@ -210,14 +210,14 @@ fn parse_change_field(change: Option<&str>) -> (Option<String>, Option<f64>) {
         Some(s) if !s.trim().is_empty() && s.trim() != "--" => s.trim(),
         _ => return (None, None),
     };
-    if s.starts_with('+') || s.starts_with('-') {
-        let sign = s[..1].to_string();
-        let magnitude = s[1..].parse::<f64>().ok();
-        (Some(sign), magnitude)
-    } else if s.starts_with('－') || s.starts_with('＋') {
-        let sign = if s.starts_with('＋') { "+" } else { "-" };
-        let magnitude = s[3..].parse::<f64>().ok();
-        (Some(sign.to_string()), magnitude)
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() >= 2 && (chars[0] == '+' || chars[0] == '-') {
+        let magnitude: String = chars[1..].iter().collect();
+        (Some(chars[0].to_string()), magnitude.parse::<f64>().ok())
+    } else if chars.len() >= 2 && (chars[0] == '＋' || chars[0] == '－') {
+        let sign = if chars[0] == '＋' { "+" } else { "-" };
+        let magnitude: String = chars[1..].iter().collect();
+        (Some(sign.to_string()), magnitude.parse::<f64>().ok())
     } else {
         (None, s.parse::<f64>().ok())
     }

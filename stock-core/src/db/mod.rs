@@ -160,20 +160,25 @@ impl MarketRepository {
         instrument_types: Option<&[String]>,
         min_volume: i64,
     ) -> SqlResult<Vec<ScreenResult>> {
+        use std::collections::HashMap;
+
         let conn = self.conn.lock().unwrap();
         let required_days = consecutive_days + 40;
-        let mut dates: Vec<String> = {
+
+        let dates: Vec<String> = {
             let mut stmt = conn.prepare_cached(
                 "SELECT DISTINCT trade_date FROM market_quote_core ORDER BY trade_date DESC LIMIT ?1"
             )?;
             let rows = stmt.query_map(params![required_days], |row| row.get(0))?;
-            rows.collect::<SqlResult<Vec<String>>>()?
+            let mut d = rows.collect::<SqlResult<Vec<String>>>()?;
+            d.reverse();
+            d
         };
-        dates.reverse();
         if dates.is_empty() {
             return Ok(vec![]);
         }
-        let start_date = &dates[0];
+        let start_date = dates[0].clone();
+        let end_date = dates.last().cloned().unwrap_or_default();
 
         let symbols: Vec<String> = {
             let mut sql = "SELECT DISTINCT symbol_clean FROM market_quote_core WHERE trade_date >= ?1".to_string();
@@ -184,7 +189,7 @@ impl MarketRepository {
                 }
             }
             let mut stmt = conn.prepare_cached(&sql)?;
-            let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(start_date.to_string())];
+            let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(start_date.clone())];
             if let Some(types) = instrument_types {
                 for t in types {
                     param_values.push(Box::new(t.clone()));
@@ -195,12 +200,61 @@ impl MarketRepository {
             rows.collect::<SqlResult<Vec<String>>>()?
         };
 
+        // Batch-load all OHLCV data in one query (fix N+1)
+        let mut ohlcv_map: HashMap<String, Vec<OhlcvRecord>> = HashMap::new();
+        {
+            let mut stmt = conn.prepare_cached(
+                "SELECT symbol_clean, trade_date, open_price, high_price, low_price, close_price, volume_shares
+                 FROM market_quote_core
+                 WHERE trade_date >= ?1 AND trade_date <= ?2
+                 ORDER BY symbol_clean, trade_date ASC"
+            )?;
+            let rows = stmt.query_map(params![start_date, end_date], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    OhlcvRecord {
+                        trade_date: row.get(1)?,
+                        open_price: row.get(2)?,
+                        high_price: row.get(3)?,
+                        low_price: row.get(4)?,
+                        close_price: row.get(5)?,
+                        volume_shares: row.get(6)?,
+                    },
+                ))
+            })?;
+            for result in rows {
+                let (sym, record) = result?;
+                ohlcv_map.entry(sym).or_default().push(record);
+            }
+        }
+
+        // Batch-load security names in one query
+        let mut name_map: HashMap<String, Option<String>> = HashMap::new();
+        {
+            let mut stmt = conn.prepare_cached(
+                "SELECT symbol_clean, security_name FROM market_quote_core
+                 WHERE (symbol_clean, trade_date) IN (
+                     SELECT symbol_clean, MAX(trade_date)
+                     FROM market_quote_core
+                     WHERE security_name IS NOT NULL AND trade_date <= ?1
+                     GROUP BY symbol_clean
+                 )"
+            )?;
+            let rows = stmt.query_map(params![end_date], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })?;
+            for result in rows {
+                let (sym, name) = result?;
+                name_map.entry(sym).or_insert(name);
+            }
+        }
+
         let mut results = Vec::new();
         for symbol in &symbols {
-            let data = self.get_ohlcv(symbol, start_date, &dates.last().cloned().unwrap_or_default())?;
-            if data.len() < 20 {
-                continue;
-            }
+            let data = match ohlcv_map.get(symbol) {
+                Some(d) if d.len() >= 20 => d,
+                _ => continue,
+            };
             let prices: Vec<f64> = data.iter().filter_map(|r| r.close_price).collect();
             if prices.len() < 20 {
                 continue;
@@ -220,34 +274,28 @@ impl MarketRepository {
             }
             let recent: Vec<f64> = valid_bw.iter().rev().take(consecutive_days as usize).copied().rev().collect();
             let max_bw = recent.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-            if max_bw <= bandwidth_limit {
-                if let Some(latest) = data.last() {
-                    if min_volume > 0 {
-                        if let Some(v) = latest.volume_shares {
-                            if v < min_volume {
-                                continue;
-                            }
-                        } else {
-                            continue;
-                        }
-                    }
-                    let security_name = data.iter().find_map(|r| {
-                        let conn = self.conn.lock().unwrap();
-                        let mut stmt = conn.prepare_cached(
-                            "SELECT security_name FROM market_quote_core WHERE symbol_clean = ?1 AND trade_date = ?2 AND security_name IS NOT NULL LIMIT 1"
-                        ).ok()?;
-                        stmt.query_row(params![symbol, r.trade_date], |row| row.get::<_, Option<String>>(0)).ok()?
-                    });
-                    results.push(ScreenResult {
-                        symbol: symbol.clone(),
-                        name: security_name,
-                        latest_close: latest.close_price,
-                        latest_volume: latest.volume_shares,
-                        max_bandwidth: max_bw,
-                        latest_bandwidth: *recent.last().unwrap_or(&0.0),
-                    });
+            if max_bw > bandwidth_limit {
+                continue;
+            }
+            let latest = match data.last() {
+                Some(r) => r,
+                None => continue,
+            };
+            if min_volume > 0 {
+                match latest.volume_shares {
+                    Some(v) if v >= min_volume => {}
+                    _ => continue,
                 }
             }
+            let security_name = name_map.get(symbol).and_then(|n| n.clone());
+            results.push(ScreenResult {
+                symbol: symbol.clone(),
+                name: security_name,
+                latest_close: latest.close_price,
+                latest_volume: latest.volume_shares,
+                max_bandwidth: max_bw,
+                latest_bandwidth: *recent.last().unwrap_or(&0.0),
+            });
         }
         Ok(results)
     }

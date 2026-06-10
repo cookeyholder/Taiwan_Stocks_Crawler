@@ -69,45 +69,58 @@ fn decode_big5_fallback(bytes: &[u8]) -> String {
 fn parse_twse_csv(text: &str, source_file: &str) -> Vec<ParsedRecord> {
     let mut results = Vec::new();
     let mut in_data = false;
-    let mut line_no = 0;
-    for line in text.lines() {
-        line_no += 1;
-        let trimmed = line.trim();
-        if trimmed.contains("每日收盤行情") || trimmed.contains("證券代號") {
+
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .from_reader(text.as_bytes());
+
+    for (line_no, result) in reader.records().enumerate() {
+        let line_no = (line_no + 1) as i64;
+        let record = match result {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        if record.is_empty() || (record.len() == 1 && record[0].trim().is_empty()) {
+            continue;
+        }
+
+        let joined: String = record.iter().collect();
+        if joined.contains("每日收盤行情") || joined.contains("證券代號") {
             in_data = true;
             continue;
         }
-        if !in_data || trimmed.is_empty() || trimmed.starts_with("＊") || trimmed.starts_with("|") {
+        if !in_data || joined.starts_with('＊') || joined.starts_with('|') {
             continue;
         }
-        let fields: Vec<&str> = trimmed.split(',').collect();
-        if fields.len() < 16 {
+        if record.len() < 16 {
             continue;
         }
-        let symbol = fields[0].trim_matches('"').trim().to_string();
-        if symbol.is_empty() || symbol == "證券代號" || !symbol.chars().all(|c| c.is_ascii_digit() || c == '"' || c == '=') {
+
+        let symbol = record[0].trim_matches('=').trim().to_string();
+        if symbol.is_empty() || symbol == "證券代號" || !symbol.chars().all(|c| c.is_ascii_digit()) {
             continue;
         }
-        let name = fields[1].trim_matches('"').trim().to_string();
         results.push(ParsedRecord {
             symbol,
-            name: Some(name),
-            open: Some(fields[5].trim_matches('"').to_string()),
-            high: Some(fields[6].trim_matches('"').to_string()),
-            low: Some(fields[7].trim_matches('"').to_string()),
-            close: Some(fields[8].trim_matches('"').to_string()),
-            volume: Some(fields[2].trim_matches('"').to_string()),
-            turnover: Some(fields[3].trim_matches('"').to_string()),
-            trade_count: Some(fields[4].trim_matches('"').to_string()),
+            name: Some(record[1].to_string()),
+            open: Some(record[5].to_string()),
+            high: Some(record[6].to_string()),
+            low: Some(record[7].to_string()),
+            close: Some(record[8].to_string()),
+            volume: Some(record[2].to_string()),
+            turnover: Some(record[3].to_string()),
+            trade_count: Some(record[4].to_string()),
             change: None,
-            change_sign: Some(fields[9].trim_matches('"').to_string()),
-            change_value: Some(fields[10].trim_matches('"').to_string()),
-            last_bid: Some(fields[11].trim_matches('"').to_string()),
-            last_bid_qty: Some(fields[12].trim_matches('"').to_string()),
-            last_ask: Some(fields[13].trim_matches('"').to_string()),
-            last_ask_qty: Some(fields[14].trim_matches('"').to_string()),
-            pe_ratio: Some(fields[15].trim_matches('"').to_string()),
-            issued_shares: fields.get(16).map(|s| s.trim_matches('"').to_string()),
+            change_sign: Some(record[9].to_string()),
+            change_value: Some(record[10].to_string()),
+            last_bid: Some(record[11].to_string()),
+            last_bid_qty: Some(record[12].to_string()),
+            last_ask: Some(record[13].to_string()),
+            last_ask_qty: Some(record[14].to_string()),
+            pe_ratio: Some(record[15].to_string()),
+            issued_shares: record.get(16).map(|s| s.to_string()),
             next_limit_up: None,
             next_limit_down: None,
             source_file: source_file.to_string(),
