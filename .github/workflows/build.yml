@@ -6,6 +6,7 @@ on:
       - "v*"
 
 jobs:
+  # ── Python / PyInstaller builds (legacy) ──
   build-linux:
     runs-on: ubuntu-latest
     steps:
@@ -66,8 +67,75 @@ jobs:
           name: stock_screener-windows
           path: dist/stock_screener/
 
+  # ── Tauri builds (Rust + Vue desktop) ──
+  build-tauri:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bundle_args: --bundles deb
+            artifact_name: stock-tauri-linux
+            artifact_path: target/release/bundle/deb/
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundle_args: --bundles msi
+            artifact_name: stock-tauri-windows
+            artifact_path: target/release/bundle/msi/
+
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            bundle_args: --bundles dmg
+            artifact_name: stock-tauri-macos
+            artifact_path: target/release/bundle/dmg/
+
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: stock-tauri
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: stock-tauri/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux system deps
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        run: npx tauri build ${{ matrix.bundle_args }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
+
+  # ── Release (both Python & Tauri artifacts) ──
   release:
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, build-tauri]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
@@ -81,11 +149,29 @@ jobs:
           name: stock_screener-windows
           path: release/windows
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: stock-tauri-linux
+          path: release/tauri-linux
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: stock-tauri-windows
+          path: release/tauri-windows
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: stock-tauri-macos
+          path: release/tauri-macos
+
       - name: Package artifacts
         run: |
           cd release
           tar czf stock_screener-linux.tar.gz linux/
           zip -r stock_screener-windows.zip windows/
+          tar czf stock-tauri-linux.tar.gz tauri-linux/
+          zip -r stock-tauri-windows.zip tauri-windows/
+          zip -r stock-tauri-macos.zip tauri-macos/
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -93,4 +179,7 @@ jobs:
           files: |
             release/stock_screener-linux.tar.gz
             release/stock_screener-windows.zip
+            release/stock-tauri-linux.tar.gz
+            release/stock-tauri-windows.zip
+            release/stock-tauri-macos.zip
           generate_release_notes: true

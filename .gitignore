@@ -74,3 +74,12 @@ sqlite3/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Rust
+/target/
+
+# Node.js
+node_modules/
+
+# MSYS2
+.cargo/config.toml
