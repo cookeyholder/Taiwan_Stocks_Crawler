@@ -1168,6 +1168,19 @@ class StockScreenerApp:
         )
         fig.subplots_adjust(right=0.88)
 
+        # 修正 mplfinance style 覆蓋字型設定，手動套用中文字型
+        _fp = matplotlib.font_manager.FontProperties(family="Noto Sans CJK TC")
+        _fp_bold = matplotlib.font_manager.FontProperties(family="Noto Sans CJK TC", weight="bold")
+        if fig._suptitle:
+            fig._suptitle.set_fontproperties(_fp_bold)
+        for ax in axes:
+            for label in ax.get_xticklabels() + ax.get_yticklabels():
+                label.set_fontproperties(_fp)
+            if ax.get_ylabel():
+                ax.yaxis.label.set_fontproperties(_fp)
+            if ax.get_xlabel():
+                ax.xaxis.label.set_fontproperties(_fp)
+
         # 取代原本的 figure/axes
         self.t2_fig.clf()
         self.t2_fig = fig
