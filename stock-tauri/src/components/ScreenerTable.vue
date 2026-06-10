@@ -22,6 +22,9 @@ const sorted = computed(() => {
   const arr = [...props.results];
   const asc = sortOrder.value === "asc";
   arr.sort((a, b) => {
+    const aIsStock = /^[1-9]\d{3}$/.test(a.symbol);
+    const bIsStock = /^[1-9]\d{3}$/.test(b.symbol);
+    if (aIsStock !== bIsStock) return aIsStock ? -1 : 1;
     let va: any = a[sortKey.value];
     let vb: any = b[sortKey.value];
     if (va == null) return 1;
