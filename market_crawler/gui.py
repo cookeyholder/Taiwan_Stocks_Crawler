@@ -11,10 +11,12 @@ from typing import Any
 
 import matplotlib
 import matplotlib.pyplot as plt
+import mplfinance as mpf
 import pandas as pd
 import pandas_ta as ta
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+from market_crawler.classification import reclassify_database
 from market_crawler.http_client import HttpPolicy
 from market_crawler.orchestrator import classify_day, iter_date_strings
 from market_crawler.pipeline import fetch_and_ingest_day, make_fetcher
@@ -67,8 +69,14 @@ class StockScreenerApp:
         self.task_queue: queue.Queue[tuple[str, Any]] = queue.Queue()
         self.db_lock = threading.Lock()
 
+        # 篩選結果快取（供排序用）
+        self._t2_df_res: pd.DataFrame | None = None
+
         # 補齊歷史股票名稱，需在 db_lock 初始化後執行
         self._patch_missing_security_names()
+
+        # 背景重新分類既有資料（非阻塞）
+        threading.Thread(target=reclassify_database, args=(self.conn,), daemon=True).start()
 
         # 標記程式是否正在關閉中，用於安全取消定時器防止 race condition
         self.is_closing = False
@@ -294,12 +302,43 @@ class StockScreenerApp:
         self.t2_days_entry.insert(0, "5")
         self.t2_days_entry.grid(row=0, column=3, sticky=tk.W, pady=5, padx=5)
 
+        # 最低成交量
+        ttk.Label(ctrl_frame, text="最低成交量:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        self.t2_vol_entry = ttk.Entry(ctrl_frame, width=10)
+        self.t2_vol_entry.insert(0, "0")
+        self.t2_vol_entry.grid(row=1, column=1, sticky=tk.W, pady=5, padx=5)
+
+        # 證券類型篩選 checkboxes
+        type_frame = ttk.Frame(ctrl_frame)
+        type_frame.grid(row=2, column=0, columnspan=4, sticky=tk.W, pady=5)
+        ttk.Label(type_frame, text="證券類型:").pack(side=tk.LEFT)
+        self.t2_type_vars: dict[str, tk.BooleanVar] = {}
+        type_labels = [
+            ("stock", "股票"),
+            ("etf", "ETF"),
+            ("warrant", "權證"),
+            ("convertible_bond", "可轉債"),
+            ("preferred_stock", "特別股"),
+            ("other", "其他"),
+        ]
+        for i, (key, label) in enumerate(type_labels):
+            var = tk.BooleanVar(value=(key == "stock"))
+            cb = ttk.Checkbutton(type_frame, text=label, variable=var)
+            cb.pack(side=tk.LEFT, padx=(10 if i > 0 else 5, 0))
+            if key == "stock":
+                cb.config(state=tk.DISABLED)
+            self.t2_type_vars[key] = var
+
         # 控制按鈕
         self.t2_screen_btn = ttk.Button(ctrl_frame, text="🔍 開始本地篩選", style="Primary.TButton", command=self._t2_run_screener)
-        self.t2_screen_btn.grid(row=1, column=0, columnspan=2, pady=10, sticky=tk.EW)
+        self.t2_screen_btn.grid(row=3, column=0, columnspan=2, pady=10, sticky=tk.EW)
 
         self.t2_batch_btn = ttk.Button(ctrl_frame, text="☁️ 批次同步台灣50歷史日K", style="Action.TButton", command=self._t2_batch_sync)
-        self.t2_batch_btn.grid(row=1, column=2, columnspan=2, pady=10, sticky=tk.EW, padx=(10, 0))
+        self.t2_batch_btn.grid(row=3, column=2, columnspan=2, pady=10, sticky=tk.EW, padx=(10, 0))
+
+        # 排序狀態
+        self.t2_sort_col: str | None = None
+        self.t2_sort_asc = True
 
         # 表格顯示區
         table_frame = ttk.LabelFrame(left_frame, text=" 篩選符合條件股票清單 (點選可即時更新右側圖表) ", padding=5)
@@ -308,12 +347,20 @@ class StockScreenerApp:
         columns = ("symbol", "name", "latest_close", "latest_volume", "max_bandwidth", "latest_bandwidth")
         self.t2_tree = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="browse")
 
-        self.t2_tree.heading("symbol", text="股票代號")
-        self.t2_tree.heading("name", text="股票名稱")
-        self.t2_tree.heading("latest_close", text="最新收盤價")
-        self.t2_tree.heading("latest_volume", text="最新成交量")
-        self.t2_tree.heading("max_bandwidth", text="N日內最大頻寬")
-        self.t2_tree.heading("latest_bandwidth", text="最新頻寬")
+        col_texts = [
+            ("symbol", "股票代號"),
+            ("name", "股票名稱"),
+            ("latest_close", "最新收盤價"),
+            ("latest_volume", "最新成交量"),
+            ("max_bandwidth", "N日內最大頻寬"),
+            ("latest_bandwidth", "最新頻寬"),
+        ]
+        for col_id, text in col_texts:
+            self.t2_tree.heading(
+                col_id,
+                text=text,
+                command=lambda c=col_id: self._t2_sort_by_column(c),
+            )
 
         # 設定欄位寬度與置中
         self.t2_tree.column("symbol", width=70, anchor=tk.CENTER)
@@ -937,8 +984,14 @@ class StockScreenerApp:
         try:
             limit = float(self.t2_limit_entry.get().strip())
             days = int(self.t2_days_entry.get().strip())
+            min_vol = int(self.t2_vol_entry.get().strip())
         except ValueError:
-            messagebox.showwarning("警告", "請輸入有效的帶寬上限與持續天數！")
+            messagebox.showwarning("警告", "請輸入有效的帶寬上限、持續天數與最低成交量！")
+            return
+
+        selected_types = [k for k, v in self.t2_type_vars.items() if v.get()]
+        if not selected_types:
+            messagebox.showwarning("警告", "請至少勾選一種證券類型！")
             return
 
         self._disable_all_buttons()
@@ -948,8 +1001,13 @@ class StockScreenerApp:
         def worker() -> None:
             try:
                 with self.db_lock:
-                    # 呼叫 screener 核心函數
-                    df_res = screen_bollinger_squeeze(self.conn, bandwidth_limit=limit, consecutive_days=days)
+                    df_res = screen_bollinger_squeeze(
+                        self.conn,
+                        bandwidth_limit=limit,
+                        consecutive_days=days,
+                        instrument_types=selected_types,
+                        min_volume=min_vol,
+                    )
                 self.task_queue.put(("SCREEN", "SUCCESS", df_res))
             except Exception as e:
                 self.task_queue.put(("SCREEN", "ERROR", str(e)))
@@ -958,18 +1016,33 @@ class StockScreenerApp:
 
     def _t2_update_treeview(self, df_res: pd.DataFrame) -> None:
         """將篩選結果更新至 Treeview。"""
-        # 清空舊資料
         for item in self.t2_tree.get_children():
             self.t2_tree.delete(item)
 
         if df_res.empty:
             messagebox.showinfo("提示", "本地資料庫中沒有符合篩選條件的股票。")
+            self._t2_df_res = None
             return
 
-        # 排序：優先展示頻寬最小（擠壓最劇烈）的股票
-        df_sorted = df_res.sort_values("latest_bandwidth")
+        self._t2_df_res = df_res.copy()
+        self.t2_sort_col = "latest_bandwidth"
+        self.t2_sort_asc = True
+        self._t2_populate_treeview()
 
-        for _, row in df_sorted.iterrows():
+    def _t2_populate_treeview(self) -> None:
+        """依目前排序狀態填入 Treeview（不重新查詢）。"""
+        if self._t2_df_res is None or self._t2_df_res.empty:
+            return
+
+        for item in self.t2_tree.get_children():
+            self.t2_tree.delete(item)
+
+        df = self._t2_df_res.copy()
+        col = self.t2_sort_col or "latest_bandwidth"
+        ascending = self.t2_sort_asc
+        df = df.sort_values(col, ascending=ascending)
+
+        for _, row in df.iterrows():
             self.t2_tree.insert(
                 "",
                 tk.END,
@@ -982,6 +1055,26 @@ class StockScreenerApp:
                     f"{row['latest_bandwidth'] * 100:.2f}%",
                 )
             )
+
+        arrows = {col: " ▲" if ascending else " ▼"}
+        display_names = {
+            "symbol": "股票代號", "name": "股票名稱",
+            "latest_close": "最新收盤價", "latest_volume": "最新成交量",
+            "max_bandwidth": "N日內最大頻寬", "latest_bandwidth": "最新頻寬",
+        }
+        for cid, txt in display_names.items():
+            self.t2_tree.heading(cid, text=txt + arrows.get(cid, ""))
+
+    def _t2_sort_by_column(self, col_id: str) -> None:
+        """點擊欄位標題：切換排序方向或切換欄位。"""
+        if self._t2_df_res is None or self._t2_df_res.empty:
+            return
+        if self.t2_sort_col == col_id:
+            self.t2_sort_asc = not self.t2_sort_asc
+        else:
+            self.t2_sort_col = col_id
+            self.t2_sort_asc = True
+        self._t2_populate_treeview()
 
     def _t2_on_row_select(self, event: Any) -> None:
         """點擊 Treeview 表格列時，連動繪製該股布林通道圖。"""
@@ -997,7 +1090,8 @@ class StockScreenerApp:
         with self.db_lock:
             df = pd.read_sql_query(
                 """
-                SELECT trade_date, close_price, volume_shares, security_name
+                SELECT trade_date, open_price, high_price, low_price,
+                       close_price, volume_shares, security_name
                 FROM market_quote_core
                 WHERE symbol_clean = ?
                 ORDER BY trade_date ASC
@@ -1010,38 +1104,58 @@ class StockScreenerApp:
             self._t2_draw_placeholder(f"[{symbol}] 資料不足 20 筆，無法畫圖。")
             return
 
-        # 計算指標
+        # 準備 mplfinance OHLC 格式
+        mpf_df = df.rename(columns={
+            "open_price": "Open",
+            "high_price": "High",
+            "low_price": "Low",
+            "close_price": "Close",
+            "volume_shares": "Volume",
+        })
+        mpf_df["Date"] = pd.to_datetime(df["trade_date"])
+        mpf_df = mpf_df.set_index("Date")
+        mpf_df.index.name = "Date"
+
+        # 計算布林通道
         bb = ta.bbands(df["close_price"], length=20, std=2)
         if bb is None or bb.empty:
             self._t2_draw_placeholder("指標計算錯誤")
             return
 
-        bbl = bb.iloc[:, 0]
-        bbm = bb.iloc[:, 1]
-        bbu = bb.iloc[:, 2]
+        bbl = bb.iloc[:, 0].values
+        bbm = bb.iloc[:, 1].values
+        bbu = bb.iloc[:, 2].values
 
-        dates = pd.to_datetime(df["trade_date"])
-
-        # 繪圖
-        self.t2_ax_price.clear()
-        self.t2_ax_vol.clear()
-
-        self.t2_ax_price.plot(dates, df["close_price"], label="收盤價", color="#1a365d", linewidth=1.5)
-        self.t2_ax_price.plot(dates, bbm, label="20 MA", color="#dd6b20", linestyle="--", linewidth=1.0)
-        self.t2_ax_price.plot(dates, bbu, label="上軌", color="#319795", linewidth=1.0, alpha=0.8)
-        self.t2_ax_price.plot(dates, bbl, label="下軌", color="#319795", linewidth=1.0, alpha=0.8)
-        self.t2_ax_price.fill_between(dates, bbl, bbu, facecolor="#ebf8ff", alpha=0.6, label="布林區間")
+        # 用 addplot 疊加布林通道
+        add_plots = [
+            mpf.make_addplot(bbu, color="#319795", width=0.8),
+            mpf.make_addplot(bbm, color="#dd6b20", width=0.8, linestyle="--"),
+            mpf.make_addplot(bbl, color="#319795", width=0.8),
+        ]
 
         title_name = f" {name}" if name and name != "無數據" else ""
-        self.t2_ax_price.set_title(f"[{symbol}]{title_name} 布林通道走勢圖 (與表格同步)", fontsize=11, fontweight="bold", color="#1a365d")
-        self.t2_ax_price.set_ylabel("股價")
-        self.t2_ax_price.legend(loc="upper left", framealpha=0.9, facecolor="white", fontsize=8)
+        fig, axes = mpf.plot(
+            mpf_df,
+            type="candle",
+            addplot=add_plots,
+            volume=True,
+            volume_alpha=0.5,
+            ylabel="股價",
+            ylabel_lower="成交量",
+            xrotation=0,
+            returnfig=True,
+            figsize=(6, 6),
+            style="charles",
+            tight_layout=True,
+            title=f"[{symbol}]{title_name} 布林通道走勢圖",
+        )
 
-        self.t2_ax_vol.bar(dates, df["volume_shares"], color="#a0aec0", alpha=0.7, width=0.6)
-        self.t2_ax_vol.set_ylabel("成交股數")
-        self.t2_ax_vol.set_xlabel("交易日期")
-
-        self.t2_fig.autofmt_xdate()
+        # 取代原本的 figure/axes
+        self.t2_fig.clf()
+        self.t2_fig = fig
+        self.t2_ax_price = axes[0]
+        self.t2_ax_vol = axes[2]
+        self.t2_canvas.figure = fig
         self.t2_canvas.draw()
 
     # ==================== 批次下載事件 ====================

@@ -86,3 +86,71 @@ def test_classification_ticker_fallback_four_digit_bond_etf() -> None:
     """0050B（四位數+B）應分類為 etf，而非 preferred_stock。"""
     instrument, _, _, _ = classify_instrument(symbol_clean="0050B", security_master={})
     assert instrument == "etf"
+
+
+def test_classification_6digit_etf() -> None:
+    """006208（六碼純數字）應分類為 etf。"""
+    instrument, _, _, _ = classify_instrument(symbol_clean="006208", security_master={})
+    assert instrument == "etf"
+
+
+def test_classification_leveraged_etf() -> None:
+    """00631L（五碼+L）應分類為 etf。"""
+    instrument, _, _, _ = classify_instrument(symbol_clean="00631L", security_master={})
+    assert instrument == "etf"
+
+
+def test_classification_inverse_etf() -> None:
+    """00632R（五碼+R）應分類為 etf。"""
+    instrument, _, _, _ = classify_instrument(symbol_clean="00632R", security_master={})
+    assert instrument == "etf"
+
+
+def test_classification_foreign_etf() -> None:
+    """00643K（五碼+K）應分類為 etf。"""
+    instrument, _, _, _ = classify_instrument(symbol_clean="00643K", security_master={})
+    assert instrument == "etf"
+
+
+def test_classification_active_etf() -> None:
+    """00951A（五碼+A）應分類為 etf。"""
+    instrument, _, _, _ = classify_instrument(symbol_clean="00951A", security_master={})
+    assert instrument == "etf"
+
+
+def test_classification_convertible_bond() -> None:
+    """23301（五碼純數字）應分類為 convertible_bond。"""
+    instrument, _, _, _ = classify_instrument(symbol_clean="23301", security_master={})
+    assert instrument == "convertible_bond"
+
+
+def test_classification_6digit_etf_before_warrant() -> None:
+    """六碼純數字不應被權證規則捕獲。"""
+    instrument, _, _, _ = classify_instrument(symbol_clean="006208", security_master={})
+    assert instrument == "etf"
+
+
+def test_classification_reclassify_database(tmp_path, stock_master_path) -> None:
+    import sqlite3
+    from market_crawler.classification import reclassify_database
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE market_quote_core (symbol_clean TEXT, instrument_type TEXT)")
+    conn.execute("INSERT INTO market_quote_core VALUES ('006208', 'other')")
+    conn.execute("INSERT INTO market_quote_core VALUES ('2330', 'other')")
+    conn.execute("INSERT INTO market_quote_core VALUES ('00631L', 'other')")
+    conn.execute("INSERT INTO market_quote_core VALUES ('23301', 'other')")
+    conn.commit()
+
+    updated = reclassify_database(conn, str(stock_master_path))
+    assert updated == 4
+
+    cur = conn.execute("SELECT instrument_type FROM market_quote_core WHERE symbol_clean = '006208'")
+    assert cur.fetchone()[0] == "etf"
+    cur = conn.execute("SELECT instrument_type FROM market_quote_core WHERE symbol_clean = '2330'")
+    assert cur.fetchone()[0] == "stock"
+    cur = conn.execute("SELECT instrument_type FROM market_quote_core WHERE symbol_clean = '00631L'")
+    assert cur.fetchone()[0] == "etf"
+    cur = conn.execute("SELECT instrument_type FROM market_quote_core WHERE symbol_clean = '23301'")
+    assert cur.fetchone()[0] == "convertible_bond"
+    conn.close()
