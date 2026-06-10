@@ -1,7 +1,7 @@
 use std::sync::atomic::AtomicBool;
 
 use crate::db::MarketRepository;
-use crate::fetcher::twse;
+use crate::fetcher::{twse, tpex};
 use crate::models::*;
 use crate::{date_utils, fetcher::HttpClient};
 
@@ -36,32 +36,52 @@ impl Pipeline {
         };
 
         let mut total = 0;
-        let mut has_data = false;
         let ingest_run_id = uuid();
         let ingested_at = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
 
-        // TWSE today JSON
-        if date_str == chrono::Local::now().format("%Y-%m-%d").to_string() {
-            match twse::fetch_today_json(&self.http).await {
-                Ok(records) if !records.is_empty() => {
-                    let quotes = normalize_records("TWSE", date_str, &records, "utf-8", &ingest_run_id, &ingested_at);
-                    total += self.repo.upsert_core_batch(&quotes)?;
-                    has_data = true;
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    outcome.message = format!("TWSE today API: {}", e);
-                }
+        let is_today = date_str == chrono::Local::now().format("%Y-%m-%d").to_string();
+
+        // TWSE: today JSON or history CSV
+        let twse_result = if is_today {
+            twse::fetch_today_json(&self.http).await
+        } else {
+            twse::fetch_history_csv(&self.http, date_str).await
+        };
+        match twse_result {
+            Ok(records) if !records.is_empty() => {
+                let quotes = normalize_records("TWSE", date_str, &records, "utf-8", &ingest_run_id, &ingested_at);
+                total += self.repo.upsert_core_batch(&quotes)?;
+            }
+            Ok(_) => {}
+            Err(e) => {
+                outcome.message = format!("TWSE: {}", e);
             }
         }
 
-        if has_data {
+        // TPEX daily JSON (works for both today and history)
+        match tpex::fetch_daily_json(&self.http, date_str).await {
+            Ok(records) if !records.is_empty() => {
+                let quotes = normalize_records("TPEX", date_str, &records, "utf-8", &ingest_run_id, &ingested_at);
+                total += self.repo.upsert_core_batch(&quotes)?;
+            }
+            Ok(_) => {}
+            Err(e) => {
+                if !outcome.message.is_empty() {
+                    outcome.message.push_str("; ");
+                }
+                outcome.message.push_str(&format!("TPEX: {}", e));
+            }
+        }
+
+        if total > 0 {
             outcome.day_type = DayType::Trading;
             outcome.ok = true;
             outcome.message = format!("OK: {} records", total);
         } else {
             outcome.day_type = DayType::MarketClosed;
-            outcome.message = "no data (market closed or error)".into();
+            if outcome.message.is_empty() {
+                outcome.message = "no data (market closed or error)".into();
+            }
         }
         outcome.records_inserted = total;
         Ok(outcome)
@@ -105,7 +125,7 @@ impl Pipeline {
         }
         let prices: Vec<f64> = ohlcv.iter().filter_map(|r| r.close_price).collect();
         let mut output = AnalysisOutput {
-            ohlcv: ohlcv.clone(),
+            ohlcv,
             ma_lines: Vec::new(),
             bollinger: None,
             rsi: None,
@@ -266,4 +286,132 @@ pub enum PipelineError {
     NoData(String),
     #[error("Internal: {0}")]
     Internal(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_float_normal() {
+        assert_eq!(parse_float(Some("30.20")), Some(30.20));
+    }
+
+    #[test]
+    fn test_parse_float_with_commas() {
+        assert_eq!(parse_float(Some("10,053,434")), Some(10053434.0));
+    }
+
+    #[test]
+    fn test_parse_float_empty_or_placeholder() {
+        assert_eq!(parse_float(Some("")), None);
+        assert_eq!(parse_float(Some("--")), None);
+        assert_eq!(parse_float(Some("---")), None);
+        assert_eq!(parse_float(None), None);
+    }
+
+    #[test]
+    fn test_parse_int_normal() {
+        assert_eq!(parse_int(Some("10053434")), Some(10053434));
+    }
+
+    #[test]
+    fn test_parse_int_with_commas() {
+        assert_eq!(parse_int(Some("10,053,434")), Some(10053434));
+    }
+
+    #[test]
+    fn test_parse_int_empty_or_placeholder() {
+        assert_eq!(parse_int(Some("")), None);
+        assert_eq!(parse_int(Some("--")), None);
+        assert_eq!(parse_int(None), None);
+    }
+
+    #[test]
+    fn test_parse_change_field_ascii_plus_minus() {
+        assert_eq!(parse_change_field(Some("+0.10")), (Some("+".into()), Some(0.10)));
+        assert_eq!(parse_change_field(Some("-5.0")), (Some("-".into()), Some(5.0)));
+    }
+
+    #[test]
+    fn test_parse_change_field_fullwidth() {
+        assert_eq!(parse_change_field(Some("＋0.10")), (Some("+".into()), Some(0.10)));
+        assert_eq!(parse_change_field(Some("－5.0")), (Some("-".into()), Some(5.0)));
+    }
+
+    #[test]
+    fn test_parse_change_field_plain_number() {
+        assert_eq!(parse_change_field(Some("0.10")), (None, Some(0.10)));
+    }
+
+    #[test]
+    fn test_parse_change_field_empty_or_placeholder() {
+        assert_eq!(parse_change_field(Some("")), (None, None));
+        assert_eq!(parse_change_field(Some("--")), (None, None));
+        assert_eq!(parse_change_field(None), (None, None));
+    }
+
+    #[test]
+    fn test_normalize_records_sets_market_code() {
+        let records = vec![ParsedRecord {
+            symbol: "1101".into(),
+            name: Some("台泥".into()),
+            open: Some("30.00".into()),
+            high: Some("30.50".into()),
+            low: Some("29.80".into()),
+            close: Some("30.20".into()),
+            volume: Some("10000000".into()),
+            turnover: Some("300000000".into()),
+            trade_count: Some("5000".into()),
+            change: None,
+            change_sign: None,
+            change_value: None,
+            last_bid: None,
+            last_bid_qty: None,
+            last_ask: None,
+            last_ask_qty: None,
+            pe_ratio: None,
+            issued_shares: None,
+            next_limit_up: None,
+            next_limit_down: None,
+            source_file: "test".into(),
+            source_line_no: 1,
+        }];
+        let quotes = normalize_records("TWSE", "2024-01-02", &records, "utf-8", "test-ingest", "2024-01-01T00:00:00");
+        assert_eq!(quotes.len(), 1);
+        assert_eq!(quotes[0].market_code, "TWSE");
+        assert_eq!(quotes[0].symbol_clean, "1101");
+        assert_eq!(quotes[0].close_price, Some(30.20));
+        assert_eq!(quotes[0].volume_shares, Some(10000000));
+    }
+
+    #[test]
+    fn test_normalize_records_strips_equals_prefix() {
+        let records = vec![ParsedRecord {
+            symbol: "=1101".into(),
+            name: Some("台泥".into()),
+            open: None,
+            high: None,
+            low: None,
+            close: None,
+            volume: None,
+            turnover: None,
+            trade_count: None,
+            change: None,
+            change_sign: None,
+            change_value: None,
+            last_bid: None,
+            last_bid_qty: None,
+            last_ask: None,
+            last_ask_qty: None,
+            pe_ratio: None,
+            issued_shares: None,
+            next_limit_up: None,
+            next_limit_down: None,
+            source_file: "test".into(),
+            source_line_no: 1,
+        }];
+        let quotes = normalize_records("TWSE", "2024-01-02", &records, "utf-8", "test-ingest", "2024-01-01T00:00:00");
+        assert_eq!(quotes[0].symbol_clean, "1101");
+    }
 }

@@ -319,3 +319,98 @@ impl MarketRepository {
         stmt.query_row([], |row| row.get(0))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn make_quote(symbol: &str, date: &str, close: f64) -> CanonicalQuote {
+        CanonicalQuote {
+            trade_date: date.to_string(),
+            market_code: "TWSE".to_string(),
+            symbol_raw: symbol.to_string(),
+            symbol_clean: symbol.to_string(),
+            security_name: Some(symbol.to_string()),
+            instrument_type: "stock".to_string(),
+            instrument_subtype: None,
+            isin_code: None,
+            cfi_code: None,
+            section_label: None,
+            open_price: Some(close),
+            high_price: Some(close),
+            low_price: Some(close),
+            close_price: Some(close),
+            volume_shares: Some(1000),
+            turnover_value: None,
+            trade_count: None,
+            change_sign: None,
+            change_value: None,
+            last_bid_price: None,
+            last_bid_qty_raw: None,
+            last_ask_price: None,
+            last_ask_qty_raw: None,
+            pe_ratio: None,
+            issued_shares: None,
+            next_limit_up: None,
+            next_limit_down: None,
+            source_file: "test".to_string(),
+            source_encoding: "utf-8".to_string(),
+            source_line_no: 0,
+            ingest_run_id: "test-ingest".to_string(),
+            ingested_at: "2024-01-01T00:00:00".to_string(),
+            extension: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_upsert_and_retrieve_ohlcv() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let quotes = vec![
+            make_quote("2330", "2024-01-02", 500.0),
+            make_quote("2330", "2024-01-03", 505.0),
+        ];
+        repo.upsert_core_batch(&quotes).unwrap();
+        let ohlcv = repo.get_ohlcv("2330", "2024-01-01", "2024-01-31").unwrap();
+        assert_eq!(ohlcv.len(), 2);
+        assert_eq!(ohlcv[0].close_price, Some(500.0));
+        assert_eq!(ohlcv[1].close_price, Some(505.0));
+    }
+
+    #[test]
+    fn test_screen_bollinger_squeeze_empty_on_no_data() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let results = repo.screen_bollinger_squeeze(0.5, 5, None, 0).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_screen_bollinger_squeeze_finds_tight_symbol() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let mut quotes = Vec::new();
+        for i in 0..50 {
+            let date = format!("2024-01-{:02}", i + 1);
+            quotes.push(make_quote("TIGHT", &date, 100.0));
+            let wide_close = if i % 2 == 0 { 100.0 } else { 200.0 };
+            quotes.push(make_quote("WIDE", &date, wide_close));
+        }
+        repo.upsert_core_batch(&quotes).unwrap();
+
+        let results = repo.screen_bollinger_squeeze(0.1, 3, None, 0).unwrap();
+        let symbols: Vec<&str> = results.iter().map(|r| r.symbol.as_str()).collect();
+        assert!(symbols.contains(&"TIGHT"));
+        assert!(!symbols.contains(&"WIDE"));
+    }
+
+    #[test]
+    fn test_get_distinct_symbols() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let quotes = vec![
+            make_quote("2330", "2024-01-02", 500.0),
+            make_quote("1101", "2024-01-02", 30.0),
+        ];
+        repo.upsert_core_batch(&quotes).unwrap();
+        let symbols = repo.get_distinct_symbols().unwrap();
+        assert_eq!(symbols.len(), 2);
+    }
+}

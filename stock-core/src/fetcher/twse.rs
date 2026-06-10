@@ -178,3 +178,59 @@ pub fn parse_twse_html(html: &str) -> Vec<ParsedRecord> {
     }
     results
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_twse_csv_parses_quoted_fields() {
+        let csv = "\"證券代號\",\"證券名稱\",\"成交股數\",\"成交金額\",\"成交筆數\",\"開盤價\",\"最高價\",\"最低價\",\"收盤價\",\"漲跌(+/-)\",\"漲跌價差\",\"最後揭示買價\",\"最後揭示買量\",\"最後揭示賣價\",\"最後揭示賣量\",\"本益比\"\n\"1101\",\"台泥\",\"10,053,434\",\"304,574,770\",\"4,723\",\"30.30\",\"30.35\",\"30.15\",\"30.20\",\"+\",\"0.10\",\"30.20\",\"10\",\"30.25\",\"30\",\"10.75\"\n\"2330\",\"台積電\",\"20000000\",\"1200000000\",\"15000\",\"500.00\",\"505.00\",\"498.00\",\"502.00\",\"+\",\"2.00\",\"502.00\",\"20\",\"502.50\",\"15\",\"25.50\"\n\"0050\",\"元大台灣50\",\"5000000\",\"300000000\",\"2500\",\"60.00\",\"60.50\",\"59.80\",\"60.20\",\"+\",\"0.20\",\"60.20\",\"5\",\"60.30\",\"10\",\"\"";
+        let records = parse_twse_csv(csv, "test.csv");
+        assert_eq!(records.len(), 3);
+        assert_eq!(records[0].symbol, "1101");
+        assert_eq!(records[0].name.as_deref(), Some("台泥"));
+        assert_eq!(records[0].volume.as_deref(), Some("10,053,434"));
+        assert_eq!(records[1].symbol, "2330");
+        assert_eq!(records[1].name.as_deref(), Some("台積電"));
+        assert_eq!(records[1].close.as_deref(), Some("502.00"));
+        assert_eq!(records[2].symbol, "0050");
+        assert_eq!(records[2].name.as_deref(), Some("元大台灣50"));
+    }
+
+    #[test]
+    fn test_parse_twse_csv_skips_metadata_lines() {
+        let csv = "\"每日收盤行情\"\n\"證券代號\",\"證券名稱\",\"成交股數\",\"成交金額\",\"成交筆數\",\"開盤價\",\"最高價\",\"最低價\",\"收盤價\",\"漲跌(+/-)\",\"漲跌價差\",\"最後揭示買價\",\"最後揭示買量\",\"最後揭示賣價\",\"最後揭示賣量\",\"本益比\"\n\"1101\",\"台泥\",\"10000000\",\"300000000\",\"5000\",\"30.00\",\"30.50\",\"29.80\",\"30.20\",\"+\",\"0.20\",\"30.20\",\"10\",\"30.30\",\"15\",\"10.00\"\n\"＊ 資料來源：臺灣證券交易所\"\n\"| 製表時間：2024/01/02\"";
+        let records = parse_twse_csv(csv, "test.csv");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].symbol, "1101");
+    }
+
+    #[test]
+    fn test_parse_twse_csv_issued_shares() {
+        let csv = "\"證券代號\",\"證券名稱\",\"成交股數\",\"成交金額\",\"成交筆數\",\"開盤價\",\"最高價\",\"最低價\",\"收盤價\",\"漲跌(+/-)\",\"漲跌價差\",\"最後揭示買價\",\"最後揭示買量\",\"最後揭示賣價\",\"最後揭示賣量\",\"本益比\",\"發行量\"\n\"1101\",\"台泥\",\"10000000\",\"300000000\",\"5000\",\"30.00\",\"30.50\",\"29.80\",\"30.20\",\"+\",\"0.20\",\"30.20\",\"10\",\"30.30\",\"15\",\"10.00\",\"50000000\"";
+        let records = parse_twse_csv(csv, "test.csv");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].issued_shares.as_deref(), Some("50000000"));
+    }
+
+    #[test]
+    fn test_parse_twse_csv_no_issued_shares() {
+        let csv = "\"證券代號\",\"證券名稱\",\"成交股數\",\"成交金額\",\"成交筆數\",\"開盤價\",\"最高價\",\"最低價\",\"收盤價\",\"漲跌(+/-)\",\"漲跌價差\",\"最後揭示買價\",\"最後揭示買量\",\"最後揭示賣價\",\"最後揭示賣量\",\"本益比\"\n\"1101\",\"台泥\",\"10000000\",\"300000000\",\"5000\",\"30.00\",\"30.50\",\"29.80\",\"30.20\",\"+\",\"0.20\",\"30.20\",\"10\",\"30.30\",\"15\",\"10.00\"";
+        let records = parse_twse_csv(csv, "test.csv");
+        assert_eq!(records.len(), 1);
+        assert!(records[0].issued_shares.is_none());
+    }
+
+    #[test]
+    fn test_parse_twse_html_extracts_table_data() {
+        let html = "<html><body><table>\n<tr><td>1</td><td>1101</td><td>台泥</td><td>30.30</td><td>30.35</td><td>30.15</td><td>30.20</td><td>10053434</td></tr>\n<tr><td>2</td><td>2330</td><td>台積電</td><td>500.00</td><td>505.00</td><td>498.00</td><td>502.00</td><td>20000000</td></tr>\n</table></body></html>";
+        let records = parse_twse_html(html);
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].symbol, "1101");
+        assert_eq!(records[0].name.as_deref(), Some("台泥"));
+        assert_eq!(records[0].close.as_deref(), Some("30.20"));
+        assert_eq!(records[1].symbol, "2330");
+        assert_eq!(records[1].name.as_deref(), Some("台積電"));
+    }
+}
