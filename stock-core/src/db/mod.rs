@@ -356,8 +356,6 @@ impl MarketRepository {
         let mut stmt = conn.prepare_cached(
             "SELECT symbol_clean, market_code, security_name
              FROM securities
-             WHERE symbol_clean LIKE '00%'
-                OR (symbol_clean GLOB '[1-9]???')
              ORDER BY
                CASE WHEN symbol_clean GLOB '[1-9]???' THEN 0 ELSE 1 END,
                symbol_clean"
@@ -384,6 +382,10 @@ impl MarketRepository {
 
     pub fn delete_date_range(&self, start: &str, end: &str) -> SqlResult<usize> {
         let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM market_quote_extension WHERE trade_date >= ?1 AND trade_date <= ?2",
+            params![start, end],
+        )?;
         let count = conn.execute(
             "DELETE FROM market_quote_core WHERE trade_date >= ?1 AND trade_date <= ?2",
             params![start, end],

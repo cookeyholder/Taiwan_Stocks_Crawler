@@ -122,6 +122,11 @@ async fn get_latest_trade_date(state: State<'_, AppState>) -> Result<Option<Stri
 
 #[tauri::command]
 async fn delete_date_range(state: State<'_, AppState>, start: String, end: String) -> Result<String, String> {
+    if chrono::NaiveDate::parse_from_str(&start, "%Y-%m-%d").is_err()
+        || chrono::NaiveDate::parse_from_str(&end, "%Y-%m-%d").is_err()
+    {
+        return Err("日期格式錯誤，請使用 YYYY-MM-DD 格式".into());
+    }
     let pipeline = state.pipeline.lock().await;
     let count = pipeline.repo.delete_date_range(&start, &end).map_err(|e| e.to_string())?;
     let _ = pipeline.repo.sync_securities();

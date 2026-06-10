@@ -6,12 +6,13 @@ import { CanvasRenderer } from "echarts/renderers";
 import { BarChart, CandlestickChart, LineChart } from "echarts/charts";
 import {
   GridComponent, DataZoomComponent, TooltipComponent, LegendComponent,
+  TitleComponent,
 } from "echarts/components";
 import type { AnalysisData } from "../stores/analysis";
 
 use([
   CanvasRenderer, BarChart, CandlestickChart, LineChart,
-  GridComponent, DataZoomComponent, TooltipComponent, LegendComponent,
+  GridComponent, DataZoomComponent, TooltipComponent, LegendComponent, TitleComponent,
 ]);
 
 const props = defineProps<{
@@ -30,7 +31,7 @@ function buildOption(data: AnalysisData): any {
   const zoomStartValue = Math.max(0, total - defaultWindow);
 
   const gridTop = 40;
-  const gridGap = 8;
+  const gridGap = 20;
 
   const series: any[] = [];
   const grids: any[] = [];
@@ -52,9 +53,9 @@ function buildOption(data: AnalysisData): any {
   }
 
   // approximate pixel heights for a typical 700px chart container
-  const mainH = 340;
-  const volH = 60;
-  const indH = 100;
+  const mainH = 300;
+  const volH = 50;
+  const indH = 80;
 
   addPane(mainH);
   addPane(volH);
@@ -141,13 +142,19 @@ function buildOption(data: AnalysisData): any {
     });
     series.push({
       name: "柱狀", type: "bar", xAxisIndex: macdIdx, yAxisIndex: macdIdx,
-      data: data.macd_histogram.map((v) => v == null ? null : [v]),
+      data: data.macd_histogram.map((v) => v ?? 0),
       barWidth: "60%",
-      itemStyle: { color: (p: any) => (p.value[0] >= 0 ? "#ef5350" : "#26a69a") },
+      itemStyle: { color: (p: any) => (p.value >= 0 ? "#ef5350" : "#26a69a") },
     });
   }
 
   return {
+    title: {
+      text: `${data.symbol}${data.name ? ` — ${data.name}` : ""}`,
+      left: 70,
+      top: 6,
+      textStyle: { fontSize: 13, fontWeight: "bold", color: "#333" },
+    },
     animationDurationUpdate: 100,
     animationEasingUpdate: "linear",
     tooltip: {
@@ -172,7 +179,7 @@ function buildOption(data: AnalysisData): any {
         return lines.join("<br/>");
       },
     },
-    legend: { top: 5, left: "center", selectedMode: "multiple" },
+    legend: { top: 26, left: "center", selectedMode: "multiple" },
     grid: grids,
     xAxis: xAxes,
     yAxis: yAxes,
@@ -180,7 +187,7 @@ function buildOption(data: AnalysisData): any {
       type: "inside",
       xAxisIndex: axisIndices,
       startValue: zoomStartValue,
-      endValue: total,
+      endValue: total - 0.5,
       minValueSpan: 5,
       maxValueSpan: total,
     }],

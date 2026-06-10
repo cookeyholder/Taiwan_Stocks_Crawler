@@ -49,6 +49,7 @@ async function fetchToday() {
 
 async function deleteRange() {
   if (!deleteStart.value || !deleteEnd.value) return;
+  if (!confirm(`確定要刪除 ${deleteStart.value} ~ ${deleteEnd.value} 的資料嗎？`)) return;
   deleteMessage.value = "刪除中...";
   try {
     const msg = await invoke<string>("delete_date_range", {
