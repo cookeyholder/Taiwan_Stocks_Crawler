@@ -10,6 +10,14 @@ const store = useScreenerStore();
 const chartData = ref<AnalysisData | null>(null);
 const selectedSymbol = ref("");
 
+function onMinVolumeInput(e: Event) {
+  const raw = (e.target as HTMLInputElement).value.replace(/,/g, "");
+  const n = parseInt(raw, 10);
+  if (!isNaN(n) && n >= 0) {
+    store.minVolume = n;
+  }
+}
+
 async function onRowSelected(symbol: string) {
   selectedSymbol.value = symbol;
   try {
@@ -41,7 +49,12 @@ async function onRowSelected(symbol: string) {
       </div>
       <div class="param-group">
         <label>最低成交量</label>
-        <input v-model.number="store.minVolume" type="number" min="0" />
+        <input
+          :value="store.minVolume.toLocaleString()"
+          @input="onMinVolumeInput"
+          type="text"
+          inputmode="numeric"
+        />
       </div>
       <button @click="store.runScreen()" :disabled="store.loading" class="btn-primary">
         {{ store.loading ? "篩選中..." : "開始篩選" }}

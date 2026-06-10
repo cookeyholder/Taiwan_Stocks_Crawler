@@ -20,7 +20,7 @@ export const useScreenerStore = defineStore("screener", () => {
 
   const maxBandwidth = ref(0.08);
   const minDays = ref(5);
-  const minVolume = ref(0);
+  const minVolume = ref(1000000);
   const instrumentTypes = ref<string[]>([]);
 
   async function runScreen() {
