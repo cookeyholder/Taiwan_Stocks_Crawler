@@ -6,8 +6,8 @@
 
 - **重組 `docs/` 目錄結構**：從單層 5 個檔案，改為 `guide/`、`development/`、`operations/` 三子目錄架構
 - **刪除 2 份過期文件**：`CODE_REVIEW_REPORT.md`（針對已刪除的 Python 程式碼）、`OPENSPEC_REVIEW_FIX_PLAN.md`（歸屬 `openspec/`）
-- **重寫 3 份既有文件**：`cli_usage.md` → `guide/cli.md`、`debugging_guide.md` → `operations/troubleshooting.md`、`testing_matrix.md` → `development/testing.md`
-- **新增 5 份文件**：`guide/installation.md`、`development/architecture.md`、`development/database-schema.md`、`development/data-sources.md`、`operations/automation.md`
+- **重寫 3 份既有文件**：`cli_usage.md` → `guide/命令列工具.md`、`debugging_guide.md` → `operations/問題排查.md`、`testing_matrix.md` → `development/測試.md`
+- **新增 5 份文件**：`guide/安裝指南.md`、`development/系統架構.md`、`development/資料庫結構.md`、`development/資料來源.md`、`operations/自動化排程.md`
 - **`docs/README.md` 導覽頁**：串連所有文件的入口
 
 ## Capabilities

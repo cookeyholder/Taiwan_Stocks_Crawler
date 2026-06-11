@@ -100,7 +100,7 @@ cargo fmt -p stock-tauri
 
 # 不再維護
 # Python 測試（已停止維護，僅供歷史參考）
-# 詳見 docs/development/testing.md
+# 詳見 docs/development/測試.md
 # make test
 ```
 
