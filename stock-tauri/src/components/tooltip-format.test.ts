@@ -31,4 +31,19 @@ describe("extractOHLC", () => {
     const v = [999, 31.5, 32.0, 30.8, 32.5];
     expect(extractOHLC(v)).toEqual({ open: 31.5, close: 32.0, low: 30.8, high: 32.5 });
   });
+
+  test("guards against null values with fallback to 0", () => {
+    const v = [null, 24.6, null, 24.0, 24.65] as (number | null | undefined)[];
+    expect(extractOHLC(v)).toEqual({ open: 24.6, close: 0, low: 24.0, high: 24.65 });
+  });
+
+  test("guards against undefined with fallback to 0", () => {
+    const v = [10, undefined, 24.1, 24.0, 24.65] as (number | null | undefined)[];
+    expect(extractOHLC(v)).toEqual({ open: 0, close: 24.1, low: 24.0, high: 24.65 });
+  });
+
+  test("guards against short array with missing elements", () => {
+    const v = [24.6, 24.1] as (number | null | undefined)[];
+    expect(extractOHLC(v)).toEqual({ open: 24.6, close: 24.1, low: 0, high: 0 });
+  });
 });
