@@ -28,7 +28,7 @@ enum Commands {
         #[arg(long)]
         end: Option<String>,
     },
-    /// 布林擠壓篩選
+    /// 布林通道選股
     Screen {
         #[arg(long, default_value = "0.08")]
         max_bandwidth: f64,
