@@ -9,6 +9,7 @@ import {
   TitleComponent,
 } from "echarts/components";
 import type { AnalysisData } from "../stores/analysis";
+import { extractOHLC } from "./tooltip-format";
 
 use([
   CanvasRenderer, BarChart, CandlestickChart, LineChart,
@@ -168,12 +169,11 @@ function buildOption(data: AnalysisData): any {
         const lines: string[] = [`${date}`];
         for (const p of params) {
           if (p.seriesName === "K線" && Array.isArray(p.value)) {
-            const v = p.value;
-            const offset = v.length > 4 ? v.length - 4 : 0;
-            lines.push(`開盤價: ${Number(v[offset]).toFixed(2)}`);
-            lines.push(`收盤價: ${Number(v[offset + 1]).toFixed(2)}`);
-            lines.push(`最低價: ${Number(v[offset + 2]).toFixed(2)}`);
-            lines.push(`最高價: ${Number(v[offset + 3]).toFixed(2)}`);
+            const { open, close, low, high } = extractOHLC(p.value as number[]);
+            lines.push(`開盤價: ${open.toFixed(2)}`);
+            lines.push(`收盤價: ${close.toFixed(2)}`);
+            lines.push(`最低價: ${low.toFixed(2)}`);
+            lines.push(`最高價: ${high.toFixed(2)}`);
           } else if (p.seriesName === "超買" || p.seriesName === "超賣") {
             continue;
           } else {
