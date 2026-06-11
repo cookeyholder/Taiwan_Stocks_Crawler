@@ -250,7 +250,7 @@ twse-crawler --start 2026-01-01 --end 2026-03-31
 
 ### 原始測試（181 項 Python pytest）
 
-詳見 [docs/testing_matrix.md](docs/testing_matrix.md)。
+詳見 [docs/development/測試.md](docs/development/測試.md)。
 
 ---
 
