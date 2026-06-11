@@ -19,8 +19,14 @@ pub async fn fetch_daily_json(http: &HttpClient, date_str: &str) -> Result<Vec<P
         roc_year, month, day
     );
     let text = http.get(&url).await?;
-    let json: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| HttpError::RequestFailed(format!("TPEX JSON parse: {}", e)))?;
+    Ok(parse_tpex_json(&text, &url))
+}
+
+fn parse_tpex_json(text: &str, source_file: &str) -> Vec<ParsedRecord> {
+    let json: serde_json::Value = match serde_json::from_str(text) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
     let mut results = Vec::new();
     if let Some(tables) = json["tables"].as_array() {
         for table in tables {
@@ -34,7 +40,7 @@ pub async fn fetch_daily_json(http: &HttpClient, date_str: &str) -> Result<Vec<P
                     let fields: Vec<&str> = row.as_array()
                         .map(|arr| arr.iter().map(|v| v.as_str().unwrap_or("")).collect())
                         .unwrap_or_default();
-                    if fields.len() < 12 {
+                    if fields.len() < 3 {
                         continue;
                     }
                     let symbol = fields[0].trim().to_string();
@@ -44,14 +50,14 @@ pub async fn fetch_daily_json(http: &HttpClient, date_str: &str) -> Result<Vec<P
                     results.push(ParsedRecord {
                         symbol,
                         name: Some(fields[1].trim().to_string()),
-                        open: Some(fields[5].trim().to_string()),
-                        high: Some(fields[6].trim().to_string()),
-                        low: Some(fields[7].trim().to_string()),
-                        close: Some(fields[8].trim().to_string()),
-                        volume: Some(fields[10].trim().to_string()),
-                        turnover: Some(fields[11].trim().to_string()),
-                        trade_count: Some(fields[12].trim().to_string()),
-                        change: Some(fields[4].trim().to_string()),
+                        open: Some(fields[4].trim().to_string()),
+                        high: Some(fields[5].trim().to_string()),
+                        low: Some(fields[6].trim().to_string()),
+                        close: Some(fields[2].trim().to_string()),
+                        volume: Some(fields[8].trim().to_string()),
+                        turnover: Some(fields[9].trim().to_string()),
+                        trade_count: Some(fields[10].trim().to_string()),
+                        change: Some(fields[3].trim().to_string()),
                         change_sign: None,
                         change_value: None,
                         last_bid: None,
@@ -59,15 +65,114 @@ pub async fn fetch_daily_json(http: &HttpClient, date_str: &str) -> Result<Vec<P
                         last_ask: None,
                         last_ask_qty: None,
                         pe_ratio: None,
-                        issued_shares: fields.get(13).map(|s| s.trim().to_string()),
+                        issued_shares: fields.get(15).map(|s| s.trim().to_string()),
                         next_limit_up: None,
                         next_limit_down: None,
-                        source_file: url.clone(),
+                        source_file: source_file.to_string(),
                         source_line_no: (i + 1) as i64,
                     });
                 }
             }
         }
     }
-    Ok(results)
+    results
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_tpex_json() -> String {
+        r#"{
+  "tables": [
+    {
+      "title": "上櫃股票",
+      "data": [
+        ["3105","穩懋","150.00","-2.00","152.00","153.00","149.50","151.20","5000000","756000000","3500","149.50","100","150.00","200","250000000"],
+        ["6488","環球晶","450.00","5.00","445.00","455.00","443.00","449.50","3000000","1350000000","2800","449.00","50","450.00","100","200000000"],
+        ["8069","元太","180.00","1.50","179.00","182.00","178.50","180.50","8000000","1444000000","6200","180.00","80","180.50","120","150000000"]
+      ]
+    }
+  ]
+}"#.to_string()
+    }
+
+    #[test]
+    fn test_parse_tpex_json_correct_field_mapping() {
+        let records = parse_tpex_json(&sample_tpex_json(), "test.json");
+        assert_eq!(records.len(), 3);
+
+        assert_eq!(records[0].symbol, "3105");
+        assert_eq!(records[0].name.as_deref(), Some("穩懋"));
+        assert_eq!(records[0].open.as_deref(), Some("152.00"));
+        assert_eq!(records[0].high.as_deref(), Some("153.00"));
+        assert_eq!(records[0].low.as_deref(), Some("149.50"));
+        assert_eq!(records[0].close.as_deref(), Some("150.00"));
+        assert_eq!(records[0].change.as_deref(), Some("-2.00"));
+        assert_eq!(records[0].volume.as_deref(), Some("5000000"));
+        assert_eq!(records[0].turnover.as_deref(), Some("756000000"));
+        assert_eq!(records[0].trade_count.as_deref(), Some("3500"));
+        assert_eq!(records[0].issued_shares.as_deref(), Some("250000000"));
+
+        assert_eq!(records[1].symbol, "6488");
+        assert_eq!(records[1].open.as_deref(), Some("445.00"));
+        assert_eq!(records[1].close.as_deref(), Some("450.00"));
+        assert_eq!(records[1].change.as_deref(), Some("5.00"));
+
+        assert_eq!(records[2].symbol, "8069");
+        assert_eq!(records[2].close.as_deref(), Some("180.00"));
+        assert_eq!(records[2].volume.as_deref(), Some("8000000"));
+    }
+
+    #[test]
+    fn test_parse_tpex_json_skips_short_rows() {
+        let json = r#"{
+  "tables": [{
+    "title": "上櫃股票",
+    "data": [
+      ["3105","穩懋"],
+      ["3105","穩懋","150.00","-2.00","152.00","153.00","149.50","151.20","5000000","756000000","3500","149.50","100","150.00","200","250000000"]
+    ]
+  }]
+}"#;
+        let records = parse_tpex_json(json, "test.json");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].symbol, "3105");
+        assert_eq!(records[0].close.as_deref(), Some("150.00"));
+    }
+
+    #[test]
+    fn test_parse_tpex_json_skips_empty_symbol() {
+        let json = r#"{
+  "tables": [{
+    "title": "上櫃股票",
+    "data": [
+      ["","","","","","","","","","","","","","","",""]
+    ]
+  }]
+}"#;
+        let records = parse_tpex_json(json, "test.json");
+        assert_eq!(records.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_tpex_json_invalid_json() {
+        let records = parse_tpex_json("not json", "test.json");
+        assert_eq!(records.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_tpex_json_issued_shares_fallback_none() {
+        let json = r#"{
+  "tables": [{
+    "title": "上櫃股票",
+    "data": [
+      ["3105","穩懋","150.00","-2.00","152.00","153.00","149.50","151.20","5000000","756000000","3500","149.50","100","150.00","200"]
+    ]
+  }]
+}"#;
+        let records = parse_tpex_json(json, "test.json");
+        assert_eq!(records.len(), 1);
+        assert!(records[0].issued_shares.is_none());
+    }
 }
