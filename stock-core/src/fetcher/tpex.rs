@@ -19,14 +19,12 @@ pub async fn fetch_daily_json(http: &HttpClient, date_str: &str) -> Result<Vec<P
         roc_year, month, day
     );
     let text = http.get(&url).await?;
-    Ok(parse_tpex_json(&text, &url))
+    parse_tpex_json(&text, &url)
 }
 
-fn parse_tpex_json(text: &str, source_file: &str) -> Vec<ParsedRecord> {
-    let json: serde_json::Value = match serde_json::from_str(text) {
-        Ok(v) => v,
-        Err(_) => return Vec::new(),
-    };
+fn parse_tpex_json(text: &str, source_file: &str) -> Result<Vec<ParsedRecord>, HttpError> {
+    let json: serde_json::Value = serde_json::from_str(text)
+        .map_err(|e| HttpError::RequestFailed(format!("TPEX JSON parse: {}", e)))?;
     let mut results = Vec::new();
     if let Some(tables) = json["tables"].as_array() {
         for table in tables {
@@ -40,7 +38,7 @@ fn parse_tpex_json(text: &str, source_file: &str) -> Vec<ParsedRecord> {
                     let fields: Vec<&str> = row.as_array()
                         .map(|arr| arr.iter().map(|v| v.as_str().unwrap_or("")).collect())
                         .unwrap_or_default();
-                    if fields.len() < 3 {
+                    if fields.len() < 11 {
                         continue;
                     }
                     let symbol = fields[0].trim().to_string();
@@ -75,7 +73,7 @@ fn parse_tpex_json(text: &str, source_file: &str) -> Vec<ParsedRecord> {
             }
         }
     }
-    results
+    Ok(results)
 }
 
 #[cfg(test)]
@@ -99,7 +97,7 @@ mod tests {
 
     #[test]
     fn test_parse_tpex_json_correct_field_mapping() {
-        let records = parse_tpex_json(&sample_tpex_json(), "test.json");
+        let records = parse_tpex_json(&sample_tpex_json(), "test.json").unwrap();
         assert_eq!(records.len(), 3);
 
         assert_eq!(records[0].symbol, "3105");
@@ -135,7 +133,7 @@ mod tests {
     ]
   }]
 }"#;
-        let records = parse_tpex_json(json, "test.json");
+        let records = parse_tpex_json(json, "test.json").unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].symbol, "3105");
         assert_eq!(records[0].close.as_deref(), Some("150.00"));
@@ -151,14 +149,14 @@ mod tests {
     ]
   }]
 }"#;
-        let records = parse_tpex_json(json, "test.json");
+        let records = parse_tpex_json(json, "test.json").unwrap();
         assert_eq!(records.len(), 0);
     }
 
     #[test]
     fn test_parse_tpex_json_invalid_json() {
-        let records = parse_tpex_json("not json", "test.json");
-        assert_eq!(records.len(), 0);
+        let result = parse_tpex_json("not json", "test.json");
+        assert!(result.is_err());
     }
 
     #[test]
@@ -171,7 +169,7 @@ mod tests {
     ]
   }]
 }"#;
-        let records = parse_tpex_json(json, "test.json");
+        let records = parse_tpex_json(json, "test.json").unwrap();
         assert_eq!(records.len(), 1);
         assert!(records[0].issued_shares.is_none());
     }

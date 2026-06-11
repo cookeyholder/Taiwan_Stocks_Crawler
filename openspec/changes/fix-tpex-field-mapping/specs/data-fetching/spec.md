@@ -40,8 +40,8 @@
 
 系統應以合理的下限檢查資料列完整性。
 
-#### Scenario: 最少需要 3 個欄位
-- **WHEN** 資料列長度小於 3（不含代號、名稱、收盤）
+#### Scenario: 最少需要 11 個欄位
+- **WHEN** 資料列長度小於 11（無法涵蓋至成交筆數 index 10）
 - **THEN** 該列被跳過，不產生 `ParsedRecord`
 
 ### Requirement: TPEX parser 有對應單元測試
