@@ -62,6 +62,7 @@ pub struct ParsedRecord {
     pub next_limit_down: Option<String>,
     pub source_file: String,
     pub source_line_no: i64,
+    pub source_date: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
