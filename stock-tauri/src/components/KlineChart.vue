@@ -168,10 +168,12 @@ function buildOption(data: AnalysisData): any {
         const lines: string[] = [`${date}`];
         for (const p of params) {
           if (p.seriesName === "K線" && Array.isArray(p.value)) {
-            lines.push(`開盤價: ${Number(p.value[0]).toFixed(2)}`);
-            lines.push(`收盤價: ${Number(p.value[1]).toFixed(2)}`);
-            lines.push(`最低價: ${Number(p.value[2]).toFixed(2)}`);
-            lines.push(`最高價: ${Number(p.value[3]).toFixed(2)}`);
+            const v = p.value;
+            const offset = v.length > 4 ? v.length - 4 : 0;
+            lines.push(`開盤價: ${Number(v[offset]).toFixed(2)}`);
+            lines.push(`收盤價: ${Number(v[offset + 1]).toFixed(2)}`);
+            lines.push(`最低價: ${Number(v[offset + 2]).toFixed(2)}`);
+            lines.push(`最高價: ${Number(v[offset + 3]).toFixed(2)}`);
           } else if (p.seriesName === "超買" || p.seriesName === "超賣") {
             continue;
           } else {
