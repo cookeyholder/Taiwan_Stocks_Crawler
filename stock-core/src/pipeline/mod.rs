@@ -173,6 +173,7 @@ fn normalize_records(
         .map(|r| {
             let symbol_clean = r.symbol.trim_matches('=').trim_matches('"').to_string();
             let td = r.source_date.as_deref()
+                .filter(|s| s.len() == 7 && s.bytes().all(|b| b.is_ascii_digit()))
                 .and_then(date_utils::roc_date_compact_to_ad)
                 .or_else(|| date_utils::roc_to_ad_date(trade_date))
                 .unwrap_or_else(|| trade_date.to_string());
