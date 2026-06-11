@@ -9,17 +9,52 @@
 ```bash
 # 安裝 Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
 
-# Tauri 系統依賴（Ubuntu/Debian）
+#### Windows 系統依賴
+
+此專案使用 `x86_64-pc-windows-gnu` Rust 目標，需要 MSYS2 提供建置工具。
+
+```powershell
+# 1. 安裝 MSYS2（若尚未安裝）
+#    從 https://www.msys2.org/ 下載並安裝
+
+# 2. 在 MSYS2 終端安裝所需套件
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils --noconfirm
+
+# 3. 將 MSYS2 bin 目錄加入系統 PATH（以系統管理員身分執行 PowerShell）
+[Environment]::SetEnvironmentVariable(
+    "Path",
+    [Environment]::GetEnvironmentVariable("Path", "User") + ";C:\msys64\mingw64\bin",
+    "User"
+)
+```
+
+重新啟動終端後驗證：
+```bash
+dlltool --version    # 應顯示 GNU dlltool 版本
+gcc --version        # 應顯示 MinGW-w64 gcc 版本
+```
+
+#### Linux（Ubuntu/Debian）
+
+```bash
+# Tauri 系統依賴
 sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev \
                  libsoup-3.0-dev libjavascriptcoregtk-4.1-dev librsvg2-dev \
                  libdbus-1-dev libssl-dev libayatana-appindicator3-dev \
                  build-essential curl wget file pkg-config
+```
 
-# 安裝 Node.js 相依
+#### 安裝 Node.js 相依
+
+```bash
 cd stock-tauri && npm install
+```
 
-# 驗證
+#### 驗證
+
+```bash
 cargo --version
 node --version
 npm --version
@@ -63,8 +98,10 @@ cargo fmt -p stock-core
 cargo fmt -p stock-cli
 cargo fmt -p stock-tauri
 
+# 不再維護
 # Python 測試（已停止維護，僅供歷史參考）
-make test
+# 詳見 docs/development/測試.md
+# make test
 ```
 
 ### 4. 執行前端建置檢查
