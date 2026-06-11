@@ -9,7 +9,7 @@ CLI 需使用 clap derive API 解析子指令：fetch、screen、sync、classify
 
 #### Scenario: 篩選股票
 - **WHEN** 執行 `stock-cli screen --max-bandwidth 0.08 --min-days 5`
-- **THEN** CLI 需執行布林擠壓篩選並將結果輸出至 stdout
+- **THEN** CLI 需執行布林通道選股並將結果輸出至 stdout
 
 #### Scenario: 同步 yfinance 歷史資料
 - **WHEN** 執行 `stock-cli sync --symbol 2330`

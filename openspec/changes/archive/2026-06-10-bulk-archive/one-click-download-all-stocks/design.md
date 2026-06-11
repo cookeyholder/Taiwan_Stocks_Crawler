@@ -1,6 +1,6 @@
 ## Context
 
-現有 `gui.py` 提供 Tkinter 雙分頁介面（單股分析 + 布林擠壓篩選器），但啟動官方資料管線（TWSE/TPEX 收盤行情下載）只能透過 CLI `twse-crawler` 執行。GUI 使用者無法一鍵觸發完整市場資料下載，必須切換到終端機手動操作。
+現有 `gui.py` 提供 Tkinter 雙分頁介面（單股分析 + 布林通道選股器），但啟動官方資料管線（TWSE/TPEX 收盤行情下載）只能透過 CLI `twse-crawler` 執行。GUI 使用者無法一鍵觸發完整市場資料下載，必須切換到終端機手動操作。
 
 `pipeline.py` 與 `orchestrator.py` 已提供完整的 `fetch_and_ingest_day()` 與 `run_date_range_ingestion()` 函式，可複用。
 

@@ -4,7 +4,7 @@
 TBD - created by archiving change migrate-to-tauri-rust. Update Purpose after archive.
 ## Requirements
 ### Requirement: 篩選結果表格
-表格需顯示布林擠壓篩選結果，欄位包含：symbol、name、latest_close、latest_volume、max_bandwidth、latest_bandwidth。
+表格需顯示布林通道選股結果，欄位包含：symbol、name、latest_close、latest_volume、max_bandwidth、latest_bandwidth。
 
 #### Scenario: 顯示結果
 - **WHEN** 篩選器回傳結果
