@@ -172,7 +172,11 @@ fn normalize_records(
         .iter()
         .map(|r| {
             let symbol_clean = r.symbol.trim_matches('=').trim_matches('"').to_string();
-            let td = date_utils::roc_to_ad_date(trade_date).unwrap_or_else(|| trade_date.to_string());
+            let td = r.source_date.as_deref()
+                .filter(|s| s.len() == 7 && s.bytes().all(|b| b.is_ascii_digit()))
+                .and_then(date_utils::roc_date_compact_to_ad)
+                .or_else(|| date_utils::roc_to_ad_date(trade_date))
+                .unwrap_or_else(|| trade_date.to_string());
             let (change_sign, change_value) = parse_change_field(r.change.as_deref());
             CanonicalQuote {
                 trade_date: td,
@@ -382,6 +386,7 @@ mod tests {
             next_limit_down: None,
             source_file: "test".into(),
             source_line_no: 1,
+            source_date: None,
         }];
         let quotes = normalize_records("TWSE", "2024-01-02", &records, "utf-8", "test-ingest", "2024-01-01T00:00:00");
         assert_eq!(quotes.len(), 1);
@@ -389,6 +394,38 @@ mod tests {
         assert_eq!(quotes[0].symbol_clean, "1101");
         assert_eq!(quotes[0].close_price, Some(30.20));
         assert_eq!(quotes[0].volume_shares, Some(10000000));
+    }
+
+    #[test]
+    fn test_normalize_records_uses_source_date_when_available() {
+        let records = vec![ParsedRecord {
+            symbol: "1101".into(),
+            name: Some("台泥".into()),
+            open: Some("30.00".into()),
+            high: Some("30.50".into()),
+            low: Some("29.80".into()),
+            close: Some("30.20".into()),
+            volume: Some("10000000".into()),
+            turnover: Some("300000000".into()),
+            trade_count: Some("5000".into()),
+            change: None,
+            change_sign: None,
+            change_value: None,
+            last_bid: None,
+            last_bid_qty: None,
+            last_ask: None,
+            last_ask_qty: None,
+            pe_ratio: None,
+            issued_shares: None,
+            next_limit_up: None,
+            next_limit_down: None,
+            source_file: "test".into(),
+            source_line_no: 1,
+            source_date: Some("1150610".into()),
+        }];
+        let quotes = normalize_records("TWSE", "2026-06-11", &records, "utf-8", "test-ingest", "2024-01-01T00:00:00");
+        assert_eq!(quotes.len(), 1);
+        assert_eq!(quotes[0].trade_date, "2026-06-10");
     }
 
     #[test]
@@ -416,6 +453,7 @@ mod tests {
             next_limit_down: None,
             source_file: "test".into(),
             source_line_no: 1,
+            source_date: None,
         }];
         let quotes = normalize_records("TWSE", "2024-01-02", &records, "utf-8", "test-ingest", "2024-01-01T00:00:00");
         assert_eq!(quotes[0].symbol_clean, "1101");

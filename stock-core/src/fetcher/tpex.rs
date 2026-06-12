@@ -68,6 +68,7 @@ fn parse_tpex_json(text: &str, source_file: &str) -> Result<Vec<ParsedRecord>, H
                         next_limit_down: None,
                         source_file: source_file.to_string(),
                         source_line_no: (i + 1) as i64,
+                        source_date: None,
                     });
                 }
             }

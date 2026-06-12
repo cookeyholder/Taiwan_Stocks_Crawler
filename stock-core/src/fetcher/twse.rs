@@ -40,6 +40,7 @@ pub async fn fetch_today_json(http: &HttpClient) -> Result<Vec<ParsedRecord>, Ht
             next_limit_down: None,
             source_file: url.to_string(),
             source_line_no: (i + 1) as i64,
+            source_date: item["Date"].as_str().map(|s| s.to_string()),
         });
     }
     Ok(results)
@@ -125,6 +126,7 @@ fn parse_twse_csv(text: &str, source_file: &str) -> Vec<ParsedRecord> {
             next_limit_down: None,
             source_file: source_file.to_string(),
             source_line_no: line_no,
+            source_date: None,
         });
     }
     results
@@ -173,6 +175,7 @@ pub fn parse_twse_html(html: &str) -> Vec<ParsedRecord> {
                 next_limit_down: None,
                 source_file: String::new(),
                 source_line_no: 0,
+                source_date: None,
             });
         }
     }
