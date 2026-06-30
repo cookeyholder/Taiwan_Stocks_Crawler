@@ -42,11 +42,27 @@ impl Pipeline {
         let is_today = date_str == chrono::Local::now().format("%Y-%m-%d").to_string();
 
         // TWSE: today JSON or history CSV
-        let twse_result = if is_today {
+        let mut twse_result = if is_today {
             twse::fetch_today_json(&self.http).await
         } else {
             twse::fetch_history_csv(&self.http, date_str).await
         };
+
+        if is_today {
+            if let Ok(ref records) = twse_result {
+                if let Some(first) = records.first() {
+                    if let Some(ref s_date) = first.source_date {
+                        if let Some(parsed_date) = date_utils::roc_date_compact_to_ad(s_date) {
+                            if parsed_date != date_str {
+                                eprintln!("[pipeline] TWSE OpenAPI date {} does not match requested date {}. Fallback to CSV.", parsed_date, date_str);
+                                twse_result = twse::fetch_history_csv(&self.http, date_str).await;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         match twse_result {
             Ok(records) if !records.is_empty() => {
                 let quotes = normalize_records("TWSE", date_str, &records, "utf-8", &ingest_run_id, &ingested_at);
@@ -113,7 +129,14 @@ impl Pipeline {
         macd_signal: Option<usize>,
     ) -> Result<AnalysisOutput, PipelineError> {
         eprintln!("[pipeline::get_analysis] symbol={}, ma_periods={:?}", symbol, ma_periods);
-        let end = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let end = match self.repo.get_latest_trade_date() {
+            Ok(Some(d)) => d,
+            _ => {
+                let tz_offset = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
+                let now_taiwan = chrono::Utc::now().with_timezone(&tz_offset);
+                now_taiwan.format("%Y-%m-%d").to_string()
+            }
+        };
         let start = {
             let d = NaiveDate::parse_from_str(&end, "%Y-%m-%d")
                 .map_err(|e| PipelineError::Internal(e.to_string()))?;

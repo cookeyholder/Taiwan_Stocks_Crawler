@@ -206,7 +206,7 @@ function buildOption(data: AnalysisData): any {
       type: "inside",
       xAxisIndex: axisIndices,
       startValue: zoomStartValue,
-      endValue: total - 0.5,
+      endValue: total - 1,
       minValueSpan: 5,
       maxValueSpan: total,
     }],
