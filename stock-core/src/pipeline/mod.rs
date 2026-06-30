@@ -48,19 +48,17 @@ impl Pipeline {
             twse::fetch_history_csv(&self.http, date_str).await
         };
 
-        if is_today {
-            if let Ok(ref records) = twse_result {
-                if let Some(first) = records.first() {
-                    if let Some(ref s_date) = first.source_date {
-                        if let Some(parsed_date) = date_utils::roc_date_compact_to_ad(s_date) {
-                            if parsed_date != date_str {
-                                eprintln!("[pipeline] TWSE OpenAPI date {} does not match requested date {}. Fallback to CSV.", parsed_date, date_str);
-                                twse_result = twse::fetch_history_csv(&self.http, date_str).await;
-                            }
-                        }
-                    }
-                }
-            }
+        if is_today
+            && let Some(parsed_date) = twse_result
+                .as_ref()
+                .ok()
+                .and_then(|records| records.first())
+                .and_then(|first| first.source_date.as_ref())
+                .and_then(|s_date| date_utils::roc_date_compact_to_ad(s_date))
+            && parsed_date != date_str
+        {
+            eprintln!("[pipeline] TWSE OpenAPI date {} does not match requested date {}. Fallback to CSV.", parsed_date, date_str);
+            twse_result = twse::fetch_history_csv(&self.http, date_str).await;
         }
 
         match twse_result {
