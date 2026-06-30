@@ -450,6 +450,47 @@ mod tests {
     }
 
     #[test]
+<<<<<<< HEAD
+=======
+    fn test_screen_bollinger_squeeze_empty_on_no_data() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let results = repo.screen_bollinger_squeeze(0.5, 5, None, 0).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_screen_bollinger_squeeze_finds_tight_symbol() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let mut quotes = Vec::new();
+        for i in 0..50 {
+            let date = format!("2024-01-{:02}", i + 1);
+            let mut q = make_quote("TIGHT", &date, 100.0);
+            q.open_price = Some(100.0);
+            q.volume_shares = Some(50000);
+            if i == 49 {
+                q.open_price = Some(101.0);
+                q.high_price = Some(110.0);
+                q.low_price = Some(100.0);
+                q.close_price = Some(110.0);
+                q.volume_shares = Some(150000); // 3x volume
+            }
+            quotes.push(q);
+
+            let wide_close = if i % 2 == 0 { 100.0 } else { 200.0 };
+            let mut w = make_quote("WIDE", &date, wide_close);
+            w.volume_shares = Some(50000);
+            quotes.push(w);
+        }
+        repo.upsert_core_batch(&quotes).unwrap();
+
+        let results = repo.screen_bollinger_squeeze(0.2, 5, None, 0).unwrap();
+        let symbols: Vec<&str> = results.iter().map(|r| r.symbol.as_str()).collect();
+        assert!(symbols.contains(&"TIGHT"));
+        assert!(!symbols.contains(&"WIDE"));
+    }
+
+    #[test]
+>>>>>>> 63ece79 (feat: 根據阿水一式策略修改布林通道選股的篩選邏輯)
     fn test_get_distinct_symbols() {
         let repo = MarketRepository::open_in_memory().unwrap();
         let quotes = vec![
@@ -461,3 +502,4 @@ mod tests {
         assert_eq!(symbols.len(), 2);
     }
 }
+    fn test_get_distinct_symbols
