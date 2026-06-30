@@ -90,3 +90,6 @@ stock-tauri/src-tauri/gen/schemas/windows-schema.json
 # Local data directory
 data/
 
+# CodeGraph
+.codegraph/
+
