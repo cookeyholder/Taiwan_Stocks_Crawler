@@ -35,10 +35,7 @@ async fn fetch_today(state: State<'_, AppState>) -> Result<String, String> {
     if outcome.records_inserted > 0 {
         let _ = pipeline.repo.sync_securities();
     }
-    Ok(format!(
-        "{}: {} records",
-        outcome.message, outcome.records_inserted
-    ))
+    Ok(outcome.message)
 }
 
 #[tauri::command]
@@ -47,7 +44,7 @@ async fn fetch_date(state: State<'_, AppState>, date: String) -> Result<String, 
     pipeline
         .fetch_date(&date)
         .await
-        .map(|o| format!("{}: {} records", o.message, o.records_inserted))
+        .map(|o| o.message)
         .map_err(|e| e.to_string())
 }
 
