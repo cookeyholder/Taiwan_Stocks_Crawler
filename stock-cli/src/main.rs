@@ -34,7 +34,7 @@ enum Commands {
         max_bandwidth: f64,
         #[arg(long, default_value = "5")]
         min_days: i32,
-        #[arg(long)]
+        #[arg(long, value_delimiter = ',')]
         types: Option<Vec<String>>,
         #[arg(long, default_value = "0")]
         min_volume: i64,
@@ -56,7 +56,7 @@ enum Commands {
         max_bandwidth: f64,
         #[arg(long, default_value = "5")]
         min_days: usize,
-        #[arg(long)]
+        #[arg(long, value_delimiter = ',')]
         types: Option<Vec<String>>,
         #[arg(long, default_value = "0")]
         min_volume: i64,
@@ -111,6 +111,10 @@ async fn main() {
             use stock_core::backtest::bollinger::BollingerSqueezeBreakout;
             use stock_core::backtest::BacktestEngine;
 
+            if min_days == 0 {
+                eprintln!("Error: --min-days must be > 0");
+                return;
+            }
             let engine = BacktestEngine::new(&pipeline.repo);
             let strategy = BollingerSqueezeBreakout {
                 bandwidth_limit: max_bandwidth,
@@ -137,16 +141,16 @@ async fn main() {
             match output {
                 Ok(output) => {
                     println!(
-                        "{:<10} {:<8} {:>10} {:>12} {:>8} {:>8}",
-                        "Date", "Symbol", "Close", "Volume", "Dir", "Strength"
+                        "{:<10} {:<8} {:<12} {:>10} {:>12} {:>8} {:>8}",
+                        "Date", "Symbol", "Name", "Close", "Volume", "Dir", "Strength"
                     );
                     for s in &output.signals {
                         let name = s.name.as_deref().unwrap_or("-");
                         let close = s.close_price.map(|c| format!("{:.2}", c)).unwrap_or_else(|| "-".into());
                         let vol = s.volume.map(|v| v.to_string()).unwrap_or_else(|| "-".into());
                         println!(
-                            "{:<10} {:<8} {:>10} {:>12} {:>8} {:>8.4}",
-                            s.trade_date, name, close, vol, s.direction, s.strength
+                            "{:<10} {:<8} {:<12} {:>10} {:>12} {:>8} {:>8.4}",
+                            s.trade_date, s.symbol, name, close, vol, s.direction, s.strength
                         );
                     }
                     println!("\nTotal: {} signals", output.signals.len());

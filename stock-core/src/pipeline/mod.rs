@@ -111,6 +111,9 @@ impl Pipeline {
         use crate::backtest::bollinger::BollingerSqueezeBreakout;
         use crate::backtest::BacktestEngine;
 
+        if consecutive_days <= 0 {
+            return Err(PipelineError::Internal("consecutive_days must be > 0".into()));
+        }
         let date = match self.repo.get_latest_trade_date()? {
             Some(d) => d,
             None => return Ok(vec![]),

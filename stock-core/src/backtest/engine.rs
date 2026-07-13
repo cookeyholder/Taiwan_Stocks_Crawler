@@ -47,7 +47,7 @@ impl<'a> BacktestEngine<'a> {
         let name_map = self.repo.get_name_map(&end_date)?;
 
         let mut signals = Vec::new();
-        let target_date = dates.last().unwrap();
+        let target_date = &effective_date;
         for symbol in &symbols {
             let data = match ohlcv_map.get(symbol) {
                 Some(d) if d.len() >= strategy.min_history() => d,
@@ -107,7 +107,8 @@ impl<'a> BacktestEngine<'a> {
         warmup_dates.reverse();
         let full_start = warmup_dates
             .first()
-            .map_or(data_start.clone(), |d| if d < &data_start { d.clone() } else { data_start.clone() });
+            .cloned()
+            .unwrap_or(data_start.clone());
 
         let symbols = self.repo.get_active_symbols(&data_start, instrument_types)?;
         let rows = self.repo.get_batch_ohlcv(&full_start, &data_end)?;

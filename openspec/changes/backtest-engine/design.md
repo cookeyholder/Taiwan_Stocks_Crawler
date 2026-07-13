@@ -93,15 +93,13 @@ WHERE (symbol_clean, trade_date) IN (
 
 ```rust
 pub struct BollingerSqueezeBreakout {
-    pub period: usize,           // 固定 20
-    pub std_dev: f64,            // 固定 2.0
-    pub bandwidth_limit: f64,    // 可調，預設 0.08
-    pub consecutive_days: i32,   // 可調，預設 5
-    pub min_volume: i64,         // 可調，預設 1_000_000
+    pub bandwidth_limit: f64,    // 可調，預設 0.08（與 CLI 一致）
+    pub consecutive_days: usize, // 可調，預設 5
+    pub min_volume: i64,         // 可調，預設 0（與 CLI 一致）
 }
 ```
 
-`min_history()` 回傳 `period + consecutive_days as usize`（= 25）。
+`min_history()` 回傳 `consecutive_days + 20`（period 與 std_dev 在 evaluate 內部固定為 20 / 2.0）。
 
 **理由**：固定參數（period、std_dev）是布林通道定義的一部分，不應由呼叫端任意調整。可調參數對應現有 `Pipeline::screen` 的參數簽名，保持向後相容。
 

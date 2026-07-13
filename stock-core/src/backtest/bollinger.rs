@@ -12,7 +12,7 @@ pub struct BollingerSqueezeBreakout {
 impl Default for BollingerSqueezeBreakout {
     fn default() -> Self {
         Self {
-            bandwidth_limit: 0.5,
+            bandwidth_limit: 0.08,
             consecutive_days: 5,
             min_volume: 0,
         }
@@ -29,7 +29,8 @@ impl Strategy for BollingerSqueezeBreakout {
     }
 
     fn evaluate(&self, ohlcv: &[OhlcvRecord], date_index: usize) -> Signal {
-        let ohlcv_slice = &ohlcv[..=date_index];
+        let start_idx = date_index.saturating_sub(self.min_history() - 1);
+        let ohlcv_slice = &ohlcv[start_idx..=date_index];
         let prices: Vec<f64> = ohlcv_slice.iter().filter_map(|r| r.close_price).collect();
 
         if prices.len() < 20 {
@@ -80,7 +81,7 @@ impl Strategy for BollingerSqueezeBreakout {
             };
         }
 
-        let latest = &ohlcv_slice[date_index];
+        let latest = &ohlcv[date_index];
         if self.min_volume > 0 {
             match latest.volume_shares {
                 Some(v) if v >= self.min_volume => {}
