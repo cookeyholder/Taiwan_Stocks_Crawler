@@ -55,7 +55,7 @@ enum Commands {
         #[arg(long, default_value = "0.08")]
         max_bandwidth: f64,
         #[arg(long, default_value = "5")]
-        min_days: i32,
+        min_days: usize,
         #[arg(long)]
         types: Option<Vec<String>>,
         #[arg(long, default_value = "0")]
@@ -114,7 +114,7 @@ async fn main() {
             let engine = BacktestEngine::new(&pipeline.repo);
             let strategy = BollingerSqueezeBreakout {
                 bandwidth_limit: max_bandwidth,
-                consecutive_days: min_days as usize,
+                consecutive_days: min_days,
                 min_volume,
             };
             let types_ref = types.as_deref();
