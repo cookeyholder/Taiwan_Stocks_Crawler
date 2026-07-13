@@ -46,8 +46,7 @@ jobs:
 
       - name: Auto-fix Clippy warnings
         run: |
-          cargo clippy --fix --allow-dirty --allow-staged --workspace --all-targets -- -D warnings
-        continue-on-error: true
+          cargo clippy --fix --allow-dirty --allow-staged --workspace --all-targets
 
       - name: Run Clippy Check (strict)
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -59,7 +58,7 @@ jobs:
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "style: [skip ci] auto fix clippy warnings"
+          commit_message: "[skip ci] style: auto fix clippy warnings"
           file_pattern: "**/*.rs"
           branch: ${{ github.head_ref }}
           commit_user_name: "github-actions[bot]"
