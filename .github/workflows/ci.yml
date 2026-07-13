@@ -1,0 +1,78 @@
+name: CI Check
+
+on:
+  push:
+    branches: [ main, master, dev ]
+  pull_request:
+    branches: [ main, master, dev ]
+
+permissions:
+  contents: write
+
+jobs:
+  # ─── Rust 檢查與測試 ───
+  rust-ci:
+    name: Rust Check & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Setup Cargo Cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Check Rust Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Auto-fix Clippy warnings
+        run: |
+          cargo clippy --fix --allow-dirty --allow-staged --all-targets -- -D warnings
+        continue-on-error: true
+
+      - name: Run Clippy Check (strict)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Commit Auto-fixes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "style: [skip ci] auto fix clippy warnings"
+          file_pattern: "*.rs"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run Cargo Tests
+        run: cargo test --all-targets --workspace
+
+  # ─── 前端 Vue & TS 檢查與測試 ───
+  frontend-ci:
+    name: Frontend Check & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stock-tauri
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: stock-tauri/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Frontend Lints & Typecheck (Build)
+        run: npm run build
+
+      - name: Run Frontend Tests
+        run: npm run test

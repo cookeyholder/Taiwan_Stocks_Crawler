@@ -1,7 +1,11 @@
 pub mod migrations;
 
+<<<<<<< HEAD
 use rusqlite::{params, Connection, Result as SqlResult};
 use std::collections::HashMap;
+=======
+use rusqlite::{Connection, Result as SqlResult, params};
+>>>>>>> 71bcc8b (ci: 建立 Github Actions CI 檢查工作流並修正 Rust Clippy 警告與格式)
 use std::sync::Mutex;
 
 use crate::models::{CanonicalQuote, OhlcvRecord};
@@ -14,7 +18,9 @@ impl MarketRepository {
     pub fn open(path: &str) -> SqlResult<Self> {
         let conn = Connection::open(path)?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
-        let repo = Self { conn: Mutex::new(conn) };
+        let repo = Self {
+            conn: Mutex::new(conn),
+        };
         migrations::run_migrations(&repo.conn.lock().unwrap())?;
         Ok(repo)
     }
@@ -22,7 +28,9 @@ impl MarketRepository {
     pub fn open_in_memory() -> SqlResult<Self> {
         let conn = Connection::open_in_memory()?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
-        let repo = Self { conn: Mutex::new(conn) };
+        let repo = Self {
+            conn: Mutex::new(conn),
+        };
         migrations::run_migrations(&repo.conn.lock().unwrap())?;
         Ok(repo)
     }
@@ -88,18 +96,38 @@ impl MarketRepository {
             ")?;
             for q in quotes {
                 stmt.execute(params![
-                    q.trade_date, q.market_code, q.symbol_raw, q.symbol_clean,
-                    q.security_name, q.instrument_type, q.instrument_subtype,
-                    q.isin_code, q.cfi_code, q.section_label,
-                    q.open_price, q.high_price, q.low_price, q.close_price,
-                    q.volume_shares, q.turnover_value, q.trade_count,
-                    q.change_sign, q.change_value,
-                    q.last_bid_price, q.last_bid_qty_raw,
-                    q.last_ask_price, q.last_ask_qty_raw,
-                    q.pe_ratio, q.issued_shares,
-                    q.next_limit_up, q.next_limit_down,
-                    q.source_file, q.source_encoding, q.source_line_no,
-                    q.ingest_run_id, q.ingested_at,
+                    q.trade_date,
+                    q.market_code,
+                    q.symbol_raw,
+                    q.symbol_clean,
+                    q.security_name,
+                    q.instrument_type,
+                    q.instrument_subtype,
+                    q.isin_code,
+                    q.cfi_code,
+                    q.section_label,
+                    q.open_price,
+                    q.high_price,
+                    q.low_price,
+                    q.close_price,
+                    q.volume_shares,
+                    q.turnover_value,
+                    q.trade_count,
+                    q.change_sign,
+                    q.change_value,
+                    q.last_bid_price,
+                    q.last_bid_qty_raw,
+                    q.last_ask_price,
+                    q.last_ask_qty_raw,
+                    q.pe_ratio,
+                    q.issued_shares,
+                    q.next_limit_up,
+                    q.next_limit_down,
+                    q.source_file,
+                    q.source_encoding,
+                    q.source_line_no,
+                    q.ingest_run_id,
+                    q.ingested_at,
                 ])?;
                 count += 1;
             }
@@ -139,7 +167,7 @@ impl MarketRepository {
             "SELECT trade_date, open_price, high_price, low_price, close_price, volume_shares
              FROM market_quote_core
              WHERE symbol_clean = ?1 AND trade_date >= ?2 AND trade_date <= ?3
-             ORDER BY trade_date ASC"
+             ORDER BY trade_date ASC",
         )?;
         let rows = stmt.query_map(params![symbol, start_date, end_date], |row| {
             Ok(OhlcvRecord {
@@ -155,13 +183,14 @@ impl MarketRepository {
     }
 
 
+
     pub fn get_distinct_symbols(&self) -> SqlResult<Vec<(String, String, Option<String>)>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare_cached(
             "SELECT symbol_clean, MAX(market_code), MAX(security_name)
              FROM market_quote_core
              GROUP BY symbol_clean
-             ORDER BY symbol_clean"
+             ORDER BY symbol_clean",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok((
@@ -175,9 +204,7 @@ impl MarketRepository {
 
     pub fn get_latest_trade_date(&self) -> SqlResult<Option<String>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare_cached(
-            "SELECT MAX(trade_date) FROM market_quote_core"
-        )?;
+        let mut stmt = conn.prepare_cached("SELECT MAX(trade_date) FROM market_quote_core")?;
         stmt.query_row([], |row| row.get(0))
     }
 
@@ -207,7 +234,7 @@ impl MarketRepository {
              FROM securities
              ORDER BY
                CASE WHEN symbol_clean GLOB '[1-9]???' THEN 0 ELSE 1 END,
-               symbol_clean"
+               symbol_clean",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok((
@@ -224,7 +251,7 @@ impl MarketRepository {
         let mut stmt = conn.prepare_cached(
             "SELECT security_name FROM market_quote_core
              WHERE symbol_clean = ?1 AND security_name IS NOT NULL
-             LIMIT 1"
+             LIMIT 1",
         )?;
         stmt.query_row(params![symbol], |row| row.get(0))
     }
@@ -244,14 +271,18 @@ impl MarketRepository {
 
     pub fn get_date_range(&self) -> SqlResult<(Option<String>, Option<String>, usize)> {
         let conn = self.conn.lock().unwrap();
-        let min: Option<String> = conn.query_row(
-            "SELECT MIN(trade_date) FROM market_quote_core", [], |row| row.get(0)
-        )?;
-        let max: Option<String> = conn.query_row(
-            "SELECT MAX(trade_date) FROM market_quote_core", [], |row| row.get(0)
-        )?;
+        let min: Option<String> =
+            conn.query_row("SELECT MIN(trade_date) FROM market_quote_core", [], |row| {
+                row.get(0)
+            })?;
+        let max: Option<String> =
+            conn.query_row("SELECT MAX(trade_date) FROM market_quote_core", [], |row| {
+                row.get(0)
+            })?;
         let count: usize = conn.query_row(
-            "SELECT COUNT(DISTINCT trade_date) FROM market_quote_core", [], |row| row.get(0)
+            "SELECT COUNT(DISTINCT trade_date) FROM market_quote_core",
+            [],
+            |row| row.get(0),
         )?;
         Ok((min, max, count))
     }

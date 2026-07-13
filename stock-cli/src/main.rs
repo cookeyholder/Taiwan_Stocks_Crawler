@@ -71,7 +71,12 @@ async fn main() {
     let pipeline = Pipeline::new(http, repo);
 
     match cli.command {
-        Commands::Fetch { today, date, start: _, end: _ } => {
+        Commands::Fetch {
+            today,
+            date,
+            start: _,
+            end: _,
+        } => {
             if today {
                 match pipeline.fetch_today().await {
                     Ok(outcome) => println!("{}", outcome.message),
@@ -84,15 +89,35 @@ async fn main() {
                 }
             }
         }
-        Commands::Screen { max_bandwidth, min_days, types, min_volume } => {
-            match pipeline.screen(max_bandwidth, min_days, types, min_volume).await {
+        Commands::Screen {
+            max_bandwidth,
+            min_days,
+            types,
+            min_volume,
+        } => {
+            match pipeline
+                .screen(max_bandwidth, min_days, types, min_volume)
+                .await
+            {
                 Ok(results) => {
-                    println!("{:<8} {:<12} {:>10} {:>12} {:>12}", "Symbol", "Name", "Close", "Volume", "Bandwidth");
+                    println!(
+                        "{:<8} {:<12} {:>10} {:>12} {:>12}",
+                        "Symbol", "Name", "Close", "Volume", "Bandwidth"
+                    );
                     for r in &results {
                         let name = r.name.as_deref().unwrap_or("-");
-                        let close = r.latest_close.map(|c| format!("{:.2}", c)).unwrap_or_else(|| "-".into());
-                        let vol = r.latest_volume.map(|v| v.to_string()).unwrap_or_else(|| "-".into());
-                        println!("{:<8} {:<12} {:>10} {:>12} {:>12.4}", r.symbol, name, close, vol, r.latest_bandwidth);
+                        let close = r
+                            .latest_close
+                            .map(|c| format!("{:.2}", c))
+                            .unwrap_or_else(|| "-".into());
+                        let vol = r
+                            .latest_volume
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "-".into());
+                        println!(
+                            "{:<8} {:<12} {:>10} {:>12} {:>12.4}",
+                            r.symbol, name, close, vol, r.latest_bandwidth
+                        );
                     }
                     println!("\nTotal: {} stocks", results.len());
                 }

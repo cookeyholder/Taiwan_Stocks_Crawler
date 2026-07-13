@@ -81,11 +81,16 @@ mod tests {
     fn test_fresh_migration() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
-        let version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap();
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
         assert_eq!(version, MIGRATIONS.len() as i32);
-        conn.execute("SELECT 1 FROM market_quote_core LIMIT 1", []).unwrap();
-        conn.execute("SELECT 1 FROM market_quote_extension LIMIT 1", []).unwrap();
-        conn.execute("SELECT 1 FROM securities LIMIT 1", []).unwrap();
+        conn.execute("SELECT 1 FROM market_quote_core LIMIT 1", [])
+            .unwrap();
+        conn.execute("SELECT 1 FROM market_quote_extension LIMIT 1", [])
+            .unwrap();
+        conn.execute("SELECT 1 FROM securities LIMIT 1", [])
+            .unwrap();
     }
 
     #[test]
@@ -93,7 +98,9 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
         run_migrations(&conn).unwrap();
-        let version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap();
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
         assert_eq!(version, MIGRATIONS.len() as i32);
     }
 }

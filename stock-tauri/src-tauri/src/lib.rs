@@ -35,13 +35,18 @@ async fn fetch_today(state: State<'_, AppState>) -> Result<String, String> {
     if outcome.records_inserted > 0 {
         let _ = pipeline.repo.sync_securities();
     }
-    Ok(format!("{}: {} records", outcome.message, outcome.records_inserted))
+    Ok(format!(
+        "{}: {} records",
+        outcome.message, outcome.records_inserted
+    ))
 }
 
 #[tauri::command]
 async fn fetch_date(state: State<'_, AppState>, date: String) -> Result<String, String> {
     let pipeline = state.pipeline.lock().await;
-    pipeline.fetch_date(&date).await
+    pipeline
+        .fetch_date(&date)
+        .await
         .map(|o| format!("{} records", o.records_inserted))
         .map_err(|e| e.to_string())
 }
@@ -55,7 +60,8 @@ async fn screen_bollinger(
     min_volume: i64,
 ) -> Result<Vec<ScreenResult>, String> {
     let pipeline = state.pipeline.lock().await;
-    pipeline.screen(max_bandwidth, min_days, instrument_types, min_volume)
+    pipeline
+        .screen(max_bandwidth, min_days, instrument_types, min_volume)
         .await
         .map_err(|e| e.to_string())
 }
@@ -71,7 +77,15 @@ async fn get_analysis(
     macd_signal: Option<usize>,
 ) -> Result<AnalysisResponse, String> {
     let pipeline = state.pipeline.lock().await;
-    let output = pipeline.get_analysis(&symbol, &ma_periods, rsi_period, macd_fast, macd_slow, macd_signal)
+    let output = pipeline
+        .get_analysis(
+            &symbol,
+            &ma_periods,
+            rsi_period,
+            macd_fast,
+            macd_slow,
+            macd_signal,
+        )
         .await
         .map_err(|e| e.to_string())?;
 
@@ -82,21 +96,47 @@ async fn get_analysis(
         symbol,
         name,
         ohlcv: output.ohlcv,
-        bollinger_upper: output.bollinger.as_ref().map(|b| b.upper.clone()).unwrap_or(empty.clone()),
-        bollinger_middle: output.bollinger.as_ref().map(|b| b.middle.clone()).unwrap_or(empty.clone()),
-        bollinger_lower: output.bollinger.as_ref().map(|b| b.lower.clone()).unwrap_or(empty),
-        ma5: output.ma_lines.get(0).cloned().unwrap_or_default(),
+        bollinger_upper: output
+            .bollinger
+            .as_ref()
+            .map(|b| b.upper.clone())
+            .unwrap_or(empty.clone()),
+        bollinger_middle: output
+            .bollinger
+            .as_ref()
+            .map(|b| b.middle.clone())
+            .unwrap_or(empty.clone()),
+        bollinger_lower: output
+            .bollinger
+            .as_ref()
+            .map(|b| b.lower.clone())
+            .unwrap_or(empty),
+        ma5: output.ma_lines.first().cloned().unwrap_or_default(),
         ma10: output.ma_lines.get(1).cloned().unwrap_or_default(),
         ma20: output.ma_lines.get(2).cloned().unwrap_or_default(),
         rsi: output.rsi.map(|r| r.values).unwrap_or_default(),
-        macd_line: output.macd.as_ref().map(|m| m.macd_line.clone()).unwrap_or_default(),
-        macd_signal: output.macd.as_ref().map(|m| m.signal_line.clone()).unwrap_or_default(),
-        macd_histogram: output.macd.as_ref().map(|m| m.histogram.clone()).unwrap_or_default(),
+        macd_line: output
+            .macd
+            .as_ref()
+            .map(|m| m.macd_line.clone())
+            .unwrap_or_default(),
+        macd_signal: output
+            .macd
+            .as_ref()
+            .map(|m| m.signal_line.clone())
+            .unwrap_or_default(),
+        macd_histogram: output
+            .macd
+            .as_ref()
+            .map(|m| m.histogram.clone())
+            .unwrap_or_default(),
     })
 }
 
 #[tauri::command]
-async fn get_symbols(state: State<'_, AppState>) -> Result<Vec<(String, String, Option<String>)>, String> {
+async fn get_symbols(
+    state: State<'_, AppState>,
+) -> Result<Vec<(String, String, Option<String>)>, String> {
     let pipeline = state.pipeline.lock().await;
     pipeline.repo.get_securities().map_err(|e| e.to_string())
 }
@@ -104,24 +144,36 @@ async fn get_symbols(state: State<'_, AppState>) -> Result<Vec<(String, String, 
 #[tauri::command]
 async fn get_latest_trade_date(state: State<'_, AppState>) -> Result<Option<String>, String> {
     let pipeline = state.pipeline.lock().await;
-    pipeline.repo.get_latest_trade_date().map_err(|e| e.to_string())
+    pipeline
+        .repo
+        .get_latest_trade_date()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn delete_date_range(state: State<'_, AppState>, start: String, end: String) -> Result<String, String> {
+async fn delete_date_range(
+    state: State<'_, AppState>,
+    start: String,
+    end: String,
+) -> Result<String, String> {
     if chrono::NaiveDate::parse_from_str(&start, "%Y-%m-%d").is_err()
         || chrono::NaiveDate::parse_from_str(&end, "%Y-%m-%d").is_err()
     {
         return Err("日期格式錯誤，請使用 YYYY-MM-DD 格式".into());
     }
     let pipeline = state.pipeline.lock().await;
-    let count = pipeline.repo.delete_date_range(&start, &end).map_err(|e| e.to_string())?;
+    let count = pipeline
+        .repo
+        .delete_date_range(&start, &end)
+        .map_err(|e| e.to_string())?;
     let _ = pipeline.repo.sync_securities();
     Ok(format!("已刪除 {} 筆記錄（{} ~ {}）", count, start, end))
 }
 
 #[tauri::command]
-async fn get_date_range(state: State<'_, AppState>) -> Result<(Option<String>, Option<String>, usize), String> {
+async fn get_date_range(
+    state: State<'_, AppState>,
+) -> Result<(Option<String>, Option<String>, usize), String> {
     let pipeline = state.pipeline.lock().await;
     pipeline.repo.get_date_range().map_err(|e| e.to_string())
 }
@@ -152,18 +204,18 @@ async fn batch_download(
 
     while current <= end {
         let date_str = current.format("%Y-%m-%d").to_string();
-        let _ = app.emit("download-progress", DownloadProgress {
-            current: days_done,
-            total: total_days,
-            date: date_str.clone(),
-        });
+        let _ = app.emit(
+            "download-progress",
+            DownloadProgress {
+                current: days_done,
+                total: total_days,
+                date: date_str.clone(),
+            },
+        );
 
         let pipeline = state.pipeline.lock().await;
-        match pipeline.fetch_date(&date_str).await {
-            Ok(outcome) => {
-                total_records += outcome.records_inserted;
-            }
-            Err(_) => {}
+        if let Ok(outcome) = pipeline.fetch_date(&date_str).await {
+            total_records += outcome.records_inserted;
         }
         days_done += 1;
         current += chrono::Duration::days(1);
@@ -174,13 +226,19 @@ async fn batch_download(
         let _ = pipeline.repo.sync_securities();
     }
 
-    let _ = app.emit("download-progress", DownloadProgress {
-        current: total_days,
-        total: total_days,
-        date: "完成".into(),
-    });
+    let _ = app.emit(
+        "download-progress",
+        DownloadProgress {
+            current: total_days,
+            total: total_days,
+            date: "完成".into(),
+        },
+    );
 
-    Ok(format!("Downloaded {} records across {} dates", total_records, total_days))
+    Ok(format!(
+        "Downloaded {} records across {} dates",
+        total_records, total_days
+    ))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -189,8 +247,7 @@ pub fn run() {
     let _ = std::fs::create_dir_all(&db_path);
     let db_file = db_path.join("market_data.db");
 
-    let repo = MarketRepository::open(db_file.to_str().unwrap())
-        .expect("Failed to open database");
+    let repo = MarketRepository::open(db_file.to_str().unwrap()).expect("Failed to open database");
     let http = HttpClient::new(HttpPolicy::default());
     let pipeline = Pipeline::new(http, repo);
 

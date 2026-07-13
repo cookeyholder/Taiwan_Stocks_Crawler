@@ -1,5 +1,5 @@
-pub mod twse;
 pub mod tpex;
+pub mod twse;
 
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use std::time::Duration;
@@ -56,11 +56,12 @@ impl HttpClient {
             match self.client.get(url).headers(headers).send().await {
                 Ok(resp) => {
                     if resp.status().is_success() {
-                        return Ok(resp.text().await.map_err(|e| HttpError::RequestFailed(e.to_string()))?);
+                        return resp
+                            .text()
+                            .await
+                            .map_err(|e| HttpError::RequestFailed(e.to_string()));
                     } else if resp.status().is_server_error() && attempt < self.policy.retry_count {
                         last_error = HttpError::HttpStatus(resp.status().as_u16());
-                    } else if resp.status().is_client_error() {
-                        return Err(HttpError::HttpStatus(resp.status().as_u16()));
                     } else {
                         return Err(HttpError::HttpStatus(resp.status().as_u16()));
                     }
@@ -84,12 +85,25 @@ impl HttpClient {
     pub async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, HttpError> {
         let mut headers = HeaderMap::new();
         headers.insert(USER_AGENT, HeaderValue::from_static(DEFAULT_USER_AGENTS[0]));
-        let resp = self.client.get(url).headers(headers).send().await.map_err(|e| {
-            if e.is_timeout() { HttpError::Timeout }
-            else { HttpError::RequestFailed(e.to_string()) }
-        })?;
+        let resp = self
+            .client
+            .get(url)
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_timeout() {
+                    HttpError::Timeout
+                } else {
+                    HttpError::RequestFailed(e.to_string())
+                }
+            })?;
         if resp.status().is_success() {
-            Ok(resp.bytes().await.map_err(|e| HttpError::RequestFailed(e.to_string()))?.to_vec())
+            Ok(resp
+                .bytes()
+                .await
+                .map_err(|e| HttpError::RequestFailed(e.to_string()))?
+                .to_vec())
         } else {
             Err(HttpError::HttpStatus(resp.status().as_u16()))
         }
