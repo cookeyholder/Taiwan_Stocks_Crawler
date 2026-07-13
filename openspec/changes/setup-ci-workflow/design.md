@@ -29,7 +29,7 @@
 
 ### 3. Rust & Node 依賴快取
 - **Rust**：使用 `swatinem/rust-cache@v2`，它會自動將 Cargo 工作區之 `target/` 與 registry 快取保存。
-- **Node.js**：使用 `actions/setup-node@v4` 的 `cache: npm` 快取 `node_modules` 還原檔案。
+- **Node.js**：使用 `actions/setup-node@v4` 的 `cache: npm` 快取 npm 下載快取（`~/.npm`），而非直接快取 `node_modules`。
 
 ## Risks / Trade-offs
 
