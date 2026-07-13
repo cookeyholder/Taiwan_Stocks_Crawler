@@ -30,7 +30,9 @@ impl<'a> BacktestEngine<'a> {
         };
 
         let required_days = strategy.min_history();
-        let mut dates = self.repo.get_last_n_trade_dates(&effective_date, required_days)?;
+        let mut dates = self
+            .repo
+            .get_last_n_trade_dates(&effective_date, required_days)?;
         if dates.len() < required_days {
             return Ok(BacktestOutput { signals: vec![] });
         }
@@ -38,7 +40,9 @@ impl<'a> BacktestEngine<'a> {
         let start_date = dates[0].clone();
         let end_date = dates.last().cloned().unwrap_or_default();
 
-        let symbols = self.repo.get_active_symbols(&start_date, instrument_types)?;
+        let symbols = self
+            .repo
+            .get_active_symbols(&start_date, instrument_types)?;
         let rows = self.repo.get_batch_ohlcv(&start_date, &end_date)?;
         let mut ohlcv_map: HashMap<String, Vec<OhlcvRecord>> = HashMap::new();
         for (sym, record) in rows {
@@ -105,12 +109,11 @@ impl<'a> BacktestEngine<'a> {
             .repo
             .get_last_n_trade_dates(&data_start, strategy.min_history())?;
         warmup_dates.reverse();
-        let full_start = warmup_dates
-            .first()
-            .cloned()
-            .unwrap_or(data_start.clone());
+        let full_start = warmup_dates.first().cloned().unwrap_or(data_start.clone());
 
-        let symbols = self.repo.get_active_symbols(&data_start, instrument_types)?;
+        let symbols = self
+            .repo
+            .get_active_symbols(&data_start, instrument_types)?;
         let rows = self.repo.get_batch_ohlcv(&full_start, &data_end)?;
         let mut ohlcv_map: HashMap<String, Vec<OhlcvRecord>> = HashMap::new();
         for (sym, record) in rows {

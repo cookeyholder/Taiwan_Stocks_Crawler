@@ -2,7 +2,10 @@ use super::{HttpClient, HttpError};
 use crate::models::ParsedRecord;
 
 /// Fetch TPEX daily quotes JSON API
-pub async fn fetch_daily_json(http: &HttpClient, date_str: &str) -> Result<Vec<ParsedRecord>, HttpError> {
+pub async fn fetch_daily_json(
+    http: &HttpClient,
+    date_str: &str,
+) -> Result<Vec<ParsedRecord>, HttpError> {
     let parts: Vec<&str> = date_str.split('-').collect();
     if parts.len() != 3 {
         return Err(HttpError::RequestFailed("invalid date format".into()));
@@ -28,14 +31,15 @@ fn parse_tpex_json(text: &str, source_file: &str) -> Result<Vec<ParsedRecord>, H
     let mut results = Vec::new();
     if let Some(tables) = json["tables"].as_array() {
         for table in tables {
-            if let Some(title) = table["title"].as_str() {
-                if !title.contains("上櫃股票") {
-                    continue;
-                }
+            if let Some(title) = table["title"].as_str()
+                && !title.contains("上櫃股票")
+            {
+                continue;
             }
             if let Some(rows) = table["data"].as_array() {
                 for (i, row) in rows.iter().enumerate() {
-                    let fields: Vec<&str> = row.as_array()
+                    let fields: Vec<&str> = row
+                        .as_array()
                         .map(|arr| arr.iter().map(|v| v.as_str().unwrap_or("")).collect())
                         .unwrap_or_default();
                     if fields.len() < 11 {

@@ -47,7 +47,10 @@ pub async fn fetch_today_json(http: &HttpClient) -> Result<Vec<ParsedRecord>, Ht
 }
 
 /// Fetch historical market data from TWSE CSV API
-pub async fn fetch_history_csv(http: &HttpClient, date_str: &str) -> Result<Vec<ParsedRecord>, HttpError> {
+pub async fn fetch_history_csv(
+    http: &HttpClient,
+    date_str: &str,
+) -> Result<Vec<ParsedRecord>, HttpError> {
     let date_compact = date_str.replace("-", "");
     let url = format!(
         "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?response=csv&date={}&type=ALL",
@@ -61,7 +64,7 @@ pub async fn fetch_history_csv(http: &HttpClient, date_str: &str) -> Result<Vec<
 
 fn decode_big5_fallback(bytes: &[u8]) -> String {
     let (cow, _) = BIG5.decode_without_bom_handling(bytes);
-    if cow.len() > 0 && !cow.contains('\u{FFFD}') {
+    if !cow.is_empty() && !cow.contains('\u{FFFD}') {
         return cow.into_owned();
     }
     String::from_utf8_lossy(bytes).to_string()
@@ -99,8 +102,13 @@ fn parse_twse_csv(text: &str, source_file: &str) -> Vec<ParsedRecord> {
             continue;
         }
 
-        let symbol = record[0].trim_start_matches('=').trim_matches('"').trim().to_string();
-        if symbol.is_empty() || symbol == "證券代號" || !symbol.chars().all(|c| c.is_ascii_digit()) {
+        let symbol = record[0]
+            .trim_start_matches('=')
+            .trim_matches('"')
+            .trim()
+            .to_string();
+        if symbol.is_empty() || symbol == "證券代號" || !symbol.chars().all(|c| c.is_ascii_digit())
+        {
             continue;
         }
         results.push(ParsedRecord {
@@ -142,7 +150,8 @@ pub fn parse_twse_html(html: &str) -> Vec<ParsedRecord> {
     let mut results = Vec::new();
     for table in document.select(&table_selector) {
         for row in table.select(&row_selector) {
-            let cells: Vec<String> = row.select(&cell_selector)
+            let cells: Vec<String> = row
+                .select(&cell_selector)
                 .map(|c| c.text().collect::<String>().trim().to_string())
                 .collect();
             if cells.len() < 8 {

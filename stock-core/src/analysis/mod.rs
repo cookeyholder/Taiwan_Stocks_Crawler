@@ -44,7 +44,11 @@ pub fn bollinger(values: &[f64], period: usize, std_dev: f64) -> BollingerResult
             lower[i] = Some(m - std_dev * std);
         }
     }
-    BollingerResult { upper, middle, lower }
+    BollingerResult {
+        upper,
+        middle,
+        lower,
+    }
 }
 
 pub fn rsi(values: &[f64], period: usize) -> RsiResult {
@@ -86,7 +90,12 @@ pub fn rsi(values: &[f64], period: usize) -> RsiResult {
     RsiResult { values: result }
 }
 
-pub fn macd(values: &[f64], fast_period: usize, slow_period: usize, signal_period: usize) -> MacdResult {
+pub fn macd(
+    values: &[f64],
+    fast_period: usize,
+    slow_period: usize,
+    signal_period: usize,
+) -> MacdResult {
     let fast_ema = ema(values, fast_period);
     let slow_ema = ema(values, slow_period);
     let len = values.len();
@@ -103,17 +112,21 @@ pub fn macd(values: &[f64], fast_period: usize, slow_period: usize, signal_perio
     let macd_start = fast_period.max(slow_period) - 1;
     let mut signal_idx = 0;
     for i in macd_start..len {
-        if let Some(m) = macd_line[i] {
-            if signal_idx < signal_ema.len() {
-                if let Some(s) = signal_ema[signal_idx] {
-                    signal_line[i] = Some(s);
-                    hist[i] = Some(m - s);
-                }
-                signal_idx += 1;
+        if let Some(m) = macd_line[i]
+            && signal_idx < signal_ema.len()
+        {
+            if let Some(s) = signal_ema[signal_idx] {
+                signal_line[i] = Some(s);
+                hist[i] = Some(m - s);
             }
+            signal_idx += 1;
         }
     }
-    MacdResult { macd_line, signal_line, histogram: hist }
+    MacdResult {
+        macd_line,
+        signal_line,
+        histogram: hist,
+    }
 }
 
 #[cfg(test)]
@@ -152,14 +165,14 @@ mod tests {
     #[test]
     fn test_rsi() {
         let prices = vec![
-            44.34, 44.09, 44.15, 43.61, 44.33, 44.83, 45.10, 45.42, 45.84, 46.08,
-            45.89, 46.03, 45.61, 46.28, 46.28, 46.00, 46.03, 46.41, 46.22, 46.21,
+            44.34, 44.09, 44.15, 43.61, 44.33, 44.83, 45.10, 45.42, 45.84, 46.08, 45.89, 46.03,
+            45.61, 46.28, 46.28, 46.00, 46.03, 46.41, 46.22, 46.21,
         ];
         let result = rsi(&prices, 14);
         assert!(result.values[0].is_none());
         assert!(result.values[14].is_some());
         let rsi_val = result.values[14].unwrap();
-        assert!(rsi_val >= 0.0 && rsi_val <= 100.0);
+        assert!((0.0..=100.0).contains(&rsi_val));
     }
 
     #[test]
@@ -172,9 +185,9 @@ mod tests {
     #[test]
     fn test_macd() {
         let prices = vec![
-            10.0, 10.5, 11.0, 11.5, 12.0, 12.5, 13.0, 13.5, 14.0, 14.5,
-            15.0, 15.5, 16.0, 16.5, 17.0, 17.5, 18.0, 18.5, 19.0, 19.5,
-            20.0, 20.5, 21.0, 21.5, 22.0, 22.5, 23.0, 23.5, 24.0, 24.5,
+            10.0, 10.5, 11.0, 11.5, 12.0, 12.5, 13.0, 13.5, 14.0, 14.5, 15.0, 15.5, 16.0, 16.5,
+            17.0, 17.5, 18.0, 18.5, 19.0, 19.5, 20.0, 20.5, 21.0, 21.5, 22.0, 22.5, 23.0, 23.5,
+            24.0, 24.5,
         ];
         let result = macd(&prices, 12, 26, 9);
         assert!(!result.macd_line.is_empty());

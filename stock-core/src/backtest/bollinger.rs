@@ -91,7 +91,7 @@ impl Strategy for BollingerSqueezeBreakout {
                         direction: 0,
                         strength: 0.0,
                         metadata: HashMap::new(),
-                    }
+                    };
                 }
             }
         }
@@ -109,14 +109,14 @@ impl Strategy for BollingerSqueezeBreakout {
 
         let mut metadata = HashMap::new();
         metadata.insert("max_bandwidth".to_string(), max_bw);
-        metadata.insert(
-            "bandwidth".to_string(),
-            *recent.last().unwrap_or(&0.0),
-        );
+        metadata.insert("bandwidth".to_string(), *recent.last().unwrap_or(&0.0));
         if let Some(upper) = latest_upper_band {
             metadata.insert("upper_band".to_string(), upper);
         }
-        metadata.insert("break_upper".to_string(), if break_upper { 1.0 } else { 0.0 });
+        metadata.insert(
+            "break_upper".to_string(),
+            if break_upper { 1.0 } else { 0.0 },
+        );
 
         Signal {
             has_signal: true,
@@ -264,15 +264,20 @@ mod tests {
             min_volume: 0,
         };
         // Run range over the last 10 trade dates
-        let range_start = (start + chrono::Duration::days(30)).format("%Y-%m-%d").to_string();
-        let range_end = (start + chrono::Duration::days(39)).format("%Y-%m-%d").to_string();
+        let range_start = (start + chrono::Duration::days(30))
+            .format("%Y-%m-%d")
+            .to_string();
+        let range_end = (start + chrono::Duration::days(39))
+            .format("%Y-%m-%d")
+            .to_string();
         let output = engine
             .run_range(&range_start, &range_end, &strategy, None)
             .unwrap();
         assert!(!output.signals.is_empty(), "expected signals in range");
-        let all_in_range = output.signals.iter().all(|s| {
-            s.trade_date >= range_start && s.trade_date <= range_end
-        });
+        let all_in_range = output
+            .signals
+            .iter()
+            .all(|s| s.trade_date >= range_start && s.trade_date <= range_end);
         assert!(all_in_range, "all signals should be within the date range");
     }
 }

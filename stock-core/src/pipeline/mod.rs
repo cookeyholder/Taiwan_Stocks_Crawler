@@ -1,7 +1,7 @@
 use std::sync::atomic::AtomicBool;
 
 use crate::db::MarketRepository;
-use crate::fetcher::{twse, tpex};
+use crate::fetcher::{tpex, twse};
 use crate::models::*;
 use crate::{date_utils, fetcher::HttpClient};
 
@@ -57,13 +57,23 @@ impl Pipeline {
                 .and_then(|s_date| date_utils::roc_date_compact_to_ad(s_date))
             && parsed_date != date_str
         {
-            eprintln!("[pipeline] TWSE OpenAPI date {} does not match requested date {}. Fallback to CSV.", parsed_date, date_str);
+            eprintln!(
+                "[pipeline] TWSE OpenAPI date {} does not match requested date {}. Fallback to CSV.",
+                parsed_date, date_str
+            );
             twse_result = twse::fetch_history_csv(&self.http, date_str).await;
         }
 
         match twse_result {
             Ok(records) if !records.is_empty() => {
-                let quotes = normalize_records("TWSE", date_str, &records, "utf-8", &ingest_run_id, &ingested_at);
+                let quotes = normalize_records(
+                    "TWSE",
+                    date_str,
+                    &records,
+                    "utf-8",
+                    &ingest_run_id,
+                    &ingested_at,
+                );
                 total += self.repo.upsert_core_batch(&quotes)?;
             }
             Ok(_) => {}
@@ -75,7 +85,14 @@ impl Pipeline {
         // TPEX daily JSON (works for both today and history)
         match tpex::fetch_daily_json(&self.http, date_str).await {
             Ok(records) if !records.is_empty() => {
-                let quotes = normalize_records("TPEX", date_str, &records, "utf-8", &ingest_run_id, &ingested_at);
+                let quotes = normalize_records(
+                    "TPEX",
+                    date_str,
+                    &records,
+                    "utf-8",
+                    &ingest_run_id,
+                    &ingested_at,
+                );
                 total += self.repo.upsert_core_batch(&quotes)?;
             }
             Ok(_) => {}
@@ -108,11 +125,13 @@ impl Pipeline {
         instrument_types: Option<Vec<String>>,
         min_volume: i64,
     ) -> Result<Vec<ScreenResult>, PipelineError> {
-        use crate::backtest::bollinger::BollingerSqueezeBreakout;
         use crate::backtest::BacktestEngine;
+        use crate::backtest::bollinger::BollingerSqueezeBreakout;
 
         if consecutive_days <= 0 {
-            return Err(PipelineError::Internal("consecutive_days must be > 0".into()));
+            return Err(PipelineError::Internal(
+                "consecutive_days must be > 0".into(),
+            ));
         }
         let date = match self.repo.get_latest_trade_date()? {
             Some(d) => d,
@@ -130,7 +149,11 @@ impl Pipeline {
                 instrument_types.as_deref(),
             )
             .map_err(|e| PipelineError::Internal(e.to_string()))?;
-        Ok(output.signals.iter().map(|s| s.to_screen_result()).collect())
+        Ok(output
+            .signals
+            .iter()
+            .map(|s| s.to_screen_result())
+            .collect())
     }
 
     pub async fn get_analysis(
@@ -142,7 +165,10 @@ impl Pipeline {
         macd_slow: Option<usize>,
         macd_signal: Option<usize>,
     ) -> Result<AnalysisOutput, PipelineError> {
-        eprintln!("[pipeline::get_analysis] symbol={}, ma_periods={:?}", symbol, ma_periods);
+        eprintln!(
+            "[pipeline::get_analysis] symbol={}, ma_periods={:?}",
+            symbol, ma_periods
+        );
         let end = match self.repo.get_latest_trade_date() {
             Ok(Some(d)) => d,
             _ => {
@@ -159,7 +185,10 @@ impl Pipeline {
         };
         eprintln!("[pipeline::get_analysis] date range: {} -> {}", start, end);
         let ohlcv = self.repo.get_ohlcv(symbol, &start, &end)?;
-        eprintln!("[pipeline::get_analysis] got {} OHLCV rows from DB", ohlcv.len());
+        eprintln!(
+            "[pipeline::get_analysis] got {} OHLCV rows from DB",
+            ohlcv.len()
+        );
         if ohlcv.is_empty() {
             return Err(PipelineError::NoData(symbol.to_string()));
         }
@@ -180,19 +209,24 @@ impl Pipeline {
         if prices.len() >= 20 {
             output.bollinger = Some(crate::analysis::bollinger(&prices, 20, 2.0));
         }
-        if let Some(period) = rsi_period {
-            if prices.len() > period {
-                output.rsi = Some(crate::analysis::rsi(&prices, period));
-            }
+        if let Some(period) = rsi_period
+            && prices.len() > period
+        {
+            output.rsi = Some(crate::analysis::rsi(&prices, period));
         }
-        if let (Some(f), Some(s), Some(sig)) = (macd_fast, macd_slow, macd_signal) {
-            if prices.len() > s {
-                output.macd = Some(crate::analysis::macd(&prices, f, s, sig));
-            }
+        if let (Some(f), Some(s), Some(sig)) = (macd_fast, macd_slow, macd_signal)
+            && prices.len() > s
+        {
+            output.macd = Some(crate::analysis::macd(&prices, f, s, sig));
         }
-        eprintln!("[pipeline::get_analysis] DONE: {} prices, {} ma_lines, bollinger={}, rsi={}, macd={}",
-            prices.len(), output.ma_lines.len(),
-            output.bollinger.is_some(), output.rsi.is_some(), output.macd.is_some());
+        eprintln!(
+            "[pipeline::get_analysis] DONE: {} prices, {} ma_lines, bollinger={}, rsi={}, macd={}",
+            prices.len(),
+            output.ma_lines.len(),
+            output.bollinger.is_some(),
+            output.rsi.is_some(),
+            output.macd.is_some()
+        );
         Ok(output)
     }
 }
@@ -209,7 +243,9 @@ fn normalize_records(
         .iter()
         .map(|r| {
             let symbol_clean = r.symbol.trim_matches('=').trim_matches('"').to_string();
-            let td = r.source_date.as_deref()
+            let td = r
+                .source_date
+                .as_deref()
                 .filter(|s| s.len() == 7 && s.bytes().all(|b| b.is_ascii_digit()))
                 .and_then(date_utils::roc_date_compact_to_ad)
                 .or_else(|| date_utils::roc_to_ad_date(trade_date))
@@ -376,14 +412,26 @@ mod tests {
 
     #[test]
     fn test_parse_change_field_ascii_plus_minus() {
-        assert_eq!(parse_change_field(Some("+0.10")), (Some("+".into()), Some(0.10)));
-        assert_eq!(parse_change_field(Some("-5.0")), (Some("-".into()), Some(5.0)));
+        assert_eq!(
+            parse_change_field(Some("+0.10")),
+            (Some("+".into()), Some(0.10))
+        );
+        assert_eq!(
+            parse_change_field(Some("-5.0")),
+            (Some("-".into()), Some(5.0))
+        );
     }
 
     #[test]
     fn test_parse_change_field_fullwidth() {
-        assert_eq!(parse_change_field(Some("＋0.10")), (Some("+".into()), Some(0.10)));
-        assert_eq!(parse_change_field(Some("－5.0")), (Some("-".into()), Some(5.0)));
+        assert_eq!(
+            parse_change_field(Some("＋0.10")),
+            (Some("+".into()), Some(0.10))
+        );
+        assert_eq!(
+            parse_change_field(Some("－5.0")),
+            (Some("-".into()), Some(5.0))
+        );
     }
 
     #[test]
@@ -425,7 +473,14 @@ mod tests {
             source_line_no: 1,
             source_date: None,
         }];
-        let quotes = normalize_records("TWSE", "2024-01-02", &records, "utf-8", "test-ingest", "2024-01-01T00:00:00");
+        let quotes = normalize_records(
+            "TWSE",
+            "2024-01-02",
+            &records,
+            "utf-8",
+            "test-ingest",
+            "2024-01-01T00:00:00",
+        );
         assert_eq!(quotes.len(), 1);
         assert_eq!(quotes[0].market_code, "TWSE");
         assert_eq!(quotes[0].symbol_clean, "1101");
@@ -460,7 +515,14 @@ mod tests {
             source_line_no: 1,
             source_date: Some("1150610".into()),
         }];
-        let quotes = normalize_records("TWSE", "2026-06-11", &records, "utf-8", "test-ingest", "2024-01-01T00:00:00");
+        let quotes = normalize_records(
+            "TWSE",
+            "2026-06-11",
+            &records,
+            "utf-8",
+            "test-ingest",
+            "2024-01-01T00:00:00",
+        );
         assert_eq!(quotes.len(), 1);
         assert_eq!(quotes[0].trade_date, "2026-06-10");
     }
@@ -492,7 +554,14 @@ mod tests {
             source_line_no: 1,
             source_date: None,
         }];
-        let quotes = normalize_records("TWSE", "2024-01-02", &records, "utf-8", "test-ingest", "2024-01-01T00:00:00");
+        let quotes = normalize_records(
+            "TWSE",
+            "2024-01-02",
+            &records,
+            "utf-8",
+            "test-ingest",
+            "2024-01-01T00:00:00",
+        );
         assert_eq!(quotes[0].symbol_clean, "1101");
     }
 }
