@@ -47,7 +47,7 @@ async fn fetch_date(state: State<'_, AppState>, date: String) -> Result<String, 
     pipeline
         .fetch_date(&date)
         .await
-        .map(|o| format!("{} records", o.records_inserted))
+        .map(|o| format!("{}: {} records", o.message, o.records_inserted))
         .map_err(|e| e.to_string())
 }
 

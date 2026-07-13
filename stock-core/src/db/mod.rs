@@ -1,11 +1,7 @@
 pub mod migrations;
 
-<<<<<<< HEAD
-use rusqlite::{params, Connection, Result as SqlResult};
-use std::collections::HashMap;
-=======
 use rusqlite::{Connection, Result as SqlResult, params};
->>>>>>> 71bcc8b (ci: 建立 Github Actions CI 檢查工作流並修正 Rust Clippy 警告與格式)
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::models::{CanonicalQuote, OhlcvRecord};
