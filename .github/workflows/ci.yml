@@ -83,8 +83,11 @@ jobs:
       - name: Install dependencies
         run: npm ci --locked
 
-      - name: Frontend Lints & Typecheck (Build)
-        run: npm run build
+      - name: TypeScript Typecheck
+        run: npx vue-tsc --noEmit
+
+      - name: Build
+        run: npx vite build
 
       - name: Run Frontend Tests
         run: npm run test
