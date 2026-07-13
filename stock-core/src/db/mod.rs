@@ -182,7 +182,6 @@ impl MarketRepository {
         rows.collect()
     }
 
-
     pub fn get_distinct_symbols(&self) -> SqlResult<Vec<(String, String, Option<String>)>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare_cached(
@@ -300,7 +299,7 @@ impl MarketRepository {
         let mut stmt = conn.prepare_cached(
             "SELECT DISTINCT trade_date FROM market_quote_core
              WHERE trade_date <= ?1
-             ORDER BY trade_date DESC LIMIT ?2"
+             ORDER BY trade_date DESC LIMIT ?2",
         )?;
         let rows = stmt.query_map(params![up_to, limit as i64], |row| row.get(0))?;
         rows.collect()
@@ -311,7 +310,7 @@ impl MarketRepository {
         let mut stmt = conn.prepare_cached(
             "SELECT DISTINCT trade_date FROM market_quote_core
              WHERE trade_date >= ?1 AND trade_date <= ?2
-             ORDER BY trade_date ASC"
+             ORDER BY trade_date ASC",
         )?;
         let rows = stmt.query_map(params![start, end], |row| row.get(0))?;
         rows.collect()
@@ -323,24 +322,35 @@ impl MarketRepository {
         instrument_types: Option<&[String]>,
     ) -> SqlResult<Vec<String>> {
         let conn = self.conn.lock().unwrap();
-        let mut sql = "SELECT DISTINCT symbol_clean FROM market_quote_core WHERE trade_date >= ?1".to_string();
-        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(start_date.to_string())];
+        let mut sql = "SELECT DISTINCT symbol_clean FROM market_quote_core WHERE trade_date >= ?1"
+            .to_string();
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> =
+            vec![Box::new(start_date.to_string())];
         if let Some(types) = instrument_types
             && !types.is_empty()
         {
-            let placeholders: Vec<String> = (0..types.len()).map(|i| format!("?{}", i + 2)).collect();
-            sql.push_str(&format!(" AND instrument_type IN ({})", placeholders.join(",")));
+            let placeholders: Vec<String> =
+                (0..types.len()).map(|i| format!("?{}", i + 2)).collect();
+            sql.push_str(&format!(
+                " AND instrument_type IN ({})",
+                placeholders.join(",")
+            ));
             for t in types {
                 param_values.push(Box::new(t.clone()));
             }
         }
         let mut stmt = conn.prepare_cached(&sql)?;
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
         let rows = stmt.query_map(param_refs.as_slice(), |row| row.get(0))?;
         rows.collect()
     }
 
-    pub fn get_batch_ohlcv(&self, start_date: &str, end_date: &str) -> SqlResult<Vec<(String, OhlcvRecord)>> {
+    pub fn get_batch_ohlcv(
+        &self,
+        start_date: &str,
+        end_date: &str,
+    ) -> SqlResult<Vec<(String, OhlcvRecord)>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare_cached(
             "SELECT symbol_clean, trade_date, open_price, high_price, low_price, close_price, volume_shares
@@ -373,7 +383,7 @@ impl MarketRepository {
                  FROM market_quote_core
                  WHERE security_name IS NOT NULL AND trade_date <= ?1
                  GROUP BY symbol_clean
-             )"
+             )",
         )?;
         let rows = stmt.query_map(params![as_of_date], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))

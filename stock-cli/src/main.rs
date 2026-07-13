@@ -133,8 +133,8 @@ async fn main() {
             types,
             min_volume,
         } => {
-            use stock_core::backtest::bollinger::BollingerSqueezeBreakout;
             use stock_core::backtest::BacktestEngine;
+            use stock_core::backtest::bollinger::BollingerSqueezeBreakout;
 
             if min_days == 0 {
                 eprintln!("Error: --min-days must be > 0");
@@ -171,8 +171,14 @@ async fn main() {
                     );
                     for s in &output.signals {
                         let name = s.name.as_deref().unwrap_or("-");
-                        let close = s.close_price.map(|c| format!("{:.2}", c)).unwrap_or_else(|| "-".into());
-                        let vol = s.volume.map(|v| v.to_string()).unwrap_or_else(|| "-".into());
+                        let close = s
+                            .close_price
+                            .map(|c| format!("{:.2}", c))
+                            .unwrap_or_else(|| "-".into());
+                        let vol = s
+                            .volume
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "-".into());
                         println!(
                             "{:<10} {:<8} {:<12} {:>10} {:>12} {:>8} {:>8.4}",
                             s.trade_date, s.symbol, name, close, vol, s.direction, s.strength
