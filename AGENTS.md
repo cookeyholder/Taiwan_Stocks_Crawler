@@ -80,3 +80,15 @@ Always us zh-tw to write commit message, pr message and comments. And talk with 
 - 新增/調整測試：N/A (GUI 環境測試在無 GUI 的 CI 中會跳過)。
 - 流程更新：已修正 `gui.py` 的關閉邏輯與 `main()` 入口點。
 
+## 相關模組與檔案
+
+| 模組                           | 路徑                                       | 說明                                   |
+| ------------------------------ | ------------------------------------------ | -------------------------------------- |
+| `backtest::Strategy`           | `stock-core/src/backtest/mod.rs`           | 策略 trait：evaluate, id, min_history  |
+| `backtest::BacktestEngine`     | `stock-core/src/backtest/engine.rs`        | 回測引擎：run_date, run_range          |
+| `backtest::bollinger`          | `stock-core/src/backtest/bollinger.rs`     | 布林擠壓策略實作                       |
+| `backtest::*` 型別             | `stock-core/src/models.rs`                 | SignalRecord, BacktestOutput, Signal   |
+| `db::MarketRepository` 輔助查詢 | `stock-core/src/db/mod.rs`                | get_batch_ohlcv, get_active_symbols 等 |
+| `pipeline::Pipeline::screen`   | `stock-core/src/pipeline/mod.rs`           | 已改用 BacktestEngine                   |
+| CLI `backtest` 子命令          | `stock-cli/src/main.rs`                    | backtest --date / --start / --end      |
+

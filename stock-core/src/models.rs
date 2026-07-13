@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CanonicalQuote {
@@ -75,6 +76,71 @@ pub struct ScreenResult {
     pub latest_bandwidth: f64,
     pub latest_upper_band: Option<f64>,
     pub break_upper: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Signal {
+    pub has_signal: bool,
+    pub direction: i8,
+    pub strength: f64,
+    pub metadata: HashMap<String, f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignalRecord {
+    pub trade_date: String,
+    pub symbol: String,
+    pub name: Option<String>,
+    pub close_price: Option<f64>,
+    pub volume: Option<i64>,
+    pub direction: i8,
+    pub strength: f64,
+    pub strategy: String,
+    pub metadata: HashMap<String, f64>,
+}
+
+impl SignalRecord {
+    pub fn to_screen_result(&self) -> ScreenResult {
+        let get_f64 = |key: &str| self.metadata.get(key).copied().unwrap_or(0.0);
+        ScreenResult {
+            symbol: self.symbol.clone(),
+            name: self.name.clone(),
+            latest_close: self.close_price,
+            latest_volume: self.volume,
+            max_bandwidth: get_f64("max_bandwidth"),
+            latest_bandwidth: get_f64("bandwidth"),
+            latest_upper_band: self.metadata.get("upper_band").copied(),
+            break_upper: self.metadata.get("break_upper").copied().unwrap_or(0.0) > 0.5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BacktestOutput {
+    pub signals: Vec<SignalRecord>,
+}
+
+#[derive(Debug)]
+pub enum EngineError {
+    Db(rusqlite::Error),
+    InvalidDate(String),
+}
+
+impl fmt::Display for EngineError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EngineError::Db(e) => write!(f, "DB error: {}", e),
+            EngineError::InvalidDate(d) => write!(f, "invalid date: {}", d),
+        }
+    }
+}
+
+impl std::error::Error for EngineError {}
+
+impl From<rusqlite::Error> for EngineError {
+    fn from(e: rusqlite::Error) -> Self {
+        EngineError::Db(e)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

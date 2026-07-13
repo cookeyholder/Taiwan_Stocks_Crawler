@@ -1,9 +1,10 @@
 pub mod migrations;
 
 use rusqlite::{params, Connection, Result as SqlResult};
+use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::models::{CanonicalQuote, OhlcvRecord, ScreenResult};
+use crate::models::{CanonicalQuote, OhlcvRecord};
 
 pub struct MarketRepository {
     conn: Mutex<Connection>,
@@ -153,163 +154,6 @@ impl MarketRepository {
         rows.collect()
     }
 
-    pub fn screen_bollinger_squeeze(
-        &self,
-        bandwidth_limit: f64,
-        consecutive_days: i32,
-        instrument_types: Option<&[String]>,
-        min_volume: i64,
-    ) -> SqlResult<Vec<ScreenResult>> {
-        use std::collections::HashMap;
-
-        let conn = self.conn.lock().unwrap();
-        let required_days = consecutive_days + 40;
-
-        let dates: Vec<String> = {
-            let mut stmt = conn.prepare_cached(
-                "SELECT DISTINCT trade_date FROM market_quote_core ORDER BY trade_date DESC LIMIT ?1"
-            )?;
-            let rows = stmt.query_map(params![required_days], |row| row.get(0))?;
-            let mut d = rows.collect::<SqlResult<Vec<String>>>()?;
-            d.reverse();
-            d
-        };
-        if dates.is_empty() {
-            return Ok(vec![]);
-        }
-        let start_date = dates[0].clone();
-        let end_date = dates.last().cloned().unwrap_or_default();
-
-        let symbols: Vec<String> = {
-            let mut sql = "SELECT DISTINCT symbol_clean FROM market_quote_core WHERE trade_date >= ?1".to_string();
-            if let Some(types) = instrument_types {
-                if !types.is_empty() {
-                    let placeholders: Vec<String> = types.iter().enumerate().map(|(i, _)| format!("?{}", i + 2)).collect();
-                    sql.push_str(&format!(" AND instrument_type IN ({})", placeholders.join(",")));
-                }
-            }
-            let mut stmt = conn.prepare_cached(&sql)?;
-            let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(start_date.clone())];
-            if let Some(types) = instrument_types {
-                for t in types {
-                    param_values.push(Box::new(t.clone()));
-                }
-            }
-            let param_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
-            let rows = stmt.query_map(param_refs.as_slice(), |row| row.get(0))?;
-            rows.collect::<SqlResult<Vec<String>>>()?
-        };
-
-        // Batch-load all OHLCV data in one query (fix N+1)
-        let mut ohlcv_map: HashMap<String, Vec<OhlcvRecord>> = HashMap::new();
-        {
-            let mut stmt = conn.prepare_cached(
-                "SELECT symbol_clean, trade_date, open_price, high_price, low_price, close_price, volume_shares
-                 FROM market_quote_core
-                 WHERE trade_date >= ?1 AND trade_date <= ?2
-                 ORDER BY symbol_clean, trade_date ASC"
-            )?;
-            let rows = stmt.query_map(params![start_date, end_date], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    OhlcvRecord {
-                        trade_date: row.get(1)?,
-                        open_price: row.get(2)?,
-                        high_price: row.get(3)?,
-                        low_price: row.get(4)?,
-                        close_price: row.get(5)?,
-                        volume_shares: row.get(6)?,
-                    },
-                ))
-            })?;
-            for result in rows {
-                let (sym, record) = result?;
-                ohlcv_map.entry(sym).or_default().push(record);
-            }
-        }
-
-        // Batch-load security names in one query
-        let mut name_map: HashMap<String, Option<String>> = HashMap::new();
-        {
-            let mut stmt = conn.prepare_cached(
-                "SELECT symbol_clean, security_name FROM market_quote_core
-                 WHERE (symbol_clean, trade_date) IN (
-                     SELECT symbol_clean, MAX(trade_date)
-                     FROM market_quote_core
-                     WHERE security_name IS NOT NULL AND trade_date <= ?1
-                     GROUP BY symbol_clean
-                 )"
-            )?;
-            let rows = stmt.query_map(params![end_date], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
-            })?;
-            for result in rows {
-                let (sym, name) = result?;
-                name_map.entry(sym).or_insert(name);
-            }
-        }
-
-        let mut results = Vec::new();
-        for symbol in &symbols {
-            let data = match ohlcv_map.get(symbol) {
-                Some(d) if d.len() >= 20 => d,
-                _ => continue,
-            };
-            let prices: Vec<f64> = data.iter().filter_map(|r| r.close_price).collect();
-            if prices.len() < 20 {
-                continue;
-            }
-            let bollinger = crate::analysis::bollinger(&prices, 20, 2.0);
-            let bandwidth: Vec<Option<f64>> = bollinger.upper.iter().zip(bollinger.lower.iter()).zip(bollinger.middle.iter())
-                .map(|((u, l), m)| {
-                    match (u, l, m) {
-                        (Some(u), Some(l), Some(m)) if *m != 0.0 => Some((u - l) / m),
-                        _ => None,
-                    }
-                })
-                .collect();
-            let valid_bw: Vec<f64> = bandwidth.iter().filter_map(|b| *b).collect();
-            if valid_bw.len() < consecutive_days as usize {
-                continue;
-            }
-            let recent: Vec<f64> = valid_bw.iter().rev().take(consecutive_days as usize).copied().rev().collect();
-            let max_bw = recent.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-            if max_bw > bandwidth_limit {
-                continue;
-            }
-            let latest = match data.last() {
-                Some(r) => r,
-                None => continue,
-            };
-            if min_volume > 0 {
-                match latest.volume_shares {
-                    Some(v) if v >= min_volume => {}
-                    _ => continue,
-                }
-            }
-            let security_name = name_map.get(symbol).and_then(|n| n.clone());
-            let break_upper = match (latest.open_price, latest.close_price) {
-                (Some(o), Some(c)) if c > o => {
-                    bollinger.upper.last().map_or(false, |u| {
-                        u.map_or(false, |upper| o < upper && c > upper)
-                    })
-                }
-                _ => false,
-            };
-            let latest_upper_band = bollinger.upper.last().and_then(|v| *v);
-            results.push(ScreenResult {
-                symbol: symbol.clone(),
-                name: security_name,
-                latest_close: latest.close_price,
-                latest_volume: latest.volume_shares,
-                max_bandwidth: max_bw,
-                latest_bandwidth: *recent.last().unwrap_or(&0.0),
-                latest_upper_band,
-                break_upper,
-            });
-        }
-        Ok(results)
-    }
 
     pub fn get_distinct_symbols(&self) -> SqlResult<Vec<(String, String, Option<String>)>> {
         let conn = self.conn.lock().unwrap();
@@ -411,12 +255,111 @@ impl MarketRepository {
         )?;
         Ok((min, max, count))
     }
+
+    pub fn get_effective_trade_date(&self, max_date: &str) -> SqlResult<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT MAX(trade_date) FROM market_quote_core WHERE trade_date <= ?1",
+            params![max_date],
+            |row| row.get(0),
+        )
+    }
+
+    pub fn get_last_n_trade_dates(&self, up_to: &str, limit: usize) -> SqlResult<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT DISTINCT trade_date FROM market_quote_core
+             WHERE trade_date <= ?1
+             ORDER BY trade_date DESC LIMIT ?2"
+        )?;
+        let rows = stmt.query_map(params![up_to, limit as i64], |row| row.get(0))?;
+        rows.collect()
+    }
+
+    pub fn get_trade_dates_in_range(&self, start: &str, end: &str) -> SqlResult<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT DISTINCT trade_date FROM market_quote_core
+             WHERE trade_date >= ?1 AND trade_date <= ?2
+             ORDER BY trade_date ASC"
+        )?;
+        let rows = stmt.query_map(params![start, end], |row| row.get(0))?;
+        rows.collect()
+    }
+
+    pub fn get_active_symbols(
+        &self,
+        start_date: &str,
+        instrument_types: Option<&[String]>,
+    ) -> SqlResult<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut sql = "SELECT DISTINCT symbol_clean FROM market_quote_core WHERE trade_date >= ?1".to_string();
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(start_date.to_string())];
+        if let Some(types) = instrument_types
+            && !types.is_empty()
+        {
+            let placeholders: Vec<String> = (0..types.len()).map(|i| format!("?{}", i + 2)).collect();
+            sql.push_str(&format!(" AND instrument_type IN ({})", placeholders.join(",")));
+            for t in types {
+                param_values.push(Box::new(t.clone()));
+            }
+        }
+        let mut stmt = conn.prepare_cached(&sql)?;
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+        let rows = stmt.query_map(param_refs.as_slice(), |row| row.get(0))?;
+        rows.collect()
+    }
+
+    pub fn get_batch_ohlcv(&self, start_date: &str, end_date: &str) -> SqlResult<Vec<(String, OhlcvRecord)>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT symbol_clean, trade_date, open_price, high_price, low_price, close_price, volume_shares
+             FROM market_quote_core
+             WHERE trade_date >= ?1 AND trade_date <= ?2
+             ORDER BY symbol_clean, trade_date ASC"
+        )?;
+        let rows = stmt.query_map(params![start_date, end_date], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                OhlcvRecord {
+                    trade_date: row.get(1)?,
+                    open_price: row.get(2)?,
+                    high_price: row.get(3)?,
+                    low_price: row.get(4)?,
+                    close_price: row.get(5)?,
+                    volume_shares: row.get(6)?,
+                },
+            ))
+        })?;
+        rows.collect()
+    }
+
+    pub fn get_name_map(&self, as_of_date: &str) -> SqlResult<HashMap<String, Option<String>>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT symbol_clean, security_name FROM market_quote_core
+             WHERE (symbol_clean, trade_date) IN (
+                 SELECT symbol_clean, MAX(trade_date)
+                 FROM market_quote_core
+                 WHERE security_name IS NOT NULL AND trade_date <= ?1
+                 GROUP BY symbol_clean
+             )"
+        )?;
+        let rows = stmt.query_map(params![as_of_date], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+        })?;
+        let mut map = HashMap::new();
+        for result in rows {
+            let (sym, name) = result?;
+            map.entry(sym).or_insert(name);
+        }
+        Ok(map)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     fn make_quote(symbol: &str, date: &str, close: f64) -> CanonicalQuote {
         CanonicalQuote {
@@ -468,31 +411,6 @@ mod tests {
         assert_eq!(ohlcv.len(), 2);
         assert_eq!(ohlcv[0].close_price, Some(500.0));
         assert_eq!(ohlcv[1].close_price, Some(505.0));
-    }
-
-    #[test]
-    fn test_screen_bollinger_squeeze_empty_on_no_data() {
-        let repo = MarketRepository::open_in_memory().unwrap();
-        let results = repo.screen_bollinger_squeeze(0.5, 5, None, 0).unwrap();
-        assert!(results.is_empty());
-    }
-
-    #[test]
-    fn test_screen_bollinger_squeeze_finds_tight_symbol() {
-        let repo = MarketRepository::open_in_memory().unwrap();
-        let mut quotes = Vec::new();
-        for i in 0..50 {
-            let date = format!("2024-01-{:02}", i + 1);
-            quotes.push(make_quote("TIGHT", &date, 100.0));
-            let wide_close = if i % 2 == 0 { 100.0 } else { 200.0 };
-            quotes.push(make_quote("WIDE", &date, wide_close));
-        }
-        repo.upsert_core_batch(&quotes).unwrap();
-
-        let results = repo.screen_bollinger_squeeze(0.1, 3, None, 0).unwrap();
-        let symbols: Vec<&str> = results.iter().map(|r| r.symbol.as_str()).collect();
-        assert!(symbols.contains(&"TIGHT"));
-        assert!(!symbols.contains(&"WIDE"));
     }
 
     #[test]

@@ -1,4 +1,5 @@
 pub mod analysis;
+pub mod backtest;
 pub mod date_utils;
 pub mod db;
 pub mod fetcher;
