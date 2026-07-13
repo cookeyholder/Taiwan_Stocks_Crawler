@@ -34,7 +34,7 @@ enum Commands {
         max_bandwidth: f64,
         #[arg(long, default_value = "5")]
         min_days: i32,
-        #[arg(long)]
+        #[arg(long, value_delimiter = ',')]
         types: Option<Vec<String>>,
         #[arg(long, default_value = "0")]
         min_volume: i64,
@@ -43,6 +43,23 @@ enum Commands {
     Sync {
         #[arg(long)]
         symbol: Option<String>,
+    },
+    /// 回測選股策略
+    Backtest {
+        #[arg(long)]
+        date: Option<String>,
+        #[arg(long)]
+        start: Option<String>,
+        #[arg(long)]
+        end: Option<String>,
+        #[arg(long, default_value = "0.08")]
+        max_bandwidth: f64,
+        #[arg(long, default_value = "5")]
+        min_days: usize,
+        #[arg(long, value_delimiter = ',')]
+        types: Option<Vec<String>>,
+        #[arg(long, default_value = "0")]
+        min_volume: i64,
     },
 }
 
@@ -80,6 +97,65 @@ async fn main() {
                     println!("\nTotal: {} stocks", results.len());
                 }
                 Err(e) => eprintln!("Screen error: {}", e),
+            }
+        }
+        Commands::Backtest {
+            date,
+            start,
+            end,
+            max_bandwidth,
+            min_days,
+            types,
+            min_volume,
+        } => {
+            use stock_core::backtest::bollinger::BollingerSqueezeBreakout;
+            use stock_core::backtest::BacktestEngine;
+
+            if min_days == 0 {
+                eprintln!("Error: --min-days must be > 0");
+                return;
+            }
+            let engine = BacktestEngine::new(&pipeline.repo);
+            let strategy = BollingerSqueezeBreakout {
+                bandwidth_limit: max_bandwidth,
+                consecutive_days: min_days,
+                min_volume,
+            };
+            let types_ref = types.as_deref();
+
+            let output = if let Some(d) = date {
+                engine.run_date(&d, &strategy, types_ref)
+            } else if let (Some(s), Some(e)) = (start.as_ref(), end.as_ref()) {
+                engine.run_range(s, e, &strategy, types_ref)
+            } else {
+                let latest = match pipeline.repo.get_latest_trade_date() {
+                    Ok(Some(d)) => d,
+                    _ => {
+                        eprintln!("No data in database");
+                        return;
+                    }
+                };
+                engine.run_date(&latest, &strategy, types_ref)
+            };
+
+            match output {
+                Ok(output) => {
+                    println!(
+                        "{:<10} {:<8} {:<12} {:>10} {:>12} {:>8} {:>8}",
+                        "Date", "Symbol", "Name", "Close", "Volume", "Dir", "Strength"
+                    );
+                    for s in &output.signals {
+                        let name = s.name.as_deref().unwrap_or("-");
+                        let close = s.close_price.map(|c| format!("{:.2}", c)).unwrap_or_else(|| "-".into());
+                        let vol = s.volume.map(|v| v.to_string()).unwrap_or_else(|| "-".into());
+                        println!(
+                            "{:<10} {:<8} {:<12} {:>10} {:>12} {:>8} {:>8.4}",
+                            s.trade_date, s.symbol, name, close, vol, s.direction, s.strength
+                        );
+                    }
+                    println!("\nTotal: {} signals", output.signals.len());
+                }
+                Err(e) => eprintln!("Backtest error: {}", e),
             }
         }
         Commands::Sync { symbol } => {

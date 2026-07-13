@@ -108,13 +108,29 @@ impl Pipeline {
         instrument_types: Option<Vec<String>>,
         min_volume: i64,
     ) -> Result<Vec<ScreenResult>, PipelineError> {
-        let results = self.repo.screen_bollinger_squeeze(
-            bandwidth_limit,
-            consecutive_days,
-            instrument_types.as_deref(),
-            min_volume,
-        )?;
-        Ok(results)
+        use crate::backtest::bollinger::BollingerSqueezeBreakout;
+        use crate::backtest::BacktestEngine;
+
+        if consecutive_days <= 0 {
+            return Err(PipelineError::Internal("consecutive_days must be > 0".into()));
+        }
+        let date = match self.repo.get_latest_trade_date()? {
+            Some(d) => d,
+            None => return Ok(vec![]),
+        };
+        let engine = BacktestEngine::new(&self.repo);
+        let output = engine
+            .run_date(
+                &date,
+                &BollingerSqueezeBreakout {
+                    bandwidth_limit,
+                    consecutive_days: consecutive_days as usize,
+                    min_volume,
+                },
+                instrument_types.as_deref(),
+            )
+            .map_err(|e| PipelineError::Internal(e.to_string()))?;
+        Ok(output.signals.iter().map(|s| s.to_screen_result()).collect())
     }
 
     pub async fn get_analysis(

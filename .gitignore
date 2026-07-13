@@ -70,7 +70,7 @@ sqlite3/
 
 
 .antigravitycli
-.worktrees/gui_venv/
+.worktrees/
 *.db-journal
 *.db-wal
 *.db-shm
