@@ -183,7 +183,6 @@ impl MarketRepository {
     }
 
 
-
     pub fn get_distinct_symbols(&self) -> SqlResult<Vec<(String, String, Option<String>)>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare_cached(
