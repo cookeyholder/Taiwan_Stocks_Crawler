@@ -236,14 +236,11 @@ impl Pipeline {
 }
 
 fn classify_by_symbol(symbol: &str) -> &str {
-    if symbol.len() == 5 {
-        if symbol.starts_with("03") {
-            return "warrant";
-        } else if symbol.starts_with("02") {
-            return "etn";
-        }
-    }
-    if symbol.starts_with('0') {
+    if symbol.starts_with("03") {
+        "warrant"
+    } else if symbol.starts_with("02") {
+        "etn"
+    } else if symbol.starts_with('0') {
         "etf"
     } else if symbol.len() == 4 && symbol.starts_with(|c: char| c.is_ascii_digit() && c != '0') {
         "stock"
@@ -478,6 +475,8 @@ mod tests {
         assert_eq!(classify_by_symbol("00940"), "etf");
         assert_eq!(classify_by_symbol("03001"), "warrant");
         assert_eq!(classify_by_symbol("02001"), "etn");
+        assert_eq!(classify_by_symbol("030011"), "warrant");
+        assert_eq!(classify_by_symbol("020011"), "etn");
         assert_eq!(classify_by_symbol("2330"), "stock");
         assert_eq!(classify_by_symbol("1101"), "stock");
         assert_eq!(classify_by_symbol("12345"), "other");

@@ -8,6 +8,13 @@ import KlineChart from "../components/KlineChart.vue";
 
 const store = useScreenerStore();
 const chartData = ref<AnalysisData | null>(null);
+
+const types = [
+  { value: "stock", label: "股票" },
+  { value: "etf", label: "ETF" },
+  { value: "warrant", label: "權證" },
+  { value: "etn", label: "ETN" },
+];
 const selectedSymbol = ref("");
 
 const types = [
