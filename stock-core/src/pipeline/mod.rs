@@ -235,6 +235,23 @@ impl Pipeline {
     }
 }
 
+fn classify_by_symbol(symbol: &str) -> &str {
+    if symbol.len() == 5 {
+        if symbol.starts_with("03") {
+            return "warrant";
+        } else if symbol.starts_with("02") {
+            return "etn";
+        }
+    }
+    if symbol.starts_with('0') {
+        "etf"
+    } else if symbol.len() == 4 && symbol.starts_with(|c: char| c.is_ascii_digit() && c != '0') {
+        "stock"
+    } else {
+        "other"
+    }
+}
+
 fn normalize_records(
     market_code: &str,
     trade_date: &str,
@@ -255,13 +272,17 @@ fn normalize_records(
                 .or_else(|| date_utils::roc_to_ad_date(trade_date))
                 .unwrap_or_else(|| trade_date.to_string());
             let (change_sign, change_value) = parse_change_field(r.change.as_deref());
+            let instrument_type = r
+                .instrument_type
+                .clone()
+                .unwrap_or_else(|| classify_by_symbol(&symbol_clean).to_string());
             CanonicalQuote {
                 trade_date: td,
                 market_code: market_code.to_string(),
                 symbol_raw: r.symbol.clone(),
                 symbol_clean,
                 security_name: r.name.clone(),
-                instrument_type: "other".to_string(),
+                instrument_type,
                 instrument_subtype: None,
                 isin_code: None,
                 cfi_code: None,
@@ -451,6 +472,21 @@ mod tests {
     }
 
     #[test]
+    fn test_classify_by_symbol() {
+        assert_eq!(classify_by_symbol("0050"), "etf");
+        assert_eq!(classify_by_symbol("00878"), "etf");
+        assert_eq!(classify_by_symbol("00940"), "etf");
+        assert_eq!(classify_by_symbol("03001"), "warrant");
+        assert_eq!(classify_by_symbol("02001"), "etn");
+        assert_eq!(classify_by_symbol("2330"), "stock");
+        assert_eq!(classify_by_symbol("1101"), "stock");
+        assert_eq!(classify_by_symbol("12345"), "other");
+        assert_eq!(classify_by_symbol("ABC"), "other");
+        assert_eq!(classify_by_symbol(""), "other");
+        assert_eq!(classify_by_symbol("5"), "other");
+    }
+
+    #[test]
     fn test_normalize_records_sets_market_code() {
         let records = vec![ParsedRecord {
             symbol: "1101".into(),
@@ -473,6 +509,7 @@ mod tests {
             issued_shares: None,
             next_limit_up: None,
             next_limit_down: None,
+            instrument_type: None,
             source_file: "test".into(),
             source_line_no: 1,
             source_date: None,
@@ -488,6 +525,7 @@ mod tests {
         assert_eq!(quotes.len(), 1);
         assert_eq!(quotes[0].market_code, "TWSE");
         assert_eq!(quotes[0].symbol_clean, "1101");
+        assert_eq!(quotes[0].instrument_type, "stock");
         assert_eq!(quotes[0].close_price, Some(30.20));
         assert_eq!(quotes[0].volume_shares, Some(10000000));
     }
@@ -515,6 +553,7 @@ mod tests {
             issued_shares: None,
             next_limit_up: None,
             next_limit_down: None,
+            instrument_type: None,
             source_file: "test".into(),
             source_line_no: 1,
             source_date: Some("1150610".into()),
@@ -554,6 +593,7 @@ mod tests {
             issued_shares: None,
             next_limit_up: None,
             next_limit_down: None,
+            instrument_type: None,
             source_file: "test".into(),
             source_line_no: 1,
             source_date: None,

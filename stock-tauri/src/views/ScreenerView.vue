@@ -10,6 +10,13 @@ const store = useScreenerStore();
 const chartData = ref<AnalysisData | null>(null);
 const selectedSymbol = ref("");
 
+const types = [
+  { value: "stock", label: "股票" },
+  { value: "etf", label: "ETF" },
+  { value: "warrant", label: "權證" },
+  { value: "etn", label: "ETN" },
+];
+
 onMounted(async () => {
   await store.fetchLatestTradeDate();
   store.runScreen();
@@ -65,6 +72,15 @@ async function onRowSelected(symbol: string) {
           inputmode="numeric"
         />
       </div>
+      <div class="param-group">
+        <label>類型</label>
+        <div class="checkbox-group">
+          <label v-for="t in types" :key="t.value" class="checkbox-label">
+            <input type="checkbox" :value="t.value" v-model="store.instrumentTypes" />
+            {{ t.label }}
+          </label>
+        </div>
+      </div>
       <button
         @click="store.runScreen()"
         :disabled="store.loading || store.dateLoading"
@@ -104,6 +120,8 @@ async function onRowSelected(symbol: string) {
 .btn-primary:disabled { background: #90caf9; cursor: not-allowed; }
 .date-input { padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; width: 150px; font-size: 15px; }
 .empty-hint { color: #d32f2f; font-size: 14px; margin: 8px 0; }
+.checkbox-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.checkbox-label { display: flex; align-items: center; gap: 3px; font-size: 13px; cursor: pointer; }
 .screener-content { display: flex; gap: 16px; flex: 1; min-height: 0; }
 .table-section { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .chart-section { flex: 1; min-width: 0; }
