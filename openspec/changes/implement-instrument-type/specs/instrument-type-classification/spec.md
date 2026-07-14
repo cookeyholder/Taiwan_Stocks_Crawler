@@ -17,7 +17,7 @@
 - **THEN** 該筆記錄的 `instrument_type` 設為 `stock`
 
 #### Scenario: TWSE ETF 分類為 etf
-- **WHEN** 擷取 TWSE 資料且 symbol 為 4 位數、首位為 0（如 0050）
+- **WHEN** 擷取 TWSE 資料且 symbol 以 `0` 開頭（如 0050、00878）
 - **THEN** 該筆記錄的 `instrument_type` 設為 `etf`
 
 #### Scenario: TWSE 權證分類為 warrant
