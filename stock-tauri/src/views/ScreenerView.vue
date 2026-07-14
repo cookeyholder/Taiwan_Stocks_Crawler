@@ -17,13 +17,6 @@ const types = [
 ];
 const selectedSymbol = ref("");
 
-const types = [
-  { value: "stock", label: "股票" },
-  { value: "etf", label: "ETF" },
-  { value: "warrant", label: "權證" },
-  { value: "etn", label: "ETN" },
-];
-
 onMounted(async () => {
   await store.fetchLatestTradeDate();
   store.runScreen();
