@@ -22,17 +22,38 @@ export const useScreenerStore = defineStore("screener", () => {
   const minDays = ref(5);
   const minVolume = ref(1000000);
   const instrumentTypes = ref<string[]>([]);
+  const date = ref("");
+  const dateLoading = ref(false);
+
+  async function fetchLatestTradeDate() {
+    dateLoading.value = true;
+    try {
+      const d = await invoke<string | null>("get_latest_trade_date");
+      if (d) date.value = d;
+    } catch {
+      // 保留空日期，讓使用者手動輸入
+    } finally {
+      dateLoading.value = false;
+    }
+  }
+
+  const lastEmptyDate = ref("");
 
   async function runScreen() {
     loading.value = true;
     error.value = null;
+    lastEmptyDate.value = "";
     try {
       results.value = await invoke<ScreenResult[]>("screen_bollinger", {
         maxBandwidth: maxBandwidth.value,
         minDays: minDays.value,
         instrumentTypes: instrumentTypes.value.length > 0 ? instrumentTypes.value : null,
         minVolume: minVolume.value,
+        date: date.value || null,
       });
+      if (results.value.length === 0 && date.value) {
+        lastEmptyDate.value = date.value;
+      }
     } catch (e) {
       error.value = String(e);
       results.value = [];
@@ -44,6 +65,7 @@ export const useScreenerStore = defineStore("screener", () => {
   return {
     results, loading, error,
     maxBandwidth, minDays, minVolume, instrumentTypes,
-    runScreen,
+    date, dateLoading,
+    fetchLatestTradeDate, runScreen, lastEmptyDate,
   };
 });

@@ -30,6 +30,8 @@ enum Commands {
     },
     /// 布林通道選股
     Screen {
+        #[arg(long)]
+        date: Option<String>,
         #[arg(long, default_value = "0.08")]
         max_bandwidth: f64,
         #[arg(long, default_value = "5")]
@@ -90,13 +92,14 @@ async fn main() {
             }
         }
         Commands::Screen {
+            date,
             max_bandwidth,
             min_days,
             types,
             min_volume,
         } => {
             match pipeline
-                .screen(max_bandwidth, min_days, types, min_volume)
+                .screen(max_bandwidth, min_days, types, min_volume, date.as_deref())
                 .await
             {
                 Ok(results) => {

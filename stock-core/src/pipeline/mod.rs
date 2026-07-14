@@ -124,6 +124,7 @@ impl Pipeline {
         consecutive_days: i32,
         instrument_types: Option<Vec<String>>,
         min_volume: i64,
+        date: Option<&str>,
     ) -> Result<Vec<ScreenResult>, PipelineError> {
         use crate::backtest::BacktestEngine;
         use crate::backtest::bollinger::BollingerSqueezeBreakout;
@@ -133,9 +134,12 @@ impl Pipeline {
                 "consecutive_days must be > 0".into(),
             ));
         }
-        let date = match self.repo.get_latest_trade_date()? {
-            Some(d) => d,
-            None => return Ok(vec![]),
+        let date = match date {
+            Some(d) => d.to_string(),
+            None => match self.repo.get_latest_trade_date()? {
+                Some(d) => d,
+                None => return Ok(vec![]),
+            },
         };
         let engine = BacktestEngine::new(&self.repo);
         let output = engine
