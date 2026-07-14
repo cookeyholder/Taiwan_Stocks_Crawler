@@ -25,17 +25,29 @@ pub async fn fetch_daily_json(
     parse_tpex_json(&text, &url)
 }
 
+fn classify_tpex_title(title: &str) -> &str {
+    if title.contains("上櫃股票") {
+        "stock"
+    } else if title.contains("上櫃ETF") {
+        "etf"
+    } else if title.contains("興櫃") {
+        "stock"
+    } else {
+        "other"
+    }
+}
+
 fn parse_tpex_json(text: &str, source_file: &str) -> Result<Vec<ParsedRecord>, HttpError> {
     let json: serde_json::Value = serde_json::from_str(text)
         .map_err(|e| HttpError::RequestFailed(format!("TPEX JSON parse: {}", e)))?;
     let mut results = Vec::new();
     if let Some(tables) = json["tables"].as_array() {
         for table in tables {
-            if let Some(title) = table["title"].as_str()
-                && !title.contains("上櫃股票")
-            {
-                continue;
-            }
+            let instrument_type = table["title"]
+                .as_str()
+                .map(classify_tpex_title)
+                .unwrap_or("other")
+                .to_string();
             if let Some(rows) = table["data"].as_array() {
                 for (i, row) in rows.iter().enumerate() {
                     let fields: Vec<&str> = row
@@ -70,6 +82,7 @@ fn parse_tpex_json(text: &str, source_file: &str) -> Result<Vec<ParsedRecord>, H
                         issued_shares: fields.get(15).map(|s| s.trim().to_string()),
                         next_limit_up: None,
                         next_limit_down: None,
+                        instrument_type: Some(instrument_type.clone()),
                         source_file: source_file.to_string(),
                         source_line_no: (i + 1) as i64,
                         source_date: None,
@@ -101,30 +114,65 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_tpex_json_correct_field_mapping() {
+    fn test_classify_tpex_title() {
+        assert_eq!(classify_tpex_title("上櫃股票"), "stock");
+        assert_eq!(classify_tpex_title("上櫃股票產業價值資訊"), "stock");
+        assert_eq!(classify_tpex_title("上櫃ETF"), "etf");
+        assert_eq!(classify_tpex_title("上櫃ETF基金"), "etf");
+        assert_eq!(classify_tpex_title("興櫃"), "stock");
+        assert_eq!(classify_tpex_title("興櫃一般板"), "stock");
+        assert_eq!(classify_tpex_title("上櫃權證"), "other");
+        assert_eq!(classify_tpex_title("中央公債"), "other");
+    }
+
+    #[test]
+    fn test_parse_tpex_json_instrument_type_stock() {
         let records = parse_tpex_json(&sample_tpex_json(), "test.json").unwrap();
         assert_eq!(records.len(), 3);
+        for r in &records {
+            assert_eq!(r.instrument_type.as_deref(), Some("stock"));
+        }
+    }
+
+    #[test]
+    fn test_parse_tpex_json_multi_table() {
+        let json = r#"{
+  "tables": [
+    {
+      "title": "上櫃股票",
+      "data": [
+        ["3105","穩懋","150.00","-2.00","152.00","153.00","149.50","151.20","5000000","756000000","3500","149.50","100","150.00","200","250000000"],
+        ["8069","元太","180.00","1.50","179.00","182.00","178.50","180.50","8000000","1444000000","6200","180.00","80","180.50","120","150000000"]
+      ]
+    },
+    {
+      "title": "上櫃ETF",
+      "data": [
+        ["00899","某ETF","20.00","0.10","19.90","20.10","19.85","20.00","100000","2000000","50","19.90","10","20.00","20","50000000"]
+      ]
+    },
+    {
+      "title": "中央公債",
+      "data": [
+        ["A02101","公債甲","100.00","0.50","100.10","100.20","99.90","100.05","50000","5000000","10","99.90","5","100.05","5","100000000"]
+      ]
+    }
+  ]
+}"#;
+        let records = parse_tpex_json(json, "test.json").unwrap();
+        assert_eq!(records.len(), 4);
 
         assert_eq!(records[0].symbol, "3105");
-        assert_eq!(records[0].name.as_deref(), Some("穩懋"));
-        assert_eq!(records[0].open.as_deref(), Some("152.00"));
-        assert_eq!(records[0].high.as_deref(), Some("153.00"));
-        assert_eq!(records[0].low.as_deref(), Some("149.50"));
-        assert_eq!(records[0].close.as_deref(), Some("150.00"));
-        assert_eq!(records[0].change.as_deref(), Some("-2.00"));
-        assert_eq!(records[0].volume.as_deref(), Some("5000000"));
-        assert_eq!(records[0].turnover.as_deref(), Some("756000000"));
-        assert_eq!(records[0].trade_count.as_deref(), Some("3500"));
-        assert_eq!(records[0].issued_shares.as_deref(), Some("250000000"));
+        assert_eq!(records[0].instrument_type.as_deref(), Some("stock"));
 
-        assert_eq!(records[1].symbol, "6488");
-        assert_eq!(records[1].open.as_deref(), Some("445.00"));
-        assert_eq!(records[1].close.as_deref(), Some("450.00"));
-        assert_eq!(records[1].change.as_deref(), Some("5.00"));
+        assert_eq!(records[1].symbol, "8069");
+        assert_eq!(records[1].instrument_type.as_deref(), Some("stock"));
 
-        assert_eq!(records[2].symbol, "8069");
-        assert_eq!(records[2].close.as_deref(), Some("180.00"));
-        assert_eq!(records[2].volume.as_deref(), Some("8000000"));
+        assert_eq!(records[2].symbol, "00899");
+        assert_eq!(records[2].instrument_type.as_deref(), Some("etf"));
+
+        assert_eq!(records[3].symbol, "A02101");
+        assert_eq!(records[3].instrument_type.as_deref(), Some("other"));
     }
 
     #[test]
@@ -142,6 +190,7 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].symbol, "3105");
         assert_eq!(records[0].close.as_deref(), Some("150.00"));
+        assert_eq!(records[0].instrument_type.as_deref(), Some("stock"));
     }
 
     #[test]
@@ -177,5 +226,6 @@ mod tests {
         let records = parse_tpex_json(json, "test.json").unwrap();
         assert_eq!(records.len(), 1);
         assert!(records[0].issued_shares.is_none());
+        assert_eq!(records[0].instrument_type.as_deref(), Some("stock"));
     }
 }
