@@ -60,8 +60,8 @@ async fn screen_bollinger(
     min_volume: i64,
     date: Option<String>,
 ) -> Result<Vec<ScreenResult>, String> {
-    use stock_core::backtest::bollinger::BollingerSqueezeBreakout;
     use stock_core::backtest::BacktestEngine;
+    use stock_core::backtest::bollinger::BollingerSqueezeBreakout;
 
     if min_days <= 0 {
         return Err("consecutive_days must be > 0".into());
@@ -71,7 +71,11 @@ async fn screen_bollinger(
         d
     } else {
         let pipeline = state.pipeline.lock().await;
-        match pipeline.repo.get_latest_trade_date().map_err(|e| e.to_string())? {
+        match pipeline
+            .repo
+            .get_latest_trade_date()
+            .map_err(|e| e.to_string())?
+        {
             Some(d) => d,
             None => return Ok(vec![]),
         }
@@ -86,7 +90,9 @@ async fn screen_bollinger(
 
     tokio::task::spawn_blocking(move || {
         let repo = MarketRepository::open(
-            db_path.to_str().ok_or_else(|| "Invalid DB path".to_string())?,
+            db_path
+                .to_str()
+                .ok_or_else(|| "Invalid DB path".to_string())?,
         )
         .map_err(|e| e.to_string())?;
         let engine = BacktestEngine::new(&repo);
@@ -94,7 +100,11 @@ async fn screen_bollinger(
             .run_date(&screen_date, &strategy, instrument_types.as_deref())
             .map_err(|e| e.to_string())?;
         Ok::<Vec<ScreenResult>, String>(
-            output.signals.iter().map(|s| s.to_screen_result()).collect(),
+            output
+                .signals
+                .iter()
+                .map(|s| s.to_screen_result())
+                .collect(),
         )
     })
     .await
