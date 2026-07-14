@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { useScreenerStore } from "../stores/screener";
 import { invoke } from "@tauri-apps/api/core";
 import type { AnalysisData } from "../stores/analysis";
@@ -9,6 +9,10 @@ import KlineChart from "../components/KlineChart.vue";
 const store = useScreenerStore();
 const chartData = ref<AnalysisData | null>(null);
 const selectedSymbol = ref("");
+
+onMounted(() => {
+  store.fetchLatestTradeDate();
+});
 
 function onMinVolumeInput(e: Event) {
   const raw = (e.target as HTMLInputElement).value.replace(/,/g, "");
@@ -40,6 +44,10 @@ async function onRowSelected(symbol: string) {
   <div class="screener-view">
     <div class="params-bar">
       <div class="param-group">
+        <label>日期</label>
+        <input v-model="store.date" type="date" class="date-input" />
+      </div>
+      <div class="param-group">
         <label>最大帶寬</label>
         <input v-model.number="store.maxBandwidth" type="number" step="0.01" min="0" />
       </div>
@@ -56,13 +64,20 @@ async function onRowSelected(symbol: string) {
           inputmode="numeric"
         />
       </div>
-      <button @click="store.runScreen()" :disabled="store.loading" class="btn-primary">
-        {{ store.loading ? "篩選中..." : "開始篩選" }}
+      <button
+        @click="store.runScreen()"
+        :disabled="store.loading || store.dateLoading"
+        class="btn-primary"
+      >
+        {{ store.dateLoading ? "載入中..." : store.loading ? "篩選中..." : "開始篩選" }}
       </button>
     </div>
     <div class="screener-content">
       <div class="table-section">
         <h3>篩選結果 ({{ store.results.length }})</h3>
+        <p v-if="store.lastEmptyDate" class="empty-hint">
+          該日期（{{ store.lastEmptyDate }}）無交易資料
+        </p>
         <ScreenerTable :results="store.results" @select="onRowSelected" />
       </div>
       <div v-if="selectedSymbol && chartData" class="chart-section">
@@ -86,6 +101,8 @@ async function onRowSelected(symbol: string) {
 .btn-primary { padding: 8px 20px; background: #1976d2; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; }
 .btn-primary:hover { background: #1565c0; }
 .btn-primary:disabled { background: #90caf9; cursor: not-allowed; }
+.date-input { padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; width: 150px; font-size: 15px; }
+.empty-hint { color: #d32f2f; font-size: 14px; margin: 8px 0; }
 .screener-content { display: flex; gap: 16px; flex: 1; min-height: 0; }
 .table-section { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .chart-section { flex: 1; min-width: 0; }
