@@ -6,10 +6,12 @@
 
 ## 2. 前端：日期選擇器 UI
 
-- [ ] 2.1 `screener.ts` store 新增 `date` reactive state，類型 `string`
+- [ ] 2.1 `screener.ts` store 新增 `date` reactive state，類型 `string`；新增 `dateLoading: boolean` 標記初始化狀態
 - [ ] 2.2 `ScreenerView.vue` 新增日期輸入欄位（`<input type="date">`），預設填入最新交易日
-- [ ] 2.3 元件掛載時從 `get_latest_trade_date` 取得日期並設為預設值
-- [ ] 2.4 invoke `screen_bollinger` 時傳入 `date` 參數
+- [ ] 2.3 元件掛載時從 `get_latest_trade_date` 取得日期並設為預設值；期間 `dateLoading = true`
+- [ ] 2.4 `ScreenerView.vue` 在 `dateLoading` 時禁用篩選按鈕，顯示「載入中...」
+- [ ] 2.5 invoke `screen_bollinger` 時傳入 `date` 參數
+- [ ] 2.6 篩選結果為空且 `date` 有值時，顯示提示訊息「該日期無交易資料」
 
 ## 3. CLI：--date 選項
 
@@ -20,4 +22,7 @@
 
 - [ ] 4.1 `cargo build` 通過
 - [ ] 4.2 `cargo test --workspace` 通過
-- [ ] 4.3 手動測試前端日期選擇功能
+- [ ] 4.3 手動測試：日期選擇器預設顯示最新交易日
+- [ ] 4.4 手動測試：切換日期後篩選結果正確
+- [ ] 4.5 手動測試：選取無交易資料日期（如週末），顯示「該日期無交易資料」
+- [ ] 4.6 手動測試：快速點擊篩選（日期初始化前），按鈕應為禁用狀態
