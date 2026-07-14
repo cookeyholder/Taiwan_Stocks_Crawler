@@ -10,8 +10,9 @@ const store = useScreenerStore();
 const chartData = ref<AnalysisData | null>(null);
 const selectedSymbol = ref("");
 
-onMounted(() => {
-  store.fetchLatestTradeDate();
+onMounted(async () => {
+  await store.fetchLatestTradeDate();
+  store.runScreen();
 });
 
 function onMinVolumeInput(e: Event) {

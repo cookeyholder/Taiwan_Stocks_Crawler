@@ -37,12 +37,12 @@ export const useScreenerStore = defineStore("screener", () => {
     }
   }
 
-  let lastEmptyDate = "";
+  const lastEmptyDate = ref("");
 
   async function runScreen() {
     loading.value = true;
     error.value = null;
-    lastEmptyDate = "";
+    lastEmptyDate.value = "";
     try {
       results.value = await invoke<ScreenResult[]>("screen_bollinger", {
         maxBandwidth: maxBandwidth.value,
@@ -52,7 +52,7 @@ export const useScreenerStore = defineStore("screener", () => {
         date: date.value || null,
       });
       if (results.value.length === 0 && date.value) {
-        lastEmptyDate = date.value;
+        lastEmptyDate.value = date.value;
       }
     } catch (e) {
       error.value = String(e);
