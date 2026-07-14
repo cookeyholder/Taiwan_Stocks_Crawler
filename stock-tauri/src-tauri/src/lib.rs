@@ -59,7 +59,13 @@ async fn screen_bollinger(
 ) -> Result<Vec<ScreenResult>, String> {
     let pipeline = state.pipeline.lock().await;
     pipeline
-        .screen(max_bandwidth, min_days, instrument_types, min_volume, date.as_deref())
+        .screen(
+            max_bandwidth,
+            min_days,
+            instrument_types,
+            min_volume,
+            date.as_deref(),
+        )
         .await
         .map_err(|e| e.to_string())
 }
