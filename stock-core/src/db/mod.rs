@@ -396,6 +396,7 @@ impl MarketRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{CacheParams, ScreenResult};
 
     fn make_quote(symbol: &str, date: &str, close: f64) -> CanonicalQuote {
         CanonicalQuote {
@@ -459,5 +460,104 @@ mod tests {
         repo.upsert_core_batch(&quotes).unwrap();
         let symbols = repo.get_distinct_symbols().unwrap();
         assert_eq!(symbols.len(), 2);
+    }
+
+    #[test]
+    fn test_screener_cache_write_and_read() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let key = "v1|2026-07-14|stock|0.0800|5|1000000";
+        let params = CacheParams {
+            query_date: "2026-07-14".into(),
+            instrument_types: "stock".into(),
+            max_bandwidth: 0.08,
+            min_days: 5,
+            min_volume: 1000000,
+        };
+        let results = vec![
+            ScreenResult {
+                symbol: "2330".into(),
+                name: Some("台積電".into()),
+                latest_close: Some(1000.0),
+                latest_volume: Some(10000000),
+                max_bandwidth: 0.08,
+                latest_bandwidth: 0.04,
+                latest_upper_band: Some(1050.0),
+                break_upper: false,
+            },
+        ];
+        repo.set_cached_screening(key, &params, &results).unwrap();
+        let cached = repo.get_cached_screening(key).unwrap().unwrap();
+        assert_eq!(cached.len(), 1);
+        assert_eq!(cached[0].symbol, "2330");
+        assert_eq!(cached[0].name.as_deref(), Some("台積電"));
+    }
+
+    #[test]
+    fn test_screener_cache_miss() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let result = repo.get_cached_screening("nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_screener_cache_overwrite() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let key = "test|overwrite";
+        let params = CacheParams {
+            query_date: "2026-07-14".into(),
+            instrument_types: "stock".into(),
+            max_bandwidth: 0.08,
+            min_days: 5,
+            min_volume: 1000000,
+        };
+        let first = vec![ScreenResult {
+            symbol: "2330".into(), name: None, latest_close: None,
+            latest_volume: None, max_bandwidth: 0.0, latest_bandwidth: 0.0,
+            latest_upper_band: None, break_upper: false,
+        }];
+        let second = vec![ScreenResult {
+            symbol: "1101".into(), name: None, latest_close: None,
+            latest_volume: None, max_bandwidth: 0.0, latest_bandwidth: 0.0,
+            latest_upper_band: None, break_upper: false,
+        }];
+        repo.set_cached_screening(key, &params, &first).unwrap();
+        repo.set_cached_screening(key, &params, &second).unwrap();
+        let cached = repo.get_cached_screening(key).unwrap().unwrap();
+        assert_eq!(cached.len(), 1);
+        assert_eq!(cached[0].symbol, "1101");
+    }
+
+    #[test]
+    fn test_screener_cache_clear() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let params = CacheParams {
+            query_date: "2026-07-14".into(),
+            instrument_types: "stock".into(),
+            max_bandwidth: 0.08,
+            min_days: 5,
+            min_volume: 1000000,
+        };
+        repo.set_cached_screening("k1", &params, &[]).unwrap();
+        repo.set_cached_screening("k2", &params, &[]).unwrap();
+        let deleted = repo.clear_screener_cache().unwrap();
+        assert_eq!(deleted, 2);
+        assert!(repo.get_cached_screening("k1").unwrap().is_none());
+        assert!(repo.get_cached_screening("k2").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_screener_cache_corrupted_json() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let key = "corrupted";
+        {
+            let conn = repo.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO screener_cache (cache_key, query_date, instrument_types, max_bandwidth, min_days, min_volume, results_json)
+                 VALUES (?1, '2026-07-14', 'stock', 0.08, 5, 1000000, '{bad json}')",
+                params![key],
+            ).unwrap();
+        }
+        let result = repo.get_cached_screening(key).unwrap();
+        assert!(result.is_none());
     }
 }

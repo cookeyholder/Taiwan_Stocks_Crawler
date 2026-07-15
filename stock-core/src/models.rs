@@ -175,6 +175,15 @@ pub struct BidAsk {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CacheParams {
+    pub query_date: String,
+    pub instrument_types: String,
+    pub max_bandwidth: f64,
+    pub min_days: i32,
+    pub min_volume: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BollingerResult {
     pub upper: Vec<Option<f64>>,
     pub middle: Vec<Option<f64>>,

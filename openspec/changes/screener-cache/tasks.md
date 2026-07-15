@@ -1,19 +1,19 @@
 ## 0. `CacheParams` 結構體（前置作業）
 
-- [ ] 0.1 在 `stock-core/src/models.rs` 新增 `CacheParams` struct（含 `query_date`, `instrument_types`, `max_bandwidth`, `min_days`, `min_volume` 五個欄位），derive `Serialize, Deserialize`
-- [ ] 0.2 確認 `CacheParams` 在 `stock-core/src/lib.rs` 的 `pub use` 中有匯出
+- [x] 0.1 在 `stock-core/src/models.rs` 新增 `CacheParams` struct（含 `query_date`, `instrument_types`, `max_bandwidth`, `min_days`, `min_volume` 五個欄位），derive `Serialize, Deserialize`
+- [x] 0.2 確認 `CacheParams` 在 `stock-core/src/lib.rs` 的 `pub use` 中有匯出（已由 `pub mod models` 自動涵蓋）
 
 ## 1. 先寫測試（TDD Red）
 
-- [ ] 1.1 在 `db::tests` 新增 `test_screener_cache_write_and_read`：寫入一組參數與結果，用 `get_cached_screening` 讀回，assert 內容一致
-- [ ] 1.2 新增 `test_screener_cache_miss`：查詢不存在的 key，assert 回傳 `None`
-- [ ] 1.3 新增 `test_screener_cache_overwrite`：同一 key 寫入兩次，assert 第二次覆蓋成功
-- [ ] 1.4 新增 `test_screener_cache_clear`：寫入多筆後清除，assert 回傳正確刪除筆數且查詢全 miss
-- [ ] 1.5 新增 `test_screener_cache_corrupted_json`：手動 INSERT 壞 JSON，assert `get_cached_screening` 回傳 `None`
-- [ ] 1.6 在 `pipeline::tests` 新增 `test_build_cache_key_deterministic`：相同參數產生相同 key，不同參數產生不同 key
-- [ ] 1.7 新增 `test_build_cache_key_types_order`：`["etf","stock"]` 與 `["stock","etf"]` 產生相同 key
-- [ ] 1.8 新增 `test_build_cache_key_version`：不同版本號產生不同 key
-- [ ] 1.9 `cargo test` 確認上述測試編譯但因尚未實作而**預期失敗**（TDD Red 完成）
+- [x] 1.1 在 `db::tests` 新增 `test_screener_cache_write_and_read`：寫入一組參數與結果，用 `get_cached_screening` 讀回，assert 內容一致
+- [x] 1.2 新增 `test_screener_cache_miss`：查詢不存在的 key，assert 回傳 `None`
+- [x] 1.3 新增 `test_screener_cache_overwrite`：同一 key 寫入兩次，assert 第二次覆蓋成功
+- [x] 1.4 新增 `test_screener_cache_clear`：寫入多筆後清除，assert 回傳正確刪除筆數且查詢全 miss
+- [x] 1.5 新增 `test_screener_cache_corrupted_json`：手動 INSERT 壞 JSON，assert `get_cached_screening` 回傳 `None`
+- [x] 1.6 在 `pipeline::tests` 新增 `test_build_cache_key_deterministic`：相同參數產生相同 key，不同參數產生不同 key
+- [x] 1.7 新增 `test_build_cache_key_types_order`：`["etf","stock"]` 與 `["stock","etf"]` 產生相同 key
+- [x] 1.8 新增 `test_build_cache_key_version`：不同版本號產生不同 key
+- [x] 1.9 `cargo test` 確認上述測試編譯但因尚未實作而**預期失敗**（TDD Red 完成）
 
 ## 2. 資料庫 Migration（TDD Green）
 
