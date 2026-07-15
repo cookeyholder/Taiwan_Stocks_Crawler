@@ -1,8 +1,8 @@
 ## 1. 資料模型
 
-- [ ] 1.1 在 `stock-core/src/models.rs` 新增 `RangeMeta` struct（start_date, end_date, trading_days, cached_days, calculated_days），derive `Serialize, Deserialize`
-- [ ] 1.2 新增 `RangeScreenResult` struct（results: Vec<ScreenResult>, meta: RangeMeta），derive `Serialize, Deserialize`
-- [ ] 1.3 在 `RangeMeta` 中加入 `failed_days: Vec<String>` 欄位
+- [x] 1.1 在 `stock-core/src/models.rs` 新增 `RangeMeta` struct（start_date, end_date, trading_days, cached_days, calculated_days），derive `Serialize, Deserialize`
+- [x] 1.2 新增 `RangeScreenResult` struct（results: Vec<ScreenResult>, meta: RangeMeta），derive `Serialize, Deserialize`
+- [x] 1.3 在 `RangeMeta` 中加入 `failed_days: Vec<String>` 欄位
 
 ## 2. Tauri Command：screen_bollinger_range
 
