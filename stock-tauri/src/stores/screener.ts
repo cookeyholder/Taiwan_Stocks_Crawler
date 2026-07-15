@@ -121,12 +121,20 @@ export const useScreenerStore = defineStore("screener", () => {
   async function navigateDate(direction: -1 | 1) {
     if (loading.value || navigating.value) return;
     navigating.value = true;
-    const start = new Date(startDate.value);
-    const end = new Date(endDate.value);
+    const [sy, sm, sd] = startDate.value.split('-').map(Number);
+    const [ey, em, ed] = endDate.value.split('-').map(Number);
+    const start = new Date(sy, sm - 1, sd);
+    const end = new Date(ey, em - 1, ed);
     start.setDate(start.getDate() + direction);
     end.setDate(end.getDate() + direction);
-    startDate.value = start.toISOString().slice(0, 10);
-    endDate.value = end.toISOString().slice(0, 10);
+    const fmt = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+    startDate.value = fmt(start);
+    endDate.value = fmt(end);
     await runRangeScreen();
   }
 

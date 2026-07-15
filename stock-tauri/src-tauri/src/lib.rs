@@ -170,6 +170,7 @@ async fn screen_bollinger_range(
             Err(e) => {
                 eprintln!("[range] date {} failed: {}", date, e);
                 failed_days.push(date.clone());
+                last_results = Vec::new();
             }
         }
 
