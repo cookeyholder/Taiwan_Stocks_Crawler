@@ -39,12 +39,14 @@ export const useScreenerStore = defineStore("screener", () => {
 
   const lastEmptyDate = ref("");
 
+  const clearing = ref(false);
+
   async function runScreen() {
     loading.value = true;
     error.value = null;
     lastEmptyDate.value = "";
     try {
-      results.value = await invoke<ScreenResult[]>("screen_bollinger", {
+      results.value = await invoke<ScreenResult[]>("screen_bollinger_with_cache", {
         maxBandwidth: maxBandwidth.value,
         minDays: minDays.value,
         instrumentTypes: instrumentTypes.value.length > 0 ? instrumentTypes.value : null,
@@ -62,10 +64,24 @@ export const useScreenerStore = defineStore("screener", () => {
     }
   }
 
+  async function clearCache() {
+    clearing.value = true;
+    error.value = null;
+    try {
+      const deleted = await invoke<number>("clear_screener_cache");
+      console.log(`已清除 ${deleted} 筆快取`);
+    } catch (e) {
+      error.value = String(e);
+    } finally {
+      clearing.value = false;
+    }
+  }
+
   return {
     results, loading, error,
     maxBandwidth, minDays, minVolume, instrumentTypes,
     date, dateLoading,
     fetchLatestTradeDate, runScreen, lastEmptyDate,
+    clearCache, clearing,
   };
 });

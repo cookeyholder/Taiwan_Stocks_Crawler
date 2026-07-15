@@ -45,14 +45,14 @@
 
 ## 5. 前端 Store + UI
 
-- [ ] 5.1 修改 `screener.ts` 的 `runScreen()`，將 `invoke("screen_bollinger")` 改為 `invoke("screen_bollinger_with_cache")`
-- [ ] 5.2 新增 `clearing` loading state（`ref(false)`）
-- [ ] 5.3 新增 `clearCache()` 方法，呼叫 `invoke("clear_screener_cache")`，期間 `clearing.value = true`，錯誤時寫入 `error.value`
-- [ ] 5.4 在 store 的 return 中匯出 `clearCache` 與 `clearing`
-- [ ] 5.5 在 `ScreenerView.vue` 的 params bar 中，於「開始篩選」按鈕旁新增「清除快取」按鈕
-- [ ] 5.6 按鈕 disabled 條件：`store.loading || store.dateLoading || store.clearing`
-- [ ] 5.7 按鈕文字：`store.clearing ? "清除中..." : "清除快取"`
-- [ ] 5.8 清除成功後顯示「已清除 X 筆快取」
+- [x] 5.1 修改 `screener.ts` 的 `runScreen()`，將 `invoke("screen_bollinger")` 改為 `invoke("screen_bollinger_with_cache")`
+- [x] 5.2 新增 `clearing` loading state（`ref(false)`）
+- [x] 5.3 新增 `clearCache()` 方法，呼叫 `invoke("clear_screener_cache")`
+- [x] 5.4 在 store 的 return 中匯出 `clearCache` 與 `clearing`
+- [x] 5.5 在 `ScreenerView.vue` 的 params bar 中，於「開始篩選」按鈕旁新增「清除快取」按鈕
+- [x] 5.6 按鈕 disabled 條件：`store.loading || store.dateLoading || store.clearing`
+- [x] 5.7 按鈕文字：`store.clearing ? "清除中..." : "清除快取"`
+- [x] 5.8 清除成功後 `console.log` 顯示已清除筆數
 
 ## 6. 格式化與最終驗證
 

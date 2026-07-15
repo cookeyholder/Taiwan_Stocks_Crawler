@@ -93,6 +93,13 @@ async function onRowSelected(symbol: string) {
       >
         {{ store.dateLoading ? "載入中..." : store.loading ? "篩選中..." : "開始篩選" }}
       </button>
+      <button
+        @click="store.clearCache()"
+        :disabled="store.loading || store.dateLoading || store.clearing"
+        class="btn-clear"
+      >
+        {{ store.clearing ? "清除中..." : "清除快取" }}
+      </button>
     </div>
     <div class="screener-content">
       <div class="table-section">
@@ -123,6 +130,9 @@ async function onRowSelected(symbol: string) {
 .btn-primary { padding: 8px 20px; background: #1976d2; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; }
 .btn-primary:hover { background: #1565c0; }
 .btn-primary:disabled { background: #90caf9; cursor: not-allowed; }
+.btn-clear { padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 14px; background: #fff; color: #666; }
+.btn-clear:hover { background: #f5f5f5; border-color: #999; }
+.btn-clear:disabled { opacity: 0.5; cursor: not-allowed; }
 input[type="date"] { width: 200px; }
 .empty-hint { color: #d32f2f; font-size: 14px; margin: 8px 0; }
 .checkbox-group { display: flex; gap: 8px; flex-wrap: wrap; }
