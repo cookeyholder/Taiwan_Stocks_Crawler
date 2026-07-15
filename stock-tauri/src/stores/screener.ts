@@ -39,12 +39,24 @@ export const useScreenerStore = defineStore("screener", () => {
 
   const lastEmptyDate = ref("");
 
+  const clearing = ref(false);
+  const cacheMessage = ref("");
+  const cacheCount = ref(0);
+
+  async function fetchCacheCount() {
+    try {
+      cacheCount.value = await invoke<number>("get_screener_cache_count");
+    } catch {
+      // 忽略
+    }
+  }
+
   async function runScreen() {
     loading.value = true;
     error.value = null;
     lastEmptyDate.value = "";
     try {
-      results.value = await invoke<ScreenResult[]>("screen_bollinger", {
+      results.value = await invoke<ScreenResult[]>("screen_bollinger_with_cache", {
         maxBandwidth: maxBandwidth.value,
         minDays: minDays.value,
         instrumentTypes: instrumentTypes.value.length > 0 ? instrumentTypes.value : null,
@@ -54,6 +66,7 @@ export const useScreenerStore = defineStore("screener", () => {
       if (results.value.length === 0 && date.value) {
         lastEmptyDate.value = date.value;
       }
+      await fetchCacheCount();
     } catch (e) {
       error.value = String(e);
       results.value = [];
@@ -62,10 +75,28 @@ export const useScreenerStore = defineStore("screener", () => {
     }
   }
 
+  async function clearCache() {
+    clearing.value = true;
+    error.value = null;
+    try {
+      const deleted = await invoke<number>("clear_screener_cache");
+      await fetchCacheCount();
+      const msg = cacheMessage.value = `已清除 ${deleted} 筆快取`;
+      setTimeout(() => {
+        if (cacheMessage.value === msg) cacheMessage.value = "";
+      }, 2500);
+    } catch (e) {
+      error.value = String(e);
+    } finally {
+      clearing.value = false;
+    }
+  }
+
   return {
     results, loading, error,
     maxBandwidth, minDays, minVolume, instrumentTypes,
     date, dateLoading,
     fetchLatestTradeDate, runScreen, lastEmptyDate,
+    clearCache, clearing, cacheMessage, cacheCount, fetchCacheCount,
   };
 });

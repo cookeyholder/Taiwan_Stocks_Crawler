@@ -58,6 +58,17 @@ const MIGRATIONS: &[&str] = &[
     // V4: index on symbol_clean + trade_date for fast stock lookup
     "CREATE INDEX IF NOT EXISTS idx_market_quote_core_symbol_date
      ON market_quote_core(symbol_clean, trade_date);",
+    // V5: screener cache for Bollinger screening
+    "CREATE TABLE IF NOT EXISTS screener_cache (
+        cache_key        TEXT NOT NULL PRIMARY KEY,
+        query_date       TEXT NOT NULL,
+        instrument_types TEXT NOT NULL,
+        max_bandwidth    REAL NOT NULL,
+        min_days         INTEGER NOT NULL,
+        min_volume       INTEGER NOT NULL,
+        results_json     TEXT NOT NULL,
+        created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+    );",
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -90,6 +101,8 @@ mod tests {
         conn.execute("SELECT 1 FROM market_quote_extension LIMIT 1", [])
             .unwrap();
         conn.execute("SELECT 1 FROM securities LIMIT 1", [])
+            .unwrap();
+        conn.execute("SELECT 1 FROM screener_cache LIMIT 1", [])
             .unwrap();
     }
 

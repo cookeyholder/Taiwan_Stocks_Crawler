@@ -49,7 +49,7 @@ async fn fetch_date(state: State<'_, AppState>, date: String) -> Result<String, 
 }
 
 #[tauri::command]
-async fn screen_bollinger(
+async fn screen_bollinger_with_cache(
     state: State<'_, AppState>,
     max_bandwidth: f64,
     min_days: i32,
@@ -57,16 +57,88 @@ async fn screen_bollinger(
     min_volume: i64,
     date: Option<String>,
 ) -> Result<Vec<ScreenResult>, String> {
+    use stock_core::pipeline::build_cache_key;
+
+    const SCREEN_CACHE_VERSION: &str = "v1";
+
     let pipeline = state.pipeline.lock().await;
-    pipeline
+
+    let screen_date = match &date {
+        Some(d) => d.clone(),
+        None => match pipeline
+            .repo
+            .get_latest_trade_date()
+            .map_err(|e| e.to_string())?
+        {
+            Some(d) => d,
+            None => return Ok(vec![]),
+        },
+    };
+
+    let types = instrument_types.as_deref().unwrap_or(&[]);
+    let mut sorted_types = types.to_vec();
+    sorted_types.sort();
+    let types_str = sorted_types.join(",");
+    let cache_key = build_cache_key(
+        SCREEN_CACHE_VERSION,
+        &screen_date,
+        &sorted_types,
+        max_bandwidth,
+        min_days,
+        min_volume,
+    );
+
+    if let Some(cached) = pipeline
+        .repo
+        .get_cached_screening(&cache_key)
+        .map_err(|e| e.to_string())?
+    {
+        return Ok(cached);
+    }
+
+    let results = pipeline
         .screen(
             max_bandwidth,
             min_days,
             instrument_types,
             min_volume,
-            date.as_deref(),
+            Some(&screen_date),
         )
         .await
+        .map_err(|e| e.to_string())?;
+
+    let cache_params = CacheParams {
+        query_date: screen_date,
+        instrument_types: types_str,
+        max_bandwidth,
+        min_days,
+        min_volume,
+    };
+    if let Err(e) = pipeline
+        .repo
+        .set_cached_screening(&cache_key, &cache_params, &results)
+    {
+        eprintln!("[cache] failed to write screening cache: {}", e);
+    }
+
+    Ok(results)
+}
+
+#[tauri::command]
+async fn clear_screener_cache(state: State<'_, AppState>) -> Result<usize, String> {
+    let pipeline = state.pipeline.lock().await;
+    pipeline
+        .repo
+        .clear_screener_cache()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_screener_cache_count(state: State<'_, AppState>) -> Result<usize, String> {
+    let pipeline = state.pipeline.lock().await;
+    pipeline
+        .repo
+        .get_screener_cache_count()
         .map_err(|e| e.to_string())
 }
 
@@ -263,7 +335,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             fetch_today,
             fetch_date,
-            screen_bollinger,
+            screen_bollinger_with_cache,
+            clear_screener_cache,
+            get_screener_cache_count,
             get_analysis,
             get_symbols,
             get_latest_trade_date,

@@ -7,6 +7,23 @@ use crate::{date_utils, fetcher::HttpClient};
 
 use chrono::NaiveDate;
 
+pub fn build_cache_key(
+    version: &str,
+    query_date: &str,
+    instrument_types: &[String],
+    max_bandwidth: f64,
+    min_days: i32,
+    min_volume: i64,
+) -> String {
+    let mut types = instrument_types.to_vec();
+    types.sort();
+    let types_str = types.join(",");
+    format!(
+        "{}|{}|{}|{:.4}|{}|{}",
+        version, query_date, types_str, max_bandwidth, min_days, min_volume
+    )
+}
+
 pub struct Pipeline {
     pub http: HttpClient,
     pub repo: MarketRepository,
@@ -603,5 +620,48 @@ mod tests {
             "2024-01-01T00:00:00",
         );
         assert_eq!(quotes[0].symbol_clean, "1101");
+    }
+
+    #[test]
+    fn test_build_cache_key_deterministic() {
+        let types = vec!["stock".to_string()];
+        let k1 = build_cache_key("v1", "2026-07-14", &types, 0.08, 5, 1000000);
+        let k2 = build_cache_key("v1", "2026-07-14", &types, 0.08, 5, 1000000);
+        assert_eq!(k1, k2);
+
+        let k3 = build_cache_key("v1", "2026-07-13", &types, 0.08, 5, 1000000);
+        assert_ne!(k1, k3);
+    }
+
+    #[test]
+    fn test_build_cache_key_types_order() {
+        let a = build_cache_key(
+            "v1",
+            "2026-07-14",
+            &["etf".into(), "stock".into()],
+            0.08,
+            5,
+            1000000,
+        );
+        let b = build_cache_key(
+            "v1",
+            "2026-07-14",
+            &["stock".into(), "etf".into()],
+            0.08,
+            5,
+            1000000,
+        );
+        assert_eq!(a, b);
+        assert!(a.contains("etf,stock"));
+    }
+
+    #[test]
+    fn test_build_cache_key_version() {
+        let types = vec!["stock".to_string()];
+        let v1 = build_cache_key("v1", "2026-07-14", &types, 0.08, 5, 1000000);
+        let v2 = build_cache_key("v2", "2026-07-14", &types, 0.08, 5, 1000000);
+        assert_ne!(v1, v2);
+        assert!(v1.starts_with("v1|"));
+        assert!(v2.starts_with("v2|"));
     }
 }

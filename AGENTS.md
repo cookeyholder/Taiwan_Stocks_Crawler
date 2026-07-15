@@ -1,4 +1,10 @@
 
+## 語言規範
+
+所有輸出、PR message、commit message、程式碼註解都必須使用**臺灣繁體中文（zh-TW）**。
+
+禁止用詞：反饋、其他非正規內部行話。避免中國慣用語（如默認、配置、資源庫、用戶、視圖、代碼、視頻、網絡、運行、優化）。
+
 ## 1. Think Before Coding
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
