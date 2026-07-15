@@ -52,6 +52,7 @@ async fn fetch_date(state: State<'_, AppState>, date: String) -> Result<String, 
         .map_err(|e| e.to_string())
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn screen_bollinger_range(
     app: AppHandle,
