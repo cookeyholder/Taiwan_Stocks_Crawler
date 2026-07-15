@@ -19,8 +19,13 @@ const selectedSymbol = ref("");
 
 onMounted(async () => {
   await store.fetchLatestTradeDate();
-  store.runScreen();
 });
+
+function onDateChange(e: Event) {
+  const input = e.target as HTMLInputElement;
+  store.date = input.value;
+  input.blur();
+}
 
 function onMinVolumeInput(e: Event) {
   const raw = (e.target as HTMLInputElement).value.replace(/,/g, "");
@@ -53,7 +58,7 @@ async function onRowSelected(symbol: string) {
     <div class="params-bar">
       <div class="param-group">
         <label>日期</label>
-        <input v-model="store.date" type="date" />
+        <input :value="store.date" type="date" @change="onDateChange" />
       </div>
       <div class="param-group">
         <label>最大帶寬</label>
@@ -118,10 +123,11 @@ async function onRowSelected(symbol: string) {
 .btn-primary { padding: 8px 20px; background: #1976d2; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; }
 .btn-primary:hover { background: #1565c0; }
 .btn-primary:disabled { background: #90caf9; cursor: not-allowed; }
-.param-group input[type="date"] { width: 200px; }
+input[type="date"] { width: 200px; }
 .empty-hint { color: #d32f2f; font-size: 14px; margin: 8px 0; }
 .checkbox-group { display: flex; gap: 8px; flex-wrap: wrap; }
 .checkbox-label { display: flex; align-items: center; gap: 3px; font-size: 13px; cursor: pointer; }
+.checkbox-label input { width: auto; padding: 0; border: none; }
 .screener-content { display: flex; gap: 16px; flex: 1; min-height: 0; }
 .table-section { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .chart-section { flex: 1; min-width: 0; }

@@ -269,10 +269,7 @@ fn normalize_records(
                 .or_else(|| date_utils::roc_to_ad_date(trade_date))
                 .unwrap_or_else(|| trade_date.to_string());
             let (change_sign, change_value) = parse_change_field(r.change.as_deref());
-            let instrument_type = r
-                .instrument_type
-                .clone()
-                .unwrap_or_else(|| classify_by_symbol(&symbol_clean).to_string());
+            let instrument_type = classify_by_symbol(&symbol_clean).to_string();
             CanonicalQuote {
                 trade_date: td,
                 market_code: market_code.to_string(),
