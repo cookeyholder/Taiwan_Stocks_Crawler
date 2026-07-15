@@ -27,34 +27,34 @@
 
 ## 3. 前端 Store 修改
 
-- [ ] 3.1 將 `date: ref("")` 改為 `startDate: ref("")` 與 `endDate: ref("")`
-- [ ] 3.2 新增 `meta: ref<RangeMeta | null>`、`progress: ref({current: 0, total: 0, date: "", cached: false})`
-- [ ] 3.3 新增 `navigateDate(direction: -1 | 1)` 方法：
+- [x] 3.1 將 `date: ref("")` 改為 `startDate: ref("")` 與 `endDate: ref("")`
+- [x] 3.2 新增 `meta: ref<RangeMeta | null>`、`progress: ref({current: 0, total: 0, date: "", cached: false})`
+- [x] 3.3 新增 `navigateDate(direction: -1 | 1)` 方法：
       - 加入 `navigating` lock flag 防止連點
       - `startDate += direction`、`endDate += direction`
       - 呼叫 `runRangeScreen()`
       - 完成後釋放 `navigating`
-- [ ] 3.4 新增 `runRangeScreen()` 方法：
+- [x] 3.4 新增 `runRangeScreen()` 方法：
       - 在 invoke 前註冊 `listen("range-progress", ...)` 更新 `progress`
       - 呼叫 `invoke("screen_bollinger_range", {startDate, endDate, ...})`
       - 完成後更新 `results` 與 `meta`
       - 取消註冊 listener
-- [ ] 3.5 更新 `return` 匯出新屬性與方法
-- [ ] 3.6 新增 `cancelScreening()` 方法，呼叫 `invoke("cancel_screening")`
+- [x] 3.5 更新 `return` 匯出新屬性與方法
+- [x] 3.6 新增 `cancelScreening()` 方法，呼叫 `invoke("cancel_screening")`
 
 ## 4. 前端 UI
 
-- [ ] 4.1 將單一日期選擇器改為兩個：起始日期與結束日期
-- [ ] 4.2 在起始日期左側加入 ◀ 按鈕、結束日期右側加入 ▶ 按鈕
-- [ ] 4.3 推移按鈕 disabled 條件：`loading || dateLoading || clearing`
-- [ ] 4.4 在篩選按鈕下方顯示進度文字（「處理中 3/8 天」）
-- [ ] 4.5 篩選完成後顯示掃描統計（「已掃描 2026-07-01 → 2026-07-14，共 8 個交易日（快取 3 天，失敗 0 天）」）
-- [ ] 4.6 篩選進行中時顯示「取消」按鈕，點擊後呼叫 `cancelScreening()`
-- [ ] 4.7 取消後顯示「篩選已取消」訊息，保留部分統計
+- [x] 4.1 將單一日期選擇器改為兩個：起始日期與結束日期
+- [x] 4.2 在起始日期左側加入 ◀ 按鈕、結束日期右側加入 ▶ 按鈕
+- [x] 4.3 推移按鈕 disabled 條件：`loading || dateLoading || clearing`
+- [x] 4.4 在篩選按鈕下方顯示進度文字（「處理中 3/8 天」）
+- [x] 4.5 篩選完成後顯示掃描統計（「已掃描 2026-07-01 → 2026-07-14，共 8 個交易日（快取 3 天，失敗 0 天）」）
+- [x] 4.6 篩選進行中時顯示「取消」按鈕，點擊後呼叫 `cancelScreening()`
+- [x] 4.7 取消後顯示「篩選已取消」訊息，保留部分統計
 
 ## 5. 格式化與最終驗證
 
-- [ ] 5.1 `cargo fmt --all` 格式化 Rust 程式碼
-- [ ] 5.2 `cargo check` 確認編譯
-- [ ] 5.3 `cargo test -p stock-core` 確認測試通過
+- [x] 5.1 `cargo fmt --all` 格式化 Rust 程式碼
+- [x] 5.2 `cargo check` 確認編譯
+- [x] 5.3 `cargo test -p stock-core` 確認測試通過（48/48）
 - [ ] 5.4 手動驗證日期區間篩選與推移功能正常

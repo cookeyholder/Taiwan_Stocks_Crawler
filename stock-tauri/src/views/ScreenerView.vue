@@ -22,10 +22,12 @@ onMounted(async () => {
   await store.fetchCacheCount();
 });
 
-function onDateChange(e: Event) {
-  const input = e.target as HTMLInputElement;
-  store.date = input.value;
-  input.blur();
+function onStartDateChange(e: Event) {
+  store.startDate = (e.target as HTMLInputElement).value;
+}
+
+function onEndDateChange(e: Event) {
+  store.endDate = (e.target as HTMLInputElement).value;
 }
 
 function onMinVolumeInput(e: Event) {
@@ -58,8 +60,26 @@ async function onRowSelected(symbol: string) {
   <div class="screener-view">
     <div class="params-bar">
       <div class="param-group">
-        <label>日期</label>
-        <input :value="store.date" type="date" @change="onDateChange" />
+        <label>起始日期</label>
+        <div class="date-row">
+          <button
+            @click="store.navigateDate(-1)"
+            :disabled="store.loading || store.navigating"
+            class="btn-nav"
+          >◀</button>
+          <input :value="store.startDate" type="date" @change="onStartDateChange" />
+        </div>
+      </div>
+      <div class="param-group">
+        <label>結束日期</label>
+        <div class="date-row">
+          <input :value="store.endDate" type="date" @change="onEndDateChange" />
+          <button
+            @click="store.navigateDate(1)"
+            :disabled="store.loading || store.navigating"
+            class="btn-nav"
+          >▶</button>
+        </div>
       </div>
       <div class="param-group">
         <label>最大帶寬</label>
@@ -88,11 +108,18 @@ async function onRowSelected(symbol: string) {
         </div>
       </div>
       <button
-        @click="store.runScreen()"
+        @click="store.runRangeScreen()"
         :disabled="store.loading || store.dateLoading"
         class="btn-primary"
       >
         {{ store.dateLoading ? "載入中..." : store.loading ? "篩選中..." : "開始篩選" }}
+      </button>
+      <button
+        v-if="store.loading"
+        @click="store.cancelScreening()"
+        class="btn-cancel"
+      >
+        取消
       </button>
       <button
         @click="store.clearCache()"
@@ -102,6 +129,17 @@ async function onRowSelected(symbol: string) {
         {{ store.clearing ? "清除中..." : "清除快取" }}
       </button>
       <span v-if="store.cacheCount > 0" class="cache-badge">{{ store.cacheCount }}</span>
+    </div>
+    <div v-if="store.progress.total > 0 && store.loading" class="progress-bar">
+      <div class="progress-fill" :style="{ width: (store.progress.current / store.progress.total * 100) + '%' }"></div>
+      <span class="progress-text">處理中 {{ store.progress.current }}/{{ store.progress.total }} 天</span>
+    </div>
+    <div v-if="store.meta" class="meta-bar">
+      已掃描 {{ store.meta.start_date }} → {{ store.meta.end_date }}，
+      共 {{ store.meta.trading_days }} 個交易日
+      （快取 {{ store.meta.cached_days }} 天，
+      <template v-if="store.meta.failed_days.length > 0">失敗 {{ store.meta.failed_days.length }} 天，</template>
+      實際計算 {{ store.meta.calculated_days }} 天）
     </div>
     <transition name="toast">
       <div v-if="store.cacheMessage" class="cache-toast">{{ store.cacheMessage }}</div>
@@ -132,14 +170,24 @@ async function onRowSelected(symbol: string) {
 .param-group { display: flex; flex-direction: column; gap: 2px; }
 .param-group label { font-size: 14px; color: #666; font-weight: 600; }
 .param-group input { padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; width: 100px; font-size: 15px; }
+.date-row { display: flex; align-items: center; gap: 4px; }
+.btn-nav { padding: 4px 10px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 16px; background: #fff; line-height: 1; }
+.btn-nav:hover { background: #f0f0f0; }
+.btn-nav:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-primary { padding: 8px 20px; background: #1976d2; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; }
 .btn-primary:hover { background: #1565c0; }
 .btn-primary:disabled { background: #90caf9; cursor: not-allowed; }
+.btn-cancel { padding: 8px 16px; border: 1px solid #d32f2f; border-radius: 4px; cursor: pointer; font-size: 14px; background: #fff; color: #d32f2f; }
+.btn-cancel:hover { background: #ffebee; }
 .btn-clear { padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 14px; background: #fff; color: #666; }
 .btn-clear:hover { background: #f5f5f5; border-color: #999; }
 .btn-clear:disabled { opacity: 0.5; cursor: not-allowed; }
 .cache-badge { background: #e3f2fd; color: #1976d2; font-size: 12px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
-input[type="date"] { width: 200px; }
+input[type="date"] { width: 180px; }
+.progress-bar { position: relative; height: 24px; background: #e0e0e0; border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: #1976d2; transition: width 0.3s ease; border-radius: 4px; }
+.progress-text { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #fff; font-weight: 600; }
+.meta-bar { font-size: 13px; color: #666; padding: 4px 0; }
 .empty-hint { color: #d32f2f; font-size: 14px; margin: 8px 0; }
 .checkbox-group { display: flex; gap: 8px; flex-wrap: wrap; }
 .checkbox-label { display: flex; align-items: center; gap: 3px; font-size: 13px; cursor: pointer; }

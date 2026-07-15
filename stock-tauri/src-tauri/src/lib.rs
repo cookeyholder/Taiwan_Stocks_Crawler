@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -139,7 +139,13 @@ async fn screen_bollinger_range(
         }
 
         match pipeline
-            .screen(max_bandwidth, min_days, instrument_types.clone(), min_volume, Some(date))
+            .screen(
+                max_bandwidth,
+                min_days,
+                instrument_types.clone(),
+                min_volume,
+                Some(date),
+            )
             .await
         {
             Ok(results) => {
@@ -151,9 +157,10 @@ async fn screen_bollinger_range(
                     min_days,
                     min_volume,
                 };
-                if let Err(e) = pipeline
-                    .repo
-                    .set_cached_screening(&cache_key, &cache_params, &results)
+                if let Err(e) =
+                    pipeline
+                        .repo
+                        .set_cached_screening(&cache_key, &cache_params, &results)
                 {
                     eprintln!("[cache] failed to write {}: {}", date, e);
                 }
