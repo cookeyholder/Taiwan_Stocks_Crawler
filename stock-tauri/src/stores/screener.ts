@@ -41,6 +41,15 @@ export const useScreenerStore = defineStore("screener", () => {
 
   const clearing = ref(false);
   const cacheMessage = ref("");
+  const cacheCount = ref(0);
+
+  async function fetchCacheCount() {
+    try {
+      cacheCount.value = await invoke<number>("get_screener_cache_count");
+    } catch {
+      // 忽略
+    }
+  }
 
   async function runScreen() {
     loading.value = true;
@@ -57,6 +66,7 @@ export const useScreenerStore = defineStore("screener", () => {
       if (results.value.length === 0 && date.value) {
         lastEmptyDate.value = date.value;
       }
+      await fetchCacheCount();
     } catch (e) {
       error.value = String(e);
       results.value = [];
@@ -70,6 +80,7 @@ export const useScreenerStore = defineStore("screener", () => {
     error.value = null;
     try {
       const deleted = await invoke<number>("clear_screener_cache");
+      await fetchCacheCount();
       const msg = cacheMessage.value = `已清除 ${deleted} 筆快取`;
       setTimeout(() => {
         if (cacheMessage.value === msg) cacheMessage.value = "";
@@ -86,6 +97,6 @@ export const useScreenerStore = defineStore("screener", () => {
     maxBandwidth, minDays, minVolume, instrumentTypes,
     date, dateLoading,
     fetchLatestTradeDate, runScreen, lastEmptyDate,
-    clearCache, clearing, cacheMessage,
+    clearCache, clearing, cacheMessage, cacheCount, fetchCacheCount,
   };
 });

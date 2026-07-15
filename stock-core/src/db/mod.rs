@@ -430,6 +430,11 @@ impl MarketRepository {
         let deleted = conn.execute("DELETE FROM screener_cache", [])?;
         Ok(deleted)
     }
+
+    pub fn get_screener_cache_count(&self) -> SqlResult<usize> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row("SELECT COUNT(*) FROM screener_cache", [], |row| row.get(0))
+    }
 }
 
 #[cfg(test)]

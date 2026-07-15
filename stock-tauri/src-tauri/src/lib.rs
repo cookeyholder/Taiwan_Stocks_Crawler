@@ -133,6 +133,15 @@ async fn clear_screener_cache(state: State<'_, AppState>) -> Result<usize, Strin
 }
 
 #[tauri::command]
+async fn get_screener_cache_count(state: State<'_, AppState>) -> Result<usize, String> {
+    let pipeline = state.pipeline.lock().await;
+    pipeline
+        .repo
+        .get_screener_cache_count()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn get_analysis(
     state: State<'_, AppState>,
     symbol: String,
@@ -327,6 +336,7 @@ pub fn run() {
             fetch_date,
             screen_bollinger_with_cache,
             clear_screener_cache,
+            get_screener_cache_count,
             get_analysis,
             get_symbols,
             get_latest_trade_date,

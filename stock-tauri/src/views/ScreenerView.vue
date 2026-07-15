@@ -19,6 +19,7 @@ const selectedSymbol = ref("");
 
 onMounted(async () => {
   await store.fetchLatestTradeDate();
+  await store.fetchCacheCount();
 });
 
 function onDateChange(e: Event) {
@@ -100,6 +101,7 @@ async function onRowSelected(symbol: string) {
       >
         {{ store.clearing ? "清除中..." : "清除快取" }}
       </button>
+      <span v-if="store.cacheCount > 0" class="cache-badge">{{ store.cacheCount }}</span>
     </div>
     <transition name="toast">
       <div v-if="store.cacheMessage" class="cache-toast">{{ store.cacheMessage }}</div>
@@ -136,6 +138,7 @@ async function onRowSelected(symbol: string) {
 .btn-clear { padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 14px; background: #fff; color: #666; }
 .btn-clear:hover { background: #f5f5f5; border-color: #999; }
 .btn-clear:disabled { opacity: 0.5; cursor: not-allowed; }
+.cache-badge { background: #e3f2fd; color: #1976d2; font-size: 12px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
 input[type="date"] { width: 200px; }
 .empty-hint { color: #d32f2f; font-size: 14px; margin: 8px 0; }
 .checkbox-group { display: flex; gap: 8px; flex-wrap: wrap; }
