@@ -635,8 +635,22 @@ mod tests {
 
     #[test]
     fn test_build_cache_key_types_order() {
-        let a = build_cache_key("v1", "2026-07-14", &["etf".into(), "stock".into()], 0.08, 5, 1000000);
-        let b = build_cache_key("v1", "2026-07-14", &["stock".into(), "etf".into()], 0.08, 5, 1000000);
+        let a = build_cache_key(
+            "v1",
+            "2026-07-14",
+            &["etf".into(), "stock".into()],
+            0.08,
+            5,
+            1000000,
+        );
+        let b = build_cache_key(
+            "v1",
+            "2026-07-14",
+            &["stock".into(), "etf".into()],
+            0.08,
+            5,
+            1000000,
+        );
         assert_eq!(a, b);
         assert!(a.contains("etf,stock"));
     }

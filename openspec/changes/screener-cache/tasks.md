@@ -56,8 +56,8 @@
 
 ## 6. 格式化與最終驗證
 
-- [ ] 6.1 `cargo fmt` 格式化所有 Rust 程式碼
-- [ ] 6.2 `cargo fmt --all -- --check` 確認格式化無誤
-- [ ] 6.3 `cargo check` 確認編譯無誤
-- [ ] 6.4 `cargo test` 確認全部測試通過
+- [x] 6.1 `cargo fmt` 格式化所有 Rust 程式碼
+- [x] 6.2 `cargo fmt --all -- --check` 確認格式化無誤
+- [x] 6.3 `cargo check` 確認編譯無誤
+- [x] 6.4 `cargo test` 確認全部測試通過（48/48，含 8 項新測試）
 - [ ] 6.5 手動驗證快取命中與清除功能正常

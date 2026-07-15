@@ -394,9 +394,8 @@ impl MarketRepository {
 
     pub fn get_cached_screening(&self, key: &str) -> SqlResult<Option<Vec<ScreenResult>>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare_cached(
-            "SELECT results_json FROM screener_cache WHERE cache_key = ?1",
-        )?;
+        let mut stmt =
+            conn.prepare_cached("SELECT results_json FROM screener_cache WHERE cache_key = ?1")?;
         let result: Option<String> = stmt.query_row(params![key], |row| row.get(0)).ok();
         match result {
             Some(json) => match serde_json::from_str::<Vec<ScreenResult>>(&json) {
@@ -513,18 +512,16 @@ mod tests {
             min_days: 5,
             min_volume: 1000000,
         };
-        let results = vec![
-            ScreenResult {
-                symbol: "2330".into(),
-                name: Some("台積電".into()),
-                latest_close: Some(1000.0),
-                latest_volume: Some(10000000),
-                max_bandwidth: 0.08,
-                latest_bandwidth: 0.04,
-                latest_upper_band: Some(1050.0),
-                break_upper: false,
-            },
-        ];
+        let results = vec![ScreenResult {
+            symbol: "2330".into(),
+            name: Some("台積電".into()),
+            latest_close: Some(1000.0),
+            latest_volume: Some(10000000),
+            max_bandwidth: 0.08,
+            latest_bandwidth: 0.04,
+            latest_upper_band: Some(1050.0),
+            break_upper: false,
+        }];
         repo.set_cached_screening(key, &params, &results).unwrap();
         let cached = repo.get_cached_screening(key).unwrap().unwrap();
         assert_eq!(cached.len(), 1);
@@ -551,14 +548,24 @@ mod tests {
             min_volume: 1000000,
         };
         let first = vec![ScreenResult {
-            symbol: "2330".into(), name: None, latest_close: None,
-            latest_volume: None, max_bandwidth: 0.0, latest_bandwidth: 0.0,
-            latest_upper_band: None, break_upper: false,
+            symbol: "2330".into(),
+            name: None,
+            latest_close: None,
+            latest_volume: None,
+            max_bandwidth: 0.0,
+            latest_bandwidth: 0.0,
+            latest_upper_band: None,
+            break_upper: false,
         }];
         let second = vec![ScreenResult {
-            symbol: "1101".into(), name: None, latest_close: None,
-            latest_volume: None, max_bandwidth: 0.0, latest_bandwidth: 0.0,
-            latest_upper_band: None, break_upper: false,
+            symbol: "1101".into(),
+            name: None,
+            latest_close: None,
+            latest_volume: None,
+            max_bandwidth: 0.0,
+            latest_bandwidth: 0.0,
+            latest_upper_band: None,
+            break_upper: false,
         }];
         repo.set_cached_screening(key, &params, &first).unwrap();
         repo.set_cached_screening(key, &params, &second).unwrap();
