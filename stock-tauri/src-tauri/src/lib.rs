@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 use stock_core::db::MarketRepository;
@@ -9,6 +11,7 @@ use tokio::sync::Mutex;
 
 struct AppState {
     pipeline: Mutex<Pipeline>,
+    db_path: PathBuf,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -57,17 +60,55 @@ async fn screen_bollinger(
     min_volume: i64,
     date: Option<String>,
 ) -> Result<Vec<ScreenResult>, String> {
-    let pipeline = state.pipeline.lock().await;
-    pipeline
-        .screen(
-            max_bandwidth,
-            min_days,
-            instrument_types,
-            min_volume,
-            date.as_deref(),
+    use stock_core::backtest::BacktestEngine;
+    use stock_core::backtest::bollinger::BollingerSqueezeBreakout;
+
+    if min_days <= 0 {
+        return Err("consecutive_days must be > 0".into());
+    }
+
+    let screen_date = if let Some(d) = date {
+        d
+    } else {
+        let pipeline = state.pipeline.lock().await;
+        match pipeline
+            .repo
+            .get_latest_trade_date()
+            .map_err(|e| e.to_string())?
+        {
+            Some(d) => d,
+            None => return Ok(vec![]),
+        }
+    };
+
+    let db_path = state.db_path.clone();
+    let strategy = BollingerSqueezeBreakout {
+        bandwidth_limit: max_bandwidth,
+        consecutive_days: min_days as usize,
+        min_volume,
+    };
+
+    tokio::task::spawn_blocking(move || {
+        let repo = MarketRepository::open(
+            db_path
+                .to_str()
+                .ok_or_else(|| "Invalid DB path".to_string())?,
         )
-        .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+        let engine = BacktestEngine::new(&repo);
+        let output = engine
+            .run_date(&screen_date, &strategy, instrument_types.as_deref())
+            .map_err(|e| e.to_string())?;
+        Ok::<Vec<ScreenResult>, String>(
+            output
+                .signals
+                .iter()
+                .map(|s| s.to_screen_result())
+                .collect(),
+        )
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[tauri::command]
@@ -259,6 +300,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
             pipeline: Mutex::new(pipeline),
+            db_path: db_file,
         })
         .invoke_handler(tauri::generate_handler![
             fetch_today,
