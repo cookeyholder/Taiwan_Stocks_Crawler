@@ -101,6 +101,9 @@ async function onRowSelected(symbol: string) {
         {{ store.clearing ? "清除中..." : "清除快取" }}
       </button>
     </div>
+    <transition name="toast">
+      <div v-if="store.cacheMessage" class="cache-toast">{{ store.cacheMessage }}</div>
+    </transition>
     <div class="screener-content">
       <div class="table-section">
         <h3>篩選結果 ({{ store.results.length }})</h3>
@@ -142,4 +145,6 @@ input[type="date"] { width: 200px; }
 .table-section { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .chart-section { flex: 1; min-width: 0; }
 h3 { font-size: 16px; margin-bottom: 8px; color: #333; }
+.cache-toast { position: fixed; top: 16px; right: 16px; background: #4caf50; color: #fff; padding: 10px 20px; border-radius: 6px; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 1000; animation: toast-in 0.3s ease; }
+@keyframes toast-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
 </style>

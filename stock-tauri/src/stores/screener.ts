@@ -40,6 +40,7 @@ export const useScreenerStore = defineStore("screener", () => {
   const lastEmptyDate = ref("");
 
   const clearing = ref(false);
+  const cacheMessage = ref("");
 
   async function runScreen() {
     loading.value = true;
@@ -69,7 +70,10 @@ export const useScreenerStore = defineStore("screener", () => {
     error.value = null;
     try {
       const deleted = await invoke<number>("clear_screener_cache");
-      console.log(`已清除 ${deleted} 筆快取`);
+      const msg = cacheMessage.value = `已清除 ${deleted} 筆快取`;
+      setTimeout(() => {
+        if (cacheMessage.value === msg) cacheMessage.value = "";
+      }, 2500);
     } catch (e) {
       error.value = String(e);
     } finally {
@@ -82,6 +86,6 @@ export const useScreenerStore = defineStore("screener", () => {
     maxBandwidth, minDays, minVolume, instrumentTypes,
     date, dateLoading,
     fetchLatestTradeDate, runScreen, lastEmptyDate,
-    clearCache, clearing,
+    clearCache, clearing, cacheMessage,
   };
 });
