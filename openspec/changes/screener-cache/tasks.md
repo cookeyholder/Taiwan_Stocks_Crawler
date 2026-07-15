@@ -17,18 +17,16 @@
 
 ## 2. 資料庫 Migration（TDD Green）
 
-- [ ] 2.1 在 `migrations.rs` 新增 V5：`CREATE TABLE IF NOT EXISTS screener_cache (cache_key TEXT PRIMARY KEY, query_date TEXT NOT NULL, instrument_types TEXT NOT NULL, max_bandwidth REAL NOT NULL, min_days INTEGER NOT NULL, min_volume INTEGER NOT NULL, results_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))`
-- [ ] 2.2 在 `test_fresh_migration` 中新增 assert 確認 `screener_cache` 表存在
-- [ ] 2.3 `cargo test` 確認 1.1~1.5 的測試開始通過（DB 層齊全）
+- [x] 2.1 在 `migrations.rs` 新增 V5：`CREATE TABLE IF NOT EXISTS screener_cache`
+- [x] 2.2 在 `test_fresh_migration` 中新增 assert 確認 `screener_cache` 表存在
+- [x] 2.3 `cargo test` 確認 1.1~1.5 的測試開始通過（DB 層齊全）
 
 ## 3. MarketRepository 快取方法（TDD Green）
 
-- [ ] 3.1 實作 `MarketRepository::get_cached_screening(&self, key: &str) -> SqlResult<Option<Vec<ScreenResult>>>`
-      - 回傳 `None` 當：key 不存在 或 `results_json` serde_json 解析失敗（corrupted cache，log warning 後視同 miss）
-- [ ] 3.2 實作 `MarketRepository::set_cached_screening(&self, key: &str, params: &CacheParams, results: &[ScreenResult]) -> SqlResult<()>`
-      - INSERT OR REPLACE，寫入失敗時 log error 但**不阻斷使用者流程**
-- [ ] 3.3 實作 `MarketRepository::clear_screener_cache(&self) -> SqlResult<usize>`（回傳刪除筆數）
-- [ ] 3.4 `cargo test` 確認 1.1~1.5 全部通過（DB 層 TDD Green）
+- [x] 3.1 實作 `MarketRepository::get_cached_screening(&self, key: &str) -> SqlResult<Option<Vec<ScreenResult>>>`
+- [x] 3.2 實作 `MarketRepository::set_cached_screening(&self, key: &str, params: &CacheParams, results: &[ScreenResult]) -> SqlResult<()>`
+- [x] 3.3 實作 `MarketRepository::clear_screener_cache(&self) -> SqlResult<usize>`（回傳刪除筆數）
+- [x] 3.4 `cargo test` 確認 1.1~1.5 全部通過（DB 層 TDD Green）
 
 ## 4. `build_cache_key()` 與 Tauri Command
 

@@ -4,7 +4,7 @@ use rusqlite::{Connection, Result as SqlResult, params};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::models::{CanonicalQuote, OhlcvRecord};
+use crate::models::{CacheParams, CanonicalQuote, OhlcvRecord, ScreenResult};
 
 pub struct MarketRepository {
     conn: Mutex<Connection>,
@@ -390,6 +390,46 @@ impl MarketRepository {
             map.entry(sym).or_insert(name);
         }
         Ok(map)
+    }
+
+    pub fn get_cached_screening(&self, key: &str) -> SqlResult<Option<Vec<ScreenResult>>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT results_json FROM screener_cache WHERE cache_key = ?1",
+        )?;
+        let result: Option<String> = stmt.query_row(params![key], |row| row.get(0)).ok();
+        match result {
+            Some(json) => match serde_json::from_str::<Vec<ScreenResult>>(&json) {
+                Ok(screen_results) => Ok(Some(screen_results)),
+                Err(e) => {
+                    eprintln!("[cache] corrupted JSON for key {}: {}", key, e);
+                    Ok(None)
+                }
+            },
+            None => Ok(None),
+        }
+    }
+
+    pub fn set_cached_screening(
+        &self,
+        key: &str,
+        params: &CacheParams,
+        results: &[ScreenResult],
+    ) -> SqlResult<()> {
+        let json = serde_json::to_string(results).unwrap_or_default();
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO screener_cache (cache_key, query_date, instrument_types, max_bandwidth, min_days, min_volume, results_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![key, params.query_date, params.instrument_types, params.max_bandwidth, params.min_days, params.min_volume, json],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_screener_cache(&self) -> SqlResult<usize> {
+        let conn = self.conn.lock().unwrap();
+        let deleted = conn.execute("DELETE FROM screener_cache", [])?;
+        Ok(deleted)
     }
 }
 
