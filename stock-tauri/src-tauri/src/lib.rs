@@ -65,7 +65,11 @@ async fn screen_bollinger_with_cache(
 
     let screen_date = match &date {
         Some(d) => d.clone(),
-        None => match pipeline.repo.get_latest_trade_date().map_err(|e| e.to_string())? {
+        None => match pipeline
+            .repo
+            .get_latest_trade_date()
+            .map_err(|e| e.to_string())?
+        {
             Some(d) => d,
             None => return Ok(vec![]),
         },
@@ -90,7 +94,13 @@ async fn screen_bollinger_with_cache(
     }
 
     let results = pipeline
-        .screen(max_bandwidth, min_days, instrument_types, min_volume, date.as_deref())
+        .screen(
+            max_bandwidth,
+            min_days,
+            instrument_types,
+            min_volume,
+            date.as_deref(),
+        )
         .await
         .map_err(|e| e.to_string())?;
 
@@ -101,7 +111,10 @@ async fn screen_bollinger_with_cache(
         min_days,
         min_volume,
     };
-    if let Err(e) = pipeline.repo.set_cached_screening(&cache_key, &cache_params, &results) {
+    if let Err(e) = pipeline
+        .repo
+        .set_cached_screening(&cache_key, &cache_params, &results)
+    {
         eprintln!("[cache] failed to write screening cache: {}", e);
     }
 
