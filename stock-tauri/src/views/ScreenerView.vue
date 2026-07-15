@@ -23,11 +23,15 @@ onMounted(async () => {
 });
 
 function onStartDateChange(e: Event) {
-  store.startDate = (e.target as HTMLInputElement).value;
+  const input = e.target as HTMLInputElement;
+  store.startDate = input.value;
+  input.blur();
 }
 
 function onEndDateChange(e: Event) {
-  store.endDate = (e.target as HTMLInputElement).value;
+  const input = e.target as HTMLInputElement;
+  store.endDate = input.value;
+  input.blur();
 }
 
 function onMinVolumeInput(e: Event) {
