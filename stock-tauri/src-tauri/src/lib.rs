@@ -76,10 +76,13 @@ async fn screen_bollinger_with_cache(
     };
 
     let types = instrument_types.as_deref().unwrap_or(&[]);
+    let mut sorted_types = types.to_vec();
+    sorted_types.sort();
+    let types_str = sorted_types.join(",");
     let cache_key = build_cache_key(
         SCREEN_CACHE_VERSION,
         &screen_date,
-        types,
+        &sorted_types,
         max_bandwidth,
         min_days,
         min_volume,
@@ -99,14 +102,14 @@ async fn screen_bollinger_with_cache(
             min_days,
             instrument_types,
             min_volume,
-            date.as_deref(),
+            Some(&screen_date),
         )
         .await
         .map_err(|e| e.to_string())?;
 
     let cache_params = CacheParams {
         query_date: screen_date,
-        instrument_types: cache_key.split('|').nth(2).unwrap_or("").to_string(),
+        instrument_types: types_str,
         max_bandwidth,
         min_days,
         min_volume,

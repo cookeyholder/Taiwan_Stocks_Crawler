@@ -396,16 +396,17 @@ impl MarketRepository {
         let conn = self.conn.lock().unwrap();
         let mut stmt =
             conn.prepare_cached("SELECT results_json FROM screener_cache WHERE cache_key = ?1")?;
-        let result: Option<String> = stmt.query_row(params![key], |row| row.get(0)).ok();
+        let result = stmt.query_row(params![key], |row| row.get::<_, String>(0));
         match result {
-            Some(json) => match serde_json::from_str::<Vec<ScreenResult>>(&json) {
+            Ok(json) => match serde_json::from_str::<Vec<ScreenResult>>(&json) {
                 Ok(screen_results) => Ok(Some(screen_results)),
                 Err(e) => {
                     eprintln!("[cache] corrupted JSON for key {}: {}", key, e);
                     Ok(None)
                 }
             },
-            None => Ok(None),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
         }
     }
 
