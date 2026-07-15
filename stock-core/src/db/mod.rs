@@ -415,7 +415,10 @@ impl MarketRepository {
         params: &CacheParams,
         results: &[ScreenResult],
     ) -> SqlResult<()> {
-        let json = serde_json::to_string(results).unwrap_or_default();
+        let json = serde_json::to_string(results).map_err(|e| {
+            eprintln!("[cache] failed to serialize results for key {}: {}", key, e);
+            rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+        })?;
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT OR REPLACE INTO screener_cache (cache_key, query_date, instrument_types, max_bandwidth, min_days, min_volume, results_json)

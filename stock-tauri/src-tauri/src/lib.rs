@@ -61,62 +61,47 @@ async fn screen_bollinger_with_cache(
 
     const SCREEN_CACHE_VERSION: &str = "v1";
 
+    let pipeline = state.pipeline.lock().await;
+
     let screen_date = match &date {
         Some(d) => d.clone(),
-        None => {
-            let pipeline = state.pipeline.lock().await;
-            match pipeline
-                .repo
-                .get_latest_trade_date()
-                .map_err(|e| e.to_string())?
-            {
-                Some(d) => d,
-                None => return Ok(vec![]),
-            }
-        }
+        None => match pipeline.repo.get_latest_trade_date().map_err(|e| e.to_string())? {
+            Some(d) => d,
+            None => return Ok(vec![]),
+        },
     };
 
-    let types = instrument_types.clone().unwrap_or_default();
+    let types = instrument_types.as_deref().unwrap_or(&[]);
     let cache_key = build_cache_key(
         SCREEN_CACHE_VERSION,
         &screen_date,
-        &types,
+        types,
         max_bandwidth,
         min_days,
         min_volume,
     );
 
-    let pipeline = state.pipeline.lock().await;
-    let cached = pipeline
+    if let Some(cached) = pipeline
         .repo
         .get_cached_screening(&cache_key)
-        .map_err(|e| e.to_string())?;
-    if let Some(results) = cached {
-        return Ok(results);
+        .map_err(|e| e.to_string())?
+    {
+        return Ok(cached);
     }
 
     let results = pipeline
-        .screen(
-            max_bandwidth,
-            min_days,
-            instrument_types,
-            min_volume,
-            date.as_deref(),
-        )
+        .screen(max_bandwidth, min_days, instrument_types, min_volume, date.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
     let cache_params = CacheParams {
-        query_date: screen_date.clone(),
-        instrument_types: types.join(","),
+        query_date: screen_date,
+        instrument_types: cache_key.split('|').nth(2).unwrap_or("").to_string(),
         max_bandwidth,
         min_days,
         min_volume,
     };
-    if let Err(e) = pipeline
-        .repo
-        .set_cached_screening(&cache_key, &cache_params, &results)
-    {
+    if let Err(e) = pipeline.repo.set_cached_screening(&cache_key, &cache_params, &results) {
         eprintln!("[cache] failed to write screening cache: {}", e);
     }
 
