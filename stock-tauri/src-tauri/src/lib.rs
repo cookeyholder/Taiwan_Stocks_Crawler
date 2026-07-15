@@ -1,3 +1,6 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
 use stock_core::db::MarketRepository;
@@ -9,6 +12,7 @@ use tokio::sync::Mutex;
 
 struct AppState {
     pipeline: Mutex<Pipeline>,
+    cancel_flag: Arc<AtomicBool>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -49,79 +53,154 @@ async fn fetch_date(state: State<'_, AppState>, date: String) -> Result<String, 
 }
 
 #[tauri::command]
-async fn screen_bollinger_with_cache(
+async fn screen_bollinger_range(
+    app: AppHandle,
     state: State<'_, AppState>,
+    start_date: String,
+    end_date: String,
     max_bandwidth: f64,
     min_days: i32,
     instrument_types: Option<Vec<String>>,
     min_volume: i64,
-    date: Option<String>,
-) -> Result<Vec<ScreenResult>, String> {
+) -> Result<RangeScreenResult, String> {
     use stock_core::pipeline::build_cache_key;
 
     const SCREEN_CACHE_VERSION: &str = "v1";
+    const MAX_TRADING_DAYS: usize = 60;
+
+    let _start = chrono::NaiveDate::parse_from_str(&start_date, "%Y-%m-%d")
+        .map_err(|_| format!("日期格式錯誤：{}", start_date))?;
+    let _end = chrono::NaiveDate::parse_from_str(&end_date, "%Y-%m-%d")
+        .map_err(|_| format!("日期格式錯誤：{}", end_date))?;
+    if start_date > end_date {
+        return Err("起始日期不能晚於結束日期".into());
+    }
+
+    let cancel_flag = state.cancel_flag.clone();
+    cancel_flag.store(false, Ordering::SeqCst);
 
     let pipeline = state.pipeline.lock().await;
-
-    let screen_date = match &date {
-        Some(d) => d.clone(),
-        None => match pipeline
-            .repo
-            .get_latest_trade_date()
-            .map_err(|e| e.to_string())?
-        {
-            Some(d) => d,
-            None => return Ok(vec![]),
-        },
-    };
 
     let types = instrument_types.as_deref().unwrap_or(&[]);
     let mut sorted_types = types.to_vec();
     sorted_types.sort();
     let types_str = sorted_types.join(",");
-    let cache_key = build_cache_key(
-        SCREEN_CACHE_VERSION,
-        &screen_date,
-        &sorted_types,
-        max_bandwidth,
-        min_days,
-        min_volume,
-    );
 
-    if let Some(cached) = pipeline
+    let trade_dates = pipeline
         .repo
-        .get_cached_screening(&cache_key)
-        .map_err(|e| e.to_string())?
-    {
-        return Ok(cached);
-    }
-
-    let results = pipeline
-        .screen(
-            max_bandwidth,
-            min_days,
-            instrument_types,
-            min_volume,
-            Some(&screen_date),
-        )
-        .await
+        .get_trade_dates_in_range(&start_date, &end_date)
         .map_err(|e| e.to_string())?;
 
-    let cache_params = CacheParams {
-        query_date: screen_date,
-        instrument_types: types_str,
-        max_bandwidth,
-        min_days,
-        min_volume,
-    };
-    if let Err(e) = pipeline
-        .repo
-        .set_cached_screening(&cache_key, &cache_params, &results)
-    {
-        eprintln!("[cache] failed to write screening cache: {}", e);
+    if trade_dates.len() > MAX_TRADING_DAYS {
+        return Err(format!(
+            "區間超過上限：{} 個交易日（上限 {} 天）",
+            trade_dates.len(),
+            MAX_TRADING_DAYS
+        ));
     }
 
-    Ok(results)
+    let total = trade_dates.len();
+    let mut cached_days = 0usize;
+    let mut calculated_days = 0usize;
+    let mut failed_days = Vec::new();
+    let mut last_results: Vec<ScreenResult> = Vec::new();
+
+    for (i, date) in trade_dates.iter().enumerate() {
+        if cancel_flag.load(Ordering::SeqCst) {
+            break;
+        }
+
+        let cache_key = build_cache_key(
+            SCREEN_CACHE_VERSION,
+            date,
+            &sorted_types,
+            max_bandwidth,
+            min_days,
+            min_volume,
+        );
+
+        if let Some(cached) = pipeline
+            .repo
+            .get_cached_screening(&cache_key)
+            .map_err(|e| e.to_string())?
+        {
+            cached_days += 1;
+            last_results = cached;
+            let _ = app.emit(
+                "range-progress",
+                RangeProgress {
+                    current: i + 1,
+                    total,
+                    date: date.clone(),
+                    cached: true,
+                },
+            );
+            continue;
+        }
+
+        match pipeline
+            .screen(max_bandwidth, min_days, instrument_types.clone(), min_volume, Some(date))
+            .await
+        {
+            Ok(results) => {
+                calculated_days += 1;
+                let cache_params = CacheParams {
+                    query_date: date.clone(),
+                    instrument_types: types_str.clone(),
+                    max_bandwidth,
+                    min_days,
+                    min_volume,
+                };
+                if let Err(e) = pipeline
+                    .repo
+                    .set_cached_screening(&cache_key, &cache_params, &results)
+                {
+                    eprintln!("[cache] failed to write {}: {}", date, e);
+                }
+                last_results = results;
+            }
+            Err(e) => {
+                eprintln!("[range] date {} failed: {}", date, e);
+                failed_days.push(date.clone());
+            }
+        }
+
+        let _ = app.emit(
+            "range-progress",
+            RangeProgress {
+                current: i + 1,
+                total,
+                date: date.clone(),
+                cached: false,
+            },
+        );
+    }
+
+    Ok(RangeScreenResult {
+        results: last_results,
+        meta: RangeMeta {
+            start_date,
+            end_date,
+            trading_days: trade_dates.len(),
+            cached_days,
+            calculated_days,
+            failed_days,
+        },
+    })
+}
+
+#[tauri::command]
+async fn cancel_screening(state: State<'_, AppState>) -> Result<(), String> {
+    state.cancel_flag.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
+#[derive(Clone, Serialize)]
+struct RangeProgress {
+    current: usize,
+    total: usize,
+    date: String,
+    cached: bool,
 }
 
 #[tauri::command]
@@ -331,11 +410,13 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
             pipeline: Mutex::new(pipeline),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
         })
         .invoke_handler(tauri::generate_handler![
             fetch_today,
             fetch_date,
-            screen_bollinger_with_cache,
+            screen_bollinger_range,
+            cancel_screening,
             clear_screener_cache,
             get_screener_cache_count,
             get_analysis,

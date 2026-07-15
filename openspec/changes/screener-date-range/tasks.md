@@ -6,8 +6,8 @@
 
 ## 2. Tauri Command：screen_bollinger_range
 
-- [ ] 2.1 在 `stock-tauri/src-tauri/src/lib.rs` 定義 `RangeProgress` 結構（current, total, date, cached），derive `Clone, Serialize`
-- [ ] 2.2 實作 `screen_bollinger_range` command：
+- [x] 2.1 在 `stock-tauri/src-tauri/src/lib.rs` 定義 `RangeProgress` 結構（current, total, date, cached），derive `Clone, Serialize`
+- [x] 2.2 實作 `screen_bollinger_range` command：
       - 接收 `start_date`, `end_date`, `max_bandwidth`, `min_days`, `instrument_types`, `min_volume`
       - 驗證日期格式（`chrono::NaiveDate::parse_from_str`），不合則回傳錯誤
       - 驗證 `start_date <= end_date`，違反則回傳錯誤
@@ -20,10 +20,10 @@
       - 統計 cached_days、calculated_days、failed_days
       - 保留最後一天的結果（若全部失敗則回傳空結果）
       - 回傳 `RangeScreenResult`
-- [ ] 2.3 移除舊的 `screen_bollinger_with_cache` command
-- [ ] 2.4 在 `invoke_handler` 中註冊 `screen_bollinger_range`
-- [ ] 2.5 新增 `cancel_screening` command，將 `cancel_flag` 設為 true
-- [ ] 2.6 在 `AppState` 中新增 `cancel_flag: Arc<AtomicBool>`，每個 `screen_bollinger_range` 共用此 flag
+- [x] 2.3 移除舊的 `screen_bollinger_with_cache` command
+- [x] 2.4 在 `invoke_handler` 中註冊 `screen_bollinger_range`
+- [x] 2.5 新增 `cancel_screening` command，將 `cancel_flag` 設為 true
+- [x] 2.6 在 `AppState` 中新增 `cancel_flag: Arc<AtomicBool>`
 
 ## 3. 前端 Store 修改
 
