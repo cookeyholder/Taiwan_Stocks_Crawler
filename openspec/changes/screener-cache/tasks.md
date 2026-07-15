@@ -30,18 +30,18 @@
 
 ## 4. `build_cache_key()` 與 Tauri Command
 
-- [ ] 4.1 在 `lib.rs` 定義 `const SCREEN_CACHE_VERSION: &str = "v1"`
-- [ ] 4.2 新增 `build_cache_key()` 輔助函式：將五個參數組合為 `{v}|{date}|{types}|{bw}|{days}|{vol}`
-- [ ] 4.3 `cargo test` 確認 1.6~1.8 通過（key 相關測試齊全）
-- [ ] 4.4 實作 `screen_bollinger_with_cache` command：先查快取，miss 則篩選後存入再回傳
+- [x] 4.1 在 `lib.rs` 定義 `const SCREEN_CACHE_VERSION: &str = "v1"`
+- [x] 4.2 新增 `build_cache_key()` 輔助函式（在 `pipeline/mod.rs`，供 lib.rs 呼叫）
+- [x] 4.3 `cargo test` 確認 1.6~1.8 通過（key 相關測試齊全）
+- [x] 4.4 實作 `screen_bollinger_with_cache` command：先查快取，miss 則篩選後存入再回傳
       - 若 `get_cached_screening` 因 corrupted JSON 回傳 `None`，視同 miss，重新計算後寫入覆蓋
       - 若 `set_cached_screening` 寫入失敗，log error 但仍回傳計算結果
-- [ ] 4.5 用 `screen_bollinger_with_cache` 取代原本的 `screen_bollinger` command
+- [x] 4.5 用 `screen_bollinger_with_cache` 取代原本的 `screen_bollinger` command
       - 從 `lib.rs` 移除舊 `screen_bollinger` 函式
       - 從 `invoke_handler` 的 `generate_handler!` 巨集中移除 `screen_bollinger`
       - 更名前先確認 `screen_bollinger` 未被其他 openspec change / 外部參考引用
-- [ ] 4.6 實作 `clear_screener_cache` command 呼叫 `repo.clear_screener_cache()`，回傳刪除筆數
-- [ ] 4.7 在 `invoke_handler` 的 `generate_handler!` 巨集中註冊新 command
+- [x] 4.6 實作 `clear_screener_cache` command 呼叫 `repo.clear_screener_cache()`，回傳刪除筆數
+- [x] 4.7 在 `invoke_handler` 的 `generate_handler!` 巨集中註冊新 command
 
 ## 5. 前端 Store + UI
 
