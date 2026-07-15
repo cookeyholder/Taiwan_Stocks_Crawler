@@ -118,7 +118,7 @@ async function onRowSelected(symbol: string) {
 .btn-primary { padding: 8px 20px; background: #1976d2; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; }
 .btn-primary:hover { background: #1565c0; }
 .btn-primary:disabled { background: #90caf9; cursor: not-allowed; }
-input[type="date"] { width: 200px; }
+.param-group input[type="date"] { width: 200px; }
 .empty-hint { color: #d32f2f; font-size: 14px; margin: 8px 0; }
 .checkbox-group { display: flex; gap: 8px; flex-wrap: wrap; }
 .checkbox-label { display: flex; align-items: center; gap: 3px; font-size: 13px; cursor: pointer; }
