@@ -137,6 +137,58 @@ pub struct RangeScreenResult {
     pub meta: RangeMeta,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PerformanceMetrics {
+    pub total_return_pct: f64,
+    pub annualized_return_pct: f64,
+    pub win_rate: f64,
+    pub total_trades: usize,
+    pub winning_trades: usize,
+    pub losing_trades: usize,
+    pub sharpe_ratio: f64,
+    pub max_drawdown_pct: f64,
+    pub final_value: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TradeRecord {
+    pub symbol: String,
+    pub name: Option<String>,
+    pub buy_date: String,
+    pub buy_price: f64,
+    pub sell_date: Option<String>,
+    pub sell_price: Option<f64>,
+    pub shares: i64,
+    pub pnl: f64,
+    pub pnl_pct: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BacktestReport {
+    pub signals: Vec<SignalRecord>,
+    pub metrics: PerformanceMetrics,
+    pub trades: Vec<TradeRecord>,
+    pub equity_curve: Vec<f64>,
+    pub trade_dates: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParamDef {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub param_type: String,
+    pub default: f64,
+    pub min: f64,
+    pub max: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StrategyInfo {
+    pub id: String,
+    pub name: String,
+    pub params: Vec<ParamDef>,
+}
+
 #[derive(Debug)]
 pub enum EngineError {
     Db(rusqlite::Error),
