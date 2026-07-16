@@ -15,6 +15,28 @@ const dbLastDate = ref("");
 const dbDayCount = ref(0);
 const dbLoading = ref(true);
 
+function getTodayStr(): string {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)!.value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function calcNextDay(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() + 1);
+  const yy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
 async function refreshDbInfo() {
   try {
     const [min, max, count] = await invoke<[string | null, string | null, number]>("get_date_range");
@@ -37,10 +59,22 @@ async function startDownload() {
   await refreshDbInfo();
 }
 
-async function fetchToday() {
+async function fillToToday() {
+  if (store.running) return;
+  store.result = null;
   try {
-    const msg = await invoke<string>("fetch_today");
-    store.result = msg;
+    const latest = await invoke<string | null>("get_latest_trade_date");
+    if (!latest) {
+      store.result = "資料庫尚無資料，請先手動指定日期下載";
+      return;
+    }
+    const today = getTodayStr();
+    if (latest >= today) {
+      store.result = "資料已是最新";
+      return;
+    }
+    const nextDay = calcNextDay(latest);
+    await store.startDownload(nextDay, today);
     await refreshDbInfo();
   } catch (e) {
     store.result = `Error: ${e}`;
@@ -80,8 +114,8 @@ onUnmounted(() => store.cleanup());
     </div>
 
     <div class="controls-card">
-      <h3>下載今日資料</h3>
-      <button @click="fetchToday" class="btn-primary">下載今日</button>
+      <h3>補至今日資料</h3>
+      <button @click="fillToToday" :disabled="store.running" class="btn-primary">補至今日資料</button>
     </div>
 
     <div class="controls-card">
