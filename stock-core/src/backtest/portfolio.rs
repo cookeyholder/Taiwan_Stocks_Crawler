@@ -114,11 +114,10 @@ impl PortfolioSimulator {
 
             let mut total = cash;
             for (sym, &(_, shares)) in &active {
-                if let Some(records) = ohlcv_map.get(sym) {
-                    if let Some(rec) = records.iter().find(|r| r.trade_date == *date) {
+                if let Some(records) = ohlcv_map.get(sym)
+                    && let Some(rec) = records.iter().find(|r| r.trade_date == *date) {
                         total += rec.close_price.unwrap_or(0.0) * shares as f64;
                     }
-                }
             }
             equity.push(total);
         }
