@@ -26,24 +26,18 @@ function fmtMoney(v: number): string {
 
 function onStartDateChange(e: Event) {
   const input = e.target as HTMLInputElement;
-  store.startDate = input.value;
-  input.blur();
-}
-
-function onStartDateBlur(e: Event) {
-  const input = e.target as HTMLInputElement;
-  if (input.value && !store.startDate) store.startDate = input.value;
+  const val = input.value;
+  if (!val) return;
+  store.startDate = val;
+  setTimeout(() => input.blur(), 50);
 }
 
 function onEndDateChange(e: Event) {
   const input = e.target as HTMLInputElement;
-  store.endDate = input.value;
-  input.blur();
-}
-
-function onEndDateBlur(e: Event) {
-  const input = e.target as HTMLInputElement;
-  if (input.value && !store.endDate) store.endDate = input.value;
+  const val = input.value;
+  if (!val) return;
+  store.endDate = val;
+  setTimeout(() => input.blur(), 50);
 }
 
 function setLastNDays(days: number) {
@@ -70,11 +64,11 @@ function setLastNDays(days: number) {
       </div>
       <div class="param-group">
         <label>起始日期</label>
-        <input :value="store.startDate" type="date" @change="onStartDateChange" @blur="onStartDateBlur" />
+        <input :value="store.startDate" type="date" @change="onStartDateChange" />
       </div>
       <div class="param-group">
         <label>結束日期</label>
-        <input :value="store.endDate" type="date" @change="onEndDateChange" @blur="onEndDateBlur" />
+        <input :value="store.endDate" type="date" @change="onEndDateChange" />
       </div>
       <div class="param-group">
         <label>快捷區間</label>
