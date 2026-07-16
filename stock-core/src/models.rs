@@ -121,6 +121,22 @@ pub struct BacktestOutput {
     pub signals: Vec<SignalRecord>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RangeMeta {
+    pub start_date: String,
+    pub end_date: String,
+    pub trading_days: usize,
+    pub cached_days: usize,
+    pub calculated_days: usize,
+    pub failed_days: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RangeScreenResult {
+    pub results: Vec<ScreenResult>,
+    pub meta: RangeMeta,
+}
+
 #[derive(Debug)]
 pub enum EngineError {
     Db(rusqlite::Error),

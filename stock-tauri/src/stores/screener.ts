@@ -13,6 +13,27 @@ export interface ScreenResult {
   break_upper: boolean;
 }
 
+export interface RangeMeta {
+  start_date: string;
+  end_date: string;
+  trading_days: number;
+  cached_days: number;
+  calculated_days: number;
+  failed_days: string[];
+}
+
+export interface RangeScreenResult {
+  results: ScreenResult[];
+  meta: RangeMeta;
+}
+
+interface RangeProgress {
+  current: number;
+  total: number;
+  date: string;
+  cached: boolean;
+}
+
 export const useScreenerStore = defineStore("screener", () => {
   const results = ref<ScreenResult[]>([]);
   const loading = ref(false);
@@ -22,20 +43,28 @@ export const useScreenerStore = defineStore("screener", () => {
   const minDays = ref(5);
   const minVolume = ref(1000000);
   const instrumentTypes = ref<string[]>(["stock"]);
-  const date = ref("");
+  const startDate = ref("");
+  const endDate = ref("");
   const dateLoading = ref(false);
 
   async function fetchLatestTradeDate() {
     dateLoading.value = true;
     try {
       const d = await invoke<string | null>("get_latest_trade_date");
-      if (d) date.value = d;
+      if (d) {
+        startDate.value = d;
+        endDate.value = d;
+      }
     } catch {
       // 保留空日期，讓使用者手動輸入
     } finally {
       dateLoading.value = false;
     }
   }
+
+  const meta = ref<RangeMeta | null>(null);
+  const progress = ref<RangeProgress>({ current: 0, total: 0, date: "", cached: false });
+  const navigating = ref(false);
 
   const lastEmptyDate = ref("");
 
@@ -51,20 +80,32 @@ export const useScreenerStore = defineStore("screener", () => {
     }
   }
 
-  async function runScreen() {
+  async function runRangeScreen() {
     loading.value = true;
     error.value = null;
     lastEmptyDate.value = "";
+    meta.value = null;
+    progress.value = { current: 0, total: 0, date: "", cached: false };
+
+    let unlisten: (() => void) | undefined;
     try {
-      results.value = await invoke<ScreenResult[]>("screen_bollinger_with_cache", {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen<RangeProgress>("range-progress", (e) => {
+        progress.value = e.payload;
+      });
+
+      const rangeResult = await invoke<RangeScreenResult>("screen_bollinger_range", {
+        startDate: startDate.value,
+        endDate: endDate.value,
         maxBandwidth: maxBandwidth.value,
         minDays: minDays.value,
         instrumentTypes: instrumentTypes.value.length > 0 ? instrumentTypes.value : null,
         minVolume: minVolume.value,
-        date: date.value || null,
       });
-      if (results.value.length === 0 && date.value) {
-        lastEmptyDate.value = date.value;
+      results.value = rangeResult.results;
+      meta.value = rangeResult.meta;
+      if (results.value.length === 0 && startDate.value) {
+        lastEmptyDate.value = startDate.value;
       }
       await fetchCacheCount();
     } catch (e) {
@@ -72,7 +113,29 @@ export const useScreenerStore = defineStore("screener", () => {
       results.value = [];
     } finally {
       loading.value = false;
+      navigating.value = false;
+      if (unlisten) unlisten();
     }
+  }
+
+  async function navigateDate(direction: -1 | 1) {
+    if (loading.value || navigating.value) return;
+    navigating.value = true;
+    const [sy, sm, sd] = startDate.value.split('-').map(Number);
+    const [ey, em, ed] = endDate.value.split('-').map(Number);
+    const start = new Date(sy, sm - 1, sd);
+    const end = new Date(ey, em - 1, ed);
+    start.setDate(start.getDate() + direction);
+    end.setDate(end.getDate() + direction);
+    const fmt = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+    startDate.value = fmt(start);
+    endDate.value = fmt(end);
+    await runRangeScreen();
   }
 
   async function clearCache() {
@@ -92,11 +155,21 @@ export const useScreenerStore = defineStore("screener", () => {
     }
   }
 
+  async function cancelScreening() {
+    try {
+      await invoke("cancel_screening");
+    } catch {
+      // 忽略
+    }
+  }
+
   return {
     results, loading, error,
     maxBandwidth, minDays, minVolume, instrumentTypes,
-    date, dateLoading,
-    fetchLatestTradeDate, runScreen, lastEmptyDate,
+    startDate, endDate, dateLoading,
+    fetchLatestTradeDate, runRangeScreen, lastEmptyDate,
+    navigateDate, navigating,
     clearCache, clearing, cacheMessage, cacheCount, fetchCacheCount,
+    meta, progress, cancelScreening,
   };
 });
