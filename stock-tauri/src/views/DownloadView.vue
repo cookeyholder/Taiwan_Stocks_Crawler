@@ -17,13 +17,14 @@ const dbLoading = ref(true);
 
 function getTodayStr(): string {
   const now = new Date();
-  const taipei = new Intl.DateTimeFormat("en-CA", {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Taipei",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  });
-  return taipei.format(now);
+  }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)!.value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
 function calcNextDay(isoDate: string): string {
