@@ -232,6 +232,7 @@ async fn get_screener_cache_count(state: State<'_, AppState>) -> Result<usize, S
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RunBacktestParams {
     strategy: String,
     #[serde(rename = "params")]
