@@ -23,6 +23,18 @@ function fmtPct(v: number): string {
 function fmtMoney(v: number): string {
   return "$" + Math.round(v).toLocaleString();
 }
+
+function onStartDateChange(e: Event) {
+  const input = e.target as HTMLInputElement;
+  store.startDate = input.value;
+  input.blur();
+}
+
+function onEndDateChange(e: Event) {
+  const input = e.target as HTMLInputElement;
+  store.endDate = input.value;
+  input.blur();
+}
 </script>
 
 <template>
@@ -40,11 +52,11 @@ function fmtMoney(v: number): string {
       </div>
       <div class="param-group">
         <label>起始日期</label>
-        <input v-model="store.startDate" type="date" />
+        <input :value="store.startDate" type="date" @change="onStartDateChange" />
       </div>
       <div class="param-group">
         <label>結束日期</label>
-        <input v-model="store.endDate" type="date" />
+        <input :value="store.endDate" type="date" @change="onEndDateChange" />
       </div>
       <div class="param-group">
         <label>起始資金</label>
