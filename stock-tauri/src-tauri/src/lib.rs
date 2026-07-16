@@ -256,7 +256,7 @@ async fn run_backtest(
     let pipeline = state.pipeline.lock().await;
 
     let param_pairs: Vec<(String, f64)> = params.strategy_params.into_iter().collect();
-    let strategy = StrategyKind::create(&params.strategy, &param_pairs).map_err(|e| e)?;
+    let strategy = StrategyKind::create(&params.strategy, &param_pairs)?;
 
     let trade_dates = pipeline
         .repo
