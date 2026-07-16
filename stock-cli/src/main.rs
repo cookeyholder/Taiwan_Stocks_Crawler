@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use stock_core::db::MarketRepository;
 use stock_core::fetcher::{HttpClient, HttpPolicy};
+use stock_core::models::OhlcvRecord;
 use stock_core::pipeline::Pipeline;
 
 #[derive(Parser)]
@@ -54,14 +55,14 @@ enum Commands {
         start: Option<String>,
         #[arg(long)]
         end: Option<String>,
-        #[arg(long, default_value = "0.08")]
-        max_bandwidth: f64,
-        #[arg(long, default_value = "5")]
-        min_days: usize,
+        #[arg(long, default_value = "bollinger_squeeze")]
+        strategy: String,
+        #[arg(long, value_parser = parse_key_val)]
+        param: Vec<(String, f64)>,
+        #[arg(long, default_value = "1000000")]
+        capital: f64,
         #[arg(long, value_delimiter = ',')]
         types: Option<Vec<String>>,
-        #[arg(long, default_value = "0")]
-        min_volume: i64,
     },
 }
 
@@ -131,24 +132,26 @@ async fn main() {
             date,
             start,
             end,
-            max_bandwidth,
-            min_days,
+            strategy,
+            param,
+            capital,
             types,
-            min_volume,
         } => {
-            use stock_core::backtest::BacktestEngine;
-            use stock_core::backtest::bollinger::BollingerSqueezeBreakout;
+            use std::collections::HashMap;
+            use stock_core::backtest::engine::BacktestEngine;
+            use stock_core::backtest::performance::calculate_metrics;
+            use stock_core::backtest::portfolio::PortfolioSimulator;
+            use stock_core::backtest::strategies::StrategyKind;
 
-            if min_days == 0 {
-                eprintln!("Error: --min-days must be > 0");
-                return;
-            }
             let engine = BacktestEngine::new(&pipeline.repo);
-            let strategy = BollingerSqueezeBreakout {
-                bandwidth_limit: max_bandwidth,
-                consecutive_days: min_days,
-                min_volume,
+            let strategy = match StrategyKind::create(&strategy, &param) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("策略錯誤: {}", e);
+                    return;
+                }
             };
+
             let types_ref = types.as_deref();
 
             let output = if let Some(d) = date {
@@ -168,26 +171,103 @@ async fn main() {
 
             match output {
                 Ok(output) => {
-                    println!(
-                        "{:<10} {:<8} {:<12} {:>10} {:>12} {:>8} {:>8}",
-                        "Date", "Symbol", "Name", "Close", "Volume", "Dir", "Strength"
-                    );
-                    for s in &output.signals {
-                        let name = s.name.as_deref().unwrap_or("-");
-                        let close = s
-                            .close_price
-                            .map(|c| format!("{:.2}", c))
-                            .unwrap_or_else(|| "-".into());
-                        let vol = s
-                            .volume
-                            .map(|v| v.to_string())
-                            .unwrap_or_else(|| "-".into());
-                        println!(
-                            "{:<10} {:<8} {:<12} {:>10} {:>12} {:>8} {:>8.4}",
-                            s.trade_date, s.symbol, name, close, vol, s.direction, s.strength
-                        );
+                    // Get trade dates for equity curve
+                    let trade_dates: Vec<String> =
+                        if let (Some(s), Some(e)) = (start.as_ref(), end.as_ref()) {
+                            pipeline
+                                .repo
+                                .get_trade_dates_in_range(s, e)
+                                .unwrap_or_default()
+                        } else {
+                            vec![]
+                        };
+                    let start_date = trade_dates.first().cloned().unwrap_or_default();
+                    let end_date = trade_dates.last().cloned().unwrap_or_default();
+
+                    // Build ohlcv_map for portfolio simulation
+                    let rows = pipeline
+                        .repo
+                        .get_batch_ohlcv(&start_date, &end_date)
+                        .unwrap_or_default();
+                    let mut ohlcv_map: HashMap<String, Vec<OhlcvRecord>> = HashMap::new();
+                    for (sym, record) in rows {
+                        ohlcv_map.entry(sym).or_default().push(record);
                     }
-                    println!("\nTotal: {} signals", output.signals.len());
+
+                    let (trades, equity_curve) = PortfolioSimulator::simulate(
+                        &output.signals,
+                        capital,
+                        &ohlcv_map,
+                        &trade_dates,
+                    );
+                    let metrics = calculate_metrics(&trades, capital, &equity_curve);
+
+                    println!("\n─── 績效摘要 ───");
+                    println!(
+                        "總報酬率: {:+.1}%    勝率: {:.1}%    Sharpe: {:.2}",
+                        metrics.total_return_pct,
+                        metrics.win_rate * 100.0,
+                        metrics.sharpe_ratio
+                    );
+                    println!(
+                        "最大回撤: {:.1}%     交易次數: {}    最後價值: {:.0}",
+                        metrics.max_drawdown_pct, metrics.total_trades, metrics.final_value
+                    );
+
+                    if !trades.is_empty() {
+                        println!("\n─── 交易明細 ───");
+                        println!(
+                            "{:<8} {:<6} {:<12} {:>8} {:>8} {:>10} {:>8}",
+                            "買入日", "代號", "名稱", "買價", "賣價", "損益", "報酬率"
+                        );
+                        for t in &trades {
+                            let name = t.name.as_deref().unwrap_or("-");
+                            let sell_p = t
+                                .sell_price
+                                .map(|p| format!("{:.2}", p))
+                                .unwrap_or_else(|| "持有中".into());
+                            let pnl_str = if t.pnl >= 0.0 {
+                                format!("+{:.0}", t.pnl)
+                            } else {
+                                format!("{:.0}", t.pnl)
+                            };
+                            println!(
+                                "{:<8} {:<6} {:<12} {:>8.2} {:>8} {:>10} {:>7.1}%",
+                                t.buy_date, t.symbol, name, t.buy_price, sell_p, pnl_str, t.pnl_pct
+                            );
+                        }
+                    }
+
+                    if !output.signals.is_empty() {
+                        println!("\n─── 訊號明細 ───");
+                        println!(
+                            "{:<10} {:<8} {:<12} {:>8} {:>10} {:>8}",
+                            "日期", "代號", "名稱", "方向", "收盤價", "強度"
+                        );
+                        for s in &output.signals {
+                            let name = s.name.as_deref().unwrap_or("-");
+                            let dir = if s.direction > 0 {
+                                "買"
+                            } else if s.direction < 0 {
+                                "賣"
+                            } else {
+                                "-"
+                            };
+                            let close = s
+                                .close_price
+                                .map(|c| format!("{:.2}", c))
+                                .unwrap_or_else(|| "-".into());
+                            println!(
+                                "{:<10} {:<8} {:<12} {:>8} {:>10} {:>8.4}",
+                                s.trade_date, s.symbol, name, dir, close, s.strength
+                            );
+                        }
+                    }
+                    println!(
+                        "\nTotal: {} signals, {} trades",
+                        output.signals.len(),
+                        trades.len()
+                    );
                 }
                 Err(e) => eprintln!("Backtest error: {}", e),
             }
@@ -199,4 +279,16 @@ async fn main() {
             }
         }
     }
+}
+
+fn parse_key_val(s: &str) -> Result<(String, f64), String> {
+    let parts: Vec<&str> = s.splitn(2, '=').collect();
+    if parts.len() != 2 {
+        return Err(format!("invalid KEY=value: {}", s));
+    }
+    let key = parts[0].to_string();
+    let val = parts[1]
+        .parse::<f64>()
+        .map_err(|e| format!("invalid number: {}", e))?;
+    Ok((key, val))
 }
