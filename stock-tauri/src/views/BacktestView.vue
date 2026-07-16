@@ -84,7 +84,6 @@ function setLastNDays(days: number) {
           <button @click="setLastNDays(90)" class="btn-quick">3 月</button>
         </div>
       </div>
-      </div>
       <div class="param-group">
         <label>起始資金</label>
         <input v-model.number="store.capital" type="number" min="0" step="100000" />
