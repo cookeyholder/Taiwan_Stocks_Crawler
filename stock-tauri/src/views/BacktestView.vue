@@ -30,10 +30,28 @@ function onStartDateChange(e: Event) {
   input.blur();
 }
 
+function onStartDateBlur(e: Event) {
+  const input = e.target as HTMLInputElement;
+  if (input.value && !store.startDate) store.startDate = input.value;
+}
+
 function onEndDateChange(e: Event) {
   const input = e.target as HTMLInputElement;
   store.endDate = input.value;
   input.blur();
+}
+
+function onEndDateBlur(e: Event) {
+  const input = e.target as HTMLInputElement;
+  if (input.value && !store.endDate) store.endDate = input.value;
+}
+
+function setLastNDays(days: number) {
+  const today = new Date();
+  const end = today.toISOString().slice(0, 10);
+  const start = new Date(today.getTime() - days * 86400000).toISOString().slice(0, 10);
+  store.startDate = start;
+  store.endDate = end;
 }
 </script>
 
@@ -52,11 +70,20 @@ function onEndDateChange(e: Event) {
       </div>
       <div class="param-group">
         <label>起始日期</label>
-        <input :value="store.startDate" type="date" @change="onStartDateChange" />
+        <input :value="store.startDate" type="date" @change="onStartDateChange" @blur="onStartDateBlur" />
       </div>
       <div class="param-group">
         <label>結束日期</label>
-        <input :value="store.endDate" type="date" @change="onEndDateChange" />
+        <input :value="store.endDate" type="date" @change="onEndDateChange" @blur="onEndDateBlur" />
+      </div>
+      <div class="param-group">
+        <label>快捷區間</label>
+        <div class="quick-btns">
+          <button @click="setLastNDays(7)" class="btn-quick">1 週</button>
+          <button @click="setLastNDays(30)" class="btn-quick">1 月</button>
+          <button @click="setLastNDays(90)" class="btn-quick">3 月</button>
+        </div>
+      </div>
       </div>
       <div class="param-group">
         <label>起始資金</label>
@@ -153,6 +180,9 @@ function onEndDateChange(e: Event) {
 .param-group label { font-size: 13px; color: #666; font-weight: 600; }
 .param-group input, .strategy-select { padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
 .strategy-select { min-width: 140px; }
+.quick-btns { display: flex; gap: 4px; }
+.btn-quick { padding: 4px 10px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 12px; background: #fff; color: #555; }
+.btn-quick:hover { background: #e3f2fd; border-color: #1976d2; }
 .btn-primary { padding: 8px 20px; background: #1976d2; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; }
 .btn-primary:hover { background: #1565c0; }
 .btn-primary:disabled { background: #90caf9; cursor: not-allowed; }
