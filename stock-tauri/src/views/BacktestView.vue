@@ -24,28 +24,21 @@ function fmtMoney(v: number): string {
   return "$" + Math.round(v).toLocaleString();
 }
 
-function onStartDateChange(e: Event) {
-  const input = e.target as HTMLInputElement;
-  const val = input.value;
-  if (!val) return;
-  store.startDate = val;
-  setTimeout(() => input.blur(), 50);
-}
-
-function onEndDateChange(e: Event) {
-  const input = e.target as HTMLInputElement;
-  const val = input.value;
-  if (!val) return;
-  store.endDate = val;
-  setTimeout(() => input.blur(), 50);
-}
-
 function setLastNDays(days: number) {
-  const today = new Date();
-  const end = today.toISOString().slice(0, 10);
-  const start = new Date(today.getTime() - days * 86400000).toISOString().slice(0, 10);
-  store.startDate = start;
-  store.endDate = end;
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Taipei",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)!.value;
+  const today = `${get("year")}-${get("month")}-${get("day")}`;
+  const d = new Date(+get("year"), +get("month") - 1, +get("day"));
+  d.setDate(d.getDate() - days);
+  const yy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  store.startDate = `${yy}-${mm}-${dd}`;
+  store.endDate = today;
 }
 </script>
 
@@ -64,11 +57,11 @@ function setLastNDays(days: number) {
       </div>
       <div class="param-group">
         <label>起始日期</label>
-        <input :value="store.startDate" type="date" @change="onStartDateChange" />
+        <input v-model="store.startDate" type="text" placeholder="YYYY-MM-DD" maxlength="10" />
       </div>
       <div class="param-group">
         <label>結束日期</label>
-        <input :value="store.endDate" type="date" @change="onEndDateChange" />
+        <input v-model="store.endDate" type="text" placeholder="YYYY-MM-DD" maxlength="10" />
       </div>
       <div class="param-group">
         <label>快捷區間</label>
