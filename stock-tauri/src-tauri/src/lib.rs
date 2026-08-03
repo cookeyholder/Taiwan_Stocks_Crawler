@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -230,6 +231,75 @@ async fn get_screener_cache_count(state: State<'_, AppState>) -> Result<usize, S
         .map_err(|e| e.to_string())
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunBacktestParams {
+    strategy: String,
+    #[serde(rename = "params")]
+    strategy_params: HashMap<String, f64>,
+    start_date: String,
+    end_date: String,
+    capital: f64,
+    instrument_types: Option<Vec<String>>,
+}
+
+#[tauri::command]
+async fn run_backtest(
+    state: State<'_, AppState>,
+    params: RunBacktestParams,
+) -> Result<BacktestReport, String> {
+    use std::collections::HashMap;
+    use stock_core::backtest::engine::BacktestEngine;
+    use stock_core::backtest::performance::calculate_metrics;
+    use stock_core::backtest::portfolio::PortfolioSimulator;
+    use stock_core::backtest::strategies::StrategyKind;
+
+    let pipeline = state.pipeline.lock().await;
+
+    let param_pairs: Vec<(String, f64)> = params.strategy_params.into_iter().collect();
+    let strategy = StrategyKind::create(&params.strategy, &param_pairs)?;
+
+    let trade_dates = pipeline
+        .repo
+        .get_trade_dates_in_range(&params.start_date, &params.end_date)
+        .map_err(|e| e.to_string())?;
+
+    let start = trade_dates.first().cloned().unwrap_or_default();
+    let end = trade_dates.last().cloned().unwrap_or_default();
+
+    let types_ref = params.instrument_types.as_deref();
+
+    let output = BacktestEngine::new(&pipeline.repo)
+        .run_range(&params.start_date, &params.end_date, &strategy, types_ref)
+        .map_err(|e| e.to_string())?;
+
+    let rows = pipeline
+        .repo
+        .get_batch_ohlcv(&start, &end)
+        .map_err(|e| e.to_string())?;
+    let mut ohlcv_map: HashMap<String, Vec<OhlcvRecord>> = HashMap::new();
+    for (sym, record) in rows {
+        ohlcv_map.entry(sym).or_default().push(record);
+    }
+
+    let (trades, equity_curve) =
+        PortfolioSimulator::simulate(&output.signals, params.capital, &ohlcv_map, &trade_dates);
+    let metrics = calculate_metrics(&trades, params.capital, &equity_curve);
+
+    Ok(BacktestReport {
+        signals: output.signals,
+        metrics,
+        trades,
+        equity_curve,
+        trade_dates,
+    })
+}
+
+#[tauri::command]
+async fn list_strategies() -> Vec<StrategyInfo> {
+    stock_core::backtest::strategies::StrategyKind::list()
+}
+
 #[tauri::command]
 async fn get_analysis(
     state: State<'_, AppState>,
@@ -426,6 +496,8 @@ pub fn run() {
             fetch_date,
             screen_bollinger_range,
             cancel_screening,
+            run_backtest,
+            list_strategies,
             clear_screener_cache,
             get_screener_cache_count,
             get_analysis,
