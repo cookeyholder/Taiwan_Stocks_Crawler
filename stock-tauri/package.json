@@ -15,10 +15,10 @@
     "@tauri-apps/plugin-shell": "^2.3.5",
     "ag-grid-community": "^31",
     "ag-grid-vue3": "^31",
-    "echarts": "^5",
+    "echarts": "^6.1.0",
     "pinia": "^2",
     "vue": "^3.5",
-    "vue-echarts": "^7",
+    "vue-echarts": "^8.0.1",
     "vue-router": "^4",
     "vue-sonner": "^1"
   },
