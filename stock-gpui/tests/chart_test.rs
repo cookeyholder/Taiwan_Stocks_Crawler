@@ -91,10 +91,75 @@ fn test_candlestick_and_volume_chart_rendering(cx: &mut TestAppContext) {
             .expect("開啟視窗失敗")
     });
 
-    cx.update_window(window_handle.into(), |_, window, cx| {
+    cx.update_window(window_handle, |_, window, cx| {
         window.draw(cx).clear(cx);
         let container = window.find("chart-container");
         assert!(container.visible());
     })
     .unwrap();
+}
+
+#[gpui_kit::test]
+fn test_bollinger_canvas_overlay(cx: &mut TestAppContext) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use gpui_kit::canvas;
+
+    cx.update(gpui_kit::init);
+
+    let painted_flag = Arc::new(AtomicBool::new(false));
+    let painted_clone = painted_flag.clone();
+
+    struct OverlayTestView {
+        flag: Arc<AtomicBool>,
+    }
+
+    impl Render for OverlayTestView {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let flag = self.flag.clone();
+            let c = canvas(
+                move |_, _, _| {},
+                move |bounds, _, _, _| {
+                    if bounds.size.width.as_f32() > 10.0 && bounds.size.height.as_f32() > 10.0 {
+                        flag.store(true, Ordering::SeqCst);
+                    }
+                },
+            )
+            .size_full();
+
+            div()
+                .size_full()
+                .relative()
+                .child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .size_full()
+                        .child(c),
+                )
+        }
+    }
+
+    let (window_handle, _) = cx.update(|cx| {
+        let options = WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds {
+                origin: Point::default(),
+                size: size(px(800.0), px(600.0)),
+            })),
+            ..Default::default()
+        };
+
+        gpui_kit::open_window(options, cx, |_, cx| {
+            cx.new(|_| OverlayTestView { flag: painted_clone })
+        })
+        .unwrap()
+    });
+
+    cx.update_window(window_handle, |_, window, cx| {
+        window.draw(cx).clear(cx);
+    })
+    .unwrap();
+
+    let was_painted = painted_flag.load(Ordering::SeqCst);
+    assert!(was_painted, "Canvas 沒有被正確繪製！");
 }

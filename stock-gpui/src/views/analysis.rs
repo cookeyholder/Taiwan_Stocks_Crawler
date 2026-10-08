@@ -463,7 +463,7 @@ impl Render for AnalysisView {
             let bollinger_canvas = canvas(
                 move |_, _, _| {},
                 move |bounds, _, window, _cx| {
-                    let height = bounds.size.height.as_f32() - 20.0;
+                    let height = bounds.size.height.as_f32() - 18.0;
                     if height <= 0.0
                         || bounds.size.width.as_f32() <= 0.0
                         || visible_ohlcv_bb.is_empty()
@@ -499,7 +499,7 @@ impl Render for AnalysisView {
                     let half_band = x_scale.band_width() / 2.0;
 
                     let build_band_path = |series: &[Option<f64>]| -> Option<gpui_kit::Path<Pixels>> {
-                        let mut builder = PathBuilder::stroke(px(1.5));
+                        let mut builder = PathBuilder::stroke(px(2.0));
                         let mut started = false;
                         for (d, val_opt) in visible_ohlcv_bb.iter().zip(series.iter()) {
                             if let Some(val) = val_opt
@@ -528,19 +528,20 @@ impl Render for AnalysisView {
                     window.with_content_mask(Some(gpui_kit::ContentMask { bounds }), |window| {
                         // 上軌：紫色 (Violet)
                         if let Some(upper_path) = build_band_path(&visible_upper) {
-                            window.paint_path(upper_path, hsla(0.80, 0.75, 0.55, 0.9));
+                            window.paint_path(upper_path, hsla(0.80, 0.85, 0.60, 1.0));
                         }
                         // 中軌：橙黃色 (20MA)
                         if let Some(middle_path) = build_band_path(&visible_middle) {
-                            window.paint_path(middle_path, hsla(0.10, 0.85, 0.50, 0.9));
+                            window.paint_path(middle_path, hsla(0.10, 0.95, 0.50, 1.0));
                         }
                         // 下軌：青藍色 (Cyan)
                         if let Some(lower_path) = build_band_path(&visible_lower) {
-                            window.paint_path(lower_path, hsla(0.55, 0.75, 0.45, 0.9));
+                            window.paint_path(lower_path, hsla(0.55, 0.85, 0.45, 1.0));
                         }
                     });
                 },
-            );
+            )
+            .size_full();
 
             // 縱軸價格刻度
             let price_axis = div()
@@ -705,7 +706,7 @@ impl Render for AnalysisView {
                                                     .w(px(8.))
                                                     .h(px(3.))
                                                     .rounded_sm()
-                                                    .bg(hsla(0.80, 0.75, 0.55, 1.0)),
+                                                    .bg(hsla(0.80, 0.85, 0.60, 1.0)),
                                             )
                                             .child("上軌"),
                                     )
@@ -719,7 +720,7 @@ impl Render for AnalysisView {
                                                     .w(px(8.))
                                                     .h(px(3.))
                                                     .rounded_sm()
-                                                    .bg(hsla(0.10, 0.85, 0.50, 1.0)),
+                                                    .bg(hsla(0.10, 0.95, 0.50, 1.0)),
                                             )
                                             .child("中軌"),
                                     )
@@ -733,7 +734,7 @@ impl Render for AnalysisView {
                                                     .w(px(8.))
                                                     .h(px(3.))
                                                     .rounded_sm()
-                                                    .bg(hsla(0.55, 0.75, 0.45, 1.0)),
+                                                    .bg(hsla(0.55, 0.85, 0.45, 1.0)),
                                             )
                                             .child("下軌"),
                                     ),
@@ -763,6 +764,7 @@ impl Render for AnalysisView {
                                 div()
                                     .absolute()
                                     .inset_0()
+                                    .size_full()
                                     .child(bollinger_canvas),
                             )
                         }),

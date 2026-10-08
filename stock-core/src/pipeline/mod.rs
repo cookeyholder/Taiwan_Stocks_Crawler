@@ -206,9 +206,10 @@ impl Pipeline {
             start.format("%Y-%m-%d").to_string()
         };
         eprintln!("[pipeline::get_analysis] date range: {} -> {}", start, end);
-        let ohlcv = self.repo.get_ohlcv(symbol, &start, &end)?;
+        let mut ohlcv = self.repo.get_ohlcv(symbol, &start, &end)?;
+        ohlcv.retain(|r| r.close_price.is_some());
         eprintln!(
-            "[pipeline::get_analysis] got {} OHLCV rows from DB",
+            "[pipeline::get_analysis] got {} valid OHLCV rows from DB",
             ohlcv.len()
         );
         if ohlcv.is_empty() {
