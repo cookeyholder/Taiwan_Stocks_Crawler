@@ -44,7 +44,13 @@ impl Render for ChartView {
             .size_full()
             .flex()
             .flex_col()
-            .child(div().id("chart-container").test_support().size_full().child(kline))
+            .child(
+                div()
+                    .id("chart-container")
+                    .test_support()
+                    .size_full()
+                    .child(kline),
+            )
             .child(div().h(px(150.)).child(volume_chart))
     }
 }
@@ -81,10 +87,8 @@ fn test_candlestick_and_volume_chart_rendering(cx: &mut TestAppContext) {
             ..Default::default()
         };
 
-        gpui_kit::open_window(options, cx, |_, cx| {
-            cx.new(|_| ChartView { data: candles })
-        })
-        .expect("開啟視窗失敗")
+        gpui_kit::open_window(options, cx, |_, cx| cx.new(|_| ChartView { data: candles }))
+            .expect("開啟視窗失敗")
     });
 
     cx.update_window(window_handle.into(), |_, window, cx| {

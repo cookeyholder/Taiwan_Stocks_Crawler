@@ -1,5 +1,5 @@
-use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::base::TestSupportExt as _;
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{
     AppContext, Bounds, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,

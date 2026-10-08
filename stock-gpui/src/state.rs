@@ -174,6 +174,7 @@ impl CoreState {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn screen_bollinger_range<F>(
         &self,
         start_date: &str,
@@ -269,11 +270,9 @@ impl CoreState {
                         min_days,
                         min_volume,
                     };
-                    let _ = pipeline.repo.set_cached_screening(
-                        &cache_key,
-                        &cache_params,
-                        &results,
-                    );
+                    let _ = pipeline
+                        .repo
+                        .set_cached_screening(&cache_key, &cache_params, &results);
                     last_results = results;
                 }
                 Err(e) => {

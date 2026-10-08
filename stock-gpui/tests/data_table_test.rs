@@ -49,9 +49,7 @@ impl TableDelegate for SecuritiesDelegate {
 
     fn column(&self, ix: usize, _: &App) -> Column {
         match ix {
-            0 => Column::new("symbol", "股票代號")
-                .width(px(120.))
-                .sortable(),
+            0 => Column::new("symbol", "股票代號").width(px(120.)).sortable(),
             1 => Column::new("market", "市場").width(px(100.)).sortable(),
             _ => Column::new("name", "證券名稱").width(px(200.)).sortable(),
         }
@@ -103,7 +101,11 @@ fn test_datatable_virtual_scrolling_and_sorting(cx: &mut TestAppContext) {
     for i in 0..12000 {
         dummy_securities.push(SecurityItem {
             symbol: format!("{:05}", 1000 + (12000 - i)),
-            market: if i % 2 == 0 { "TWSE".into() } else { "TPEx".into() },
+            market: if i % 2 == 0 {
+                "TWSE".into()
+            } else {
+                "TPEx".into()
+            },
             name: format!("測試股票-{:05}", i),
         });
     }
@@ -148,12 +150,16 @@ fn test_datatable_virtual_scrolling_and_sorting(cx: &mut TestAppContext) {
         assert_eq!(table.delegate().columns_count(cx), 3);
 
         // 觸發排序並驗證升冪排列
-        table.delegate_mut().sort_by_column(0, ColumnSort::Ascending);
+        table
+            .delegate_mut()
+            .sort_by_column(0, ColumnSort::Ascending);
         assert_eq!(table.delegate().items[0].symbol, "01001");
         assert_eq!(table.delegate().items[11999].symbol, "13000");
 
         // 觸發降冪排序
-        table.delegate_mut().sort_by_column(0, ColumnSort::Descending);
+        table
+            .delegate_mut()
+            .sort_by_column(0, ColumnSort::Descending);
         assert_eq!(table.delegate().items[0].symbol, "13000");
         assert_eq!(table.delegate().items[11999].symbol, "01001");
     });

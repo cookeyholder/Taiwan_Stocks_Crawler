@@ -22,10 +22,10 @@
 ## 4. 第四階段：測試、跨平臺打包與驗證
 
 - [x] 4.1 撰寫 UI 整合測試（利用 `gpui_kit::test` 於無頭視窗驅動使用者互動事件），驗證畫面載入與資料過濾斷言通過
-- [ ] 4.2 設定 Linux 平臺發行建置腳本，驗證產出之 Linux 原生二進位檔於乾淨環境可正常執行且無相依缺漏
-- [ ] 4.3 設定 Windows 平臺發行建置流程，驗證 Direct3D 加速渲染與字型排版正常運作
+- [x] 4.2 設定 Linux 平臺發行建置腳本，驗證產出之 Linux 原生二進位檔於乾淨環境可正常執行且無相依缺漏
+- [x] 4.3 設定 Windows 平臺發行建置流程，驗證 Direct3D 加速渲染與字型排版正常運作
 
 ## 5. 第五階段：舊殼層退役與清理
 
-- [ ] 5.1 移除 `stock-tauri/` 目錄以及根目錄之 `package.json`、`package-lock.json`，驗證根目錄無多餘的前端工具鏈依賴
-- [ ] 5.2 更新 `docs/development/系統架構.md`、`README.md` 與安裝指南，驗證所有純 Cargo 建置與測試指令皆一致通過
+- [x] 5.1 移除 `stock-tauri/` 目錄以及根目錄之 `package.json`、`package-lock.json`，驗證根目錄無多餘的前端工具鏈依賴
+- [x] 5.2 更新 `docs/development/系統架構.md`、`README.md` 與安裝指南，驗證所有純 Cargo 建置與測試指令皆一致通過

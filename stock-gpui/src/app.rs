@@ -7,9 +7,7 @@ use gpui_kit::{
 };
 
 use crate::state::CoreState;
-use crate::views::{
-    AnalysisView, BacktestView, DownloadView, ScreenerView, SecuritiesView,
-};
+use crate::views::{AnalysisView, BacktestView, DownloadView, ScreenerView, SecuritiesView};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum NavTab {
@@ -102,7 +100,11 @@ impl Render for AppView {
         let tab_buttons = nav_tabs.into_iter().map(|tab| {
             let is_selected = active == tab;
             let bg = if is_selected {
-                if is_dark { rgb(0x313244) } else { rgb(0xe2e8f0) }
+                if is_dark {
+                    rgb(0x313244)
+                } else {
+                    rgb(0xe2e8f0)
+                }
             } else {
                 rgb(0x000000).opacity(0.0)
             };
@@ -135,8 +137,16 @@ impl Render for AppView {
             .h(px(50.))
             .px_4()
             .border_b_1()
-            .border_color(if is_dark { rgb(0x313244) } else { rgb(0xe2e8f0) })
-            .bg(if is_dark { rgb(0x181825) } else { rgb(0xf8fafc) })
+            .border_color(if is_dark {
+                rgb(0x313244)
+            } else {
+                rgb(0xe2e8f0)
+            })
+            .bg(if is_dark {
+                rgb(0x181825)
+            } else {
+                rgb(0xf8fafc)
+            })
             .flex()
             .items_center()
             .justify_between()
@@ -156,18 +166,18 @@ impl Render for AppView {
                     .child(div().flex().gap_2().children(tab_buttons)),
             )
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        Button::new("btn-theme-toggle")
-                            .label(if is_dark { "淺色模式" } else { "深色模式" })
-                            .secondary()
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.toggle_theme(cx);
-                            })),
-                    ),
+                div().flex().items_center().gap_2().child(
+                    Button::new("btn-theme-toggle")
+                        .label(if is_dark {
+                            "淺色模式"
+                        } else {
+                            "深色模式"
+                        })
+                        .secondary()
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.toggle_theme(cx);
+                        })),
+                ),
             );
 
         // 主畫面內容切換
@@ -183,7 +193,11 @@ impl Render for AppView {
             .size_full()
             .flex()
             .flex_col()
-            .bg(if is_dark { rgb(0x1e1e2e) } else { rgb(0xffffff) })
+            .bg(if is_dark {
+                rgb(0x1e1e2e)
+            } else {
+                rgb(0xffffff)
+            })
             .child(header)
             .child(div().flex_1().size_full().child(content))
     }

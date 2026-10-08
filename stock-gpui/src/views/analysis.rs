@@ -3,8 +3,8 @@ use gpui_kit::component::chart::{BarChart, CandlestickChart, LineChart};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window,
-    div, hsla, px, rgb,
+    AppContext, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window, div,
+    hsla, px, rgb,
 };
 
 use crate::state::{AnalysisData, CoreState};
@@ -217,6 +217,11 @@ impl Render for AnalysisView {
                 .child("請輸入股票代號（例如 2330）並點擊「查詢個股分析」")
         };
 
-        div().size_full().flex().flex_col().child(header).child(content)
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(header)
+            .child(content)
     }
 }

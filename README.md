@@ -8,11 +8,11 @@
 
 - **雙來源支援**：自動抓取 TWSE 與 TPEX 每日收盤行情
 - **智慧路由**：今日資料走 JSON API，歷史資料走 CSV API（日期前後自動切換）
-- **桌面應用**：Tauri v2 桌面殼層 + Vue 3 前端（ECharts 四圖格：K 線、成交量、RSI、MACD）
+- **桌面應用**：純 Rust + GPU 加速桌面端（基於 GPUI-Kit，支援 K 線、布林通道、均線、成交量與 RSI 圖表）
 - **布林擠壓選股**：以 bandwidth 門檻篩選 squeezed 標的，支援成交量與商品類型過濾
 - **技術指標**：SMA / EMA / Bollinger Bands / RSI / MACD（Rust 純函式計算，含單元測試）
 - **CLI 工具**：`stock-cli` 支援 fetch、screen、sync 子指令
-- **跨平台打包**：Linux（deb / rpm）與 Windows（msi / nsis）
+- **跨平台打包**：Linux 與 Windows 原生發行二進位檔
 
 ---
 
@@ -26,11 +26,12 @@ Cargo workspace
 │   ├── fetcher/         # HTTP 爬蟲（TWSE/TPEX，含 Big5 解碼）
 │   └── pipeline/        # 端到端管線
 ├── stock-cli/           # Rust CLI（clap derive）
-└── stock-tauri/         # Tauri v2 桌面殼層
-    ├── src-tauri/       # Rust 後端（7 個 Tauri commands）
-    └── src/             # Vue 3 + TypeScript 前端
-        ├── views/       # 三頁簽（分析/選股/下載）
-        └── components/  # ECharts 圖表、參數表單、篩選表格
+└── stock-gpui/          # 純 Rust 桌面應用（GPUI-Kit v0.7+，GPU 加速）
+    ├── src/
+    │   ├── app.rs       # 主外框 AppView 與主題切換
+    │   ├── state.rs     # 狀態模型 CoreState 與非同步協調
+    │   └── views/       # 五大業務檢視畫面（個股分析/選股/回測/下載/證券清單）
+    └── tests/           # 無頭 UI 整合測試
 ```
 
 ---
@@ -41,17 +42,14 @@ Cargo workspace
 
 | 平台 | 需求 |
 |------|------|
-| **Linux** | Rust、Node.js >= 18、`libwebkit2gtk-4.1-dev` 等系統套件 |
-| **Windows** | Rust、Node.js >= 18、VS Build Tools（C++ 桌面開發）、WebView2 |
+| **Linux** | Rust、`libxkbcommon-x11-0`、`libvulkan1` 等系統套件 |
+| **Windows** | Rust（MSVC ABI）、Direct3D 12 支援 |
 
 #### Linux
 
 ```bash
-# Tauri 系統依賴（Ubuntu/Debian）
-sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev \
-                 libsoup-3.0-dev libjavascriptcoregtk-4.1-dev librsvg2-dev \
-                 libdbus-1-dev libssl-dev libayatana-appindicator3-dev \
-                 build-essential curl wget file pkg-config
+# 系統依賴（Ubuntu/Debian）
+sudo apt install build-essential pkg-config libxkbcommon-x11-0 libvulkan1 curl
 
 # 安裝 Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -61,21 +59,22 @@ source "$HOME/.cargo/env"
 #### Windows
 
 1. 安裝 [rustup](https://rustup.rs)
-2. 安裝 [Node.js](https://nodejs.org/) >= 18
-3. 安裝 Visual Studio Build Tools，勾選「Desktop development with C++」
-4. WebView2 已內建於 Windows 10 以上
+2. 安裝 Visual Studio Build Tools，勾選「Desktop development with C++」
 
 ### 建置桌面應用
 
 ```bash
-cd stock-tauri
-npm install
-npm run tauri build
+# 透過平臺腳本進行正式發行建置（產出至 dist/）
+./scripts/build-linux.sh       # Linux
+powershell ./scripts/build-windows.ps1 # Windows
+
+# 或直接使用 Cargo 建置
+cargo build --release -p stock-gpui
 ```
 
 輸出路徑：
-- Linux：`src-tauri/target/release/bundle/deb/`、`rpm/`
-- Windows：`src-tauri/target/release/bundle/msi/`、`nsis/`
+- Linux：`dist/stock-gpui-linux` 或 `target/release/stock-gpui`
+- Windows：`dist/stock-gpui-windows.exe` 或 `target/release/stock-gpui.exe`
 
 ### 建置 CLI
 
@@ -88,12 +87,10 @@ cargo build -p stock-cli --release
 
 ## 快速開始
 
-### Tauri 桌面模式
+### 桌面應用模式
 
 ```bash
-cd stock-tauri
-npm install
-npm run tauri dev
+cargo run -p stock-gpui
 ```
 
 ### CLI 模式
@@ -190,30 +187,30 @@ stock-cli sync --start 2026-01-01 --end 2026-06-10
 ### Rust 開發
 
 ```bash
-# 單元測試（29 項）
-cargo test -p stock-core
+# 完整測試（核心庫與桌面端）
+cargo test --workspace
 
 # Lint
-cargo clippy -p stock-core
+cargo clippy -p stock-core -p stock-cli -p stock-gpui
 
 # 格式化
-cargo fmt -p stock-core
+cargo fmt --all
 ```
 
-### Tauri 開發模式
+### GPUI 桌面應用
 
 ```bash
-cd stock-tauri && npm run tauri dev
+cargo run -p stock-gpui
 ```
 
 ### Makefile 指令
 
 | 指令 | 說明 |
 |------|------|
-| `make tauri-dev` | 啟動 Tauri 開發模式 |
-| `make tauri-build` | 建置正式版 |
+| `make gpui-run` | 啟動 GPUI 桌面應用 |
+| `make gpui-build` | 建置 Linux 正式發行版 |
 | `make stock-cli ARGS="--help"` | 執行 CLI |
-| `make cargo-test` | Rust 單元測試 |
+| `make cargo-test` | Rust 整合測試 |
 
 ---
 

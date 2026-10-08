@@ -35,12 +35,12 @@ impl ScreenerDelegate {
                         .unwrap_or(0)
                         .cmp(&b.latest_volume.unwrap_or(0))
                 }),
-                4 => self.results.sort_by(|a, b| {
-                    a.max_bandwidth.partial_cmp(&b.max_bandwidth).unwrap()
-                }),
-                _ => self.results.sort_by(|a, b| {
-                    a.latest_bandwidth.partial_cmp(&b.latest_bandwidth).unwrap()
-                }),
+                4 => self
+                    .results
+                    .sort_by(|a, b| a.max_bandwidth.partial_cmp(&b.max_bandwidth).unwrap()),
+                _ => self
+                    .results
+                    .sort_by(|a, b| a.latest_bandwidth.partial_cmp(&b.latest_bandwidth).unwrap()),
             },
             ColumnSort::Descending => match col {
                 0 => self.results.sort_by(|a, b| b.symbol.cmp(&a.symbol)),
@@ -56,12 +56,12 @@ impl ScreenerDelegate {
                         .unwrap_or(0)
                         .cmp(&a.latest_volume.unwrap_or(0))
                 }),
-                4 => self.results.sort_by(|a, b| {
-                    b.max_bandwidth.partial_cmp(&a.max_bandwidth).unwrap()
-                }),
-                _ => self.results.sort_by(|a, b| {
-                    b.latest_bandwidth.partial_cmp(&a.latest_bandwidth).unwrap()
-                }),
+                4 => self
+                    .results
+                    .sort_by(|a, b| b.max_bandwidth.partial_cmp(&a.max_bandwidth).unwrap()),
+                _ => self
+                    .results
+                    .sort_by(|a, b| b.latest_bandwidth.partial_cmp(&a.latest_bandwidth).unwrap()),
             },
             ColumnSort::Default => {}
         }
@@ -79,21 +79,11 @@ impl TableDelegate for ScreenerDelegate {
 
     fn column(&self, ix: usize, _: &App) -> Column {
         match ix {
-            0 => Column::new("symbol", "股票代號")
-                .width(px(100.))
-                .sortable(),
-            1 => Column::new("name", "證券名稱")
-                .width(px(120.))
-                .sortable(),
-            2 => Column::new("close", "收盤價")
-                .width(px(100.))
-                .sortable(),
-            3 => Column::new("volume", "成交量")
-                .width(px(120.))
-                .sortable(),
-            4 => Column::new("max_bw", "最大頻寬")
-                .width(px(100.))
-                .sortable(),
+            0 => Column::new("symbol", "股票代號").width(px(100.)).sortable(),
+            1 => Column::new("name", "證券名稱").width(px(120.)).sortable(),
+            2 => Column::new("close", "收盤價").width(px(100.)).sortable(),
+            3 => Column::new("volume", "成交量").width(px(120.)).sortable(),
+            4 => Column::new("max_bw", "最大頻寬").width(px(100.)).sortable(),
             _ => Column::new("latest_bw", "最新頻寬")
                 .width(px(100.))
                 .sortable(),
@@ -258,7 +248,11 @@ impl Render for ScreenerView {
             )
             .child(
                 Button::new("btn-start-screen")
-                    .label(if is_running { "篩選中..." } else { "開始選股" })
+                    .label(if is_running {
+                        "篩選中..."
+                    } else {
+                        "開始選股"
+                    })
                     .primary()
                     .disabled(is_running)
                     .on_click(cx.listener(|this, _, _, cx| {
@@ -278,6 +272,11 @@ impl Render for ScreenerView {
             .p_3()
             .child(DataTable::new(&self.table_state));
 
-        div().size_full().flex().flex_col().child(toolbar).child(table)
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(toolbar)
+            .child(table)
     }
 }

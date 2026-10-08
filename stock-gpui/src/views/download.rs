@@ -3,8 +3,8 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::progress::Progress;
 use gpui_kit::{
-    AppContext, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window,
-    div, px, rgb,
+    AppContext, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window, div,
+    px, rgb,
 };
 
 use crate::state::CoreState;
@@ -135,7 +135,11 @@ impl Render for DownloadView {
                     )
                     .child(
                         Button::new("btn-start-download")
-                            .label(if is_dl { "下載中..." } else { "下載指定區間" })
+                            .label(if is_dl {
+                                "下載中..."
+                            } else {
+                                "下載指定區間"
+                            })
                             .primary()
                             .disabled(is_dl)
                             .on_click(cx.listener(|this, _, _, cx| {

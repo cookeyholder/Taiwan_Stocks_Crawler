@@ -66,9 +66,7 @@ impl TableDelegate for SecuritiesListDelegate {
 
     fn column(&self, ix: usize, _: &App) -> Column {
         match ix {
-            0 => Column::new("symbol", "股票代號")
-                .width(px(120.))
-                .sortable(),
+            0 => Column::new("symbol", "股票代號").width(px(120.)).sortable(),
             1 => Column::new("market", "市場").width(px(100.)).sortable(),
             _ => Column::new("name", "證券名稱").width(px(220.)).sortable(),
         }
@@ -110,7 +108,8 @@ pub struct SecuritiesView {
 
 impl SecuritiesView {
     pub fn new(core_state: CoreState, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("搜尋股票代號或名稱..."));
+        let search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("搜尋股票代號或名稱..."));
         let delegate = SecuritiesListDelegate {
             all_items: Vec::new(),
             filtered_items: Vec::new(),
@@ -178,6 +177,11 @@ impl Render for SecuritiesView {
             .p_3()
             .child(DataTable::new(&self.table_state));
 
-        div().size_full().flex().flex_col().child(toolbar).child(table)
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(toolbar)
+            .child(table)
     }
 }

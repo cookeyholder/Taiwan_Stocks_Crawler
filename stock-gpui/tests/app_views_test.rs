@@ -67,6 +67,10 @@ fn test_app_view_tabs_and_theme_switching(cx: &mut TestAppContext) {
 
         // 驗證優雅退出
         app.shutdown();
-        assert!(app.core_state.cancel_flag.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(
+            app.core_state
+                .cancel_flag
+                .load(std::sync::atomic::Ordering::SeqCst)
+        );
     });
 }

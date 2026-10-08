@@ -37,10 +37,7 @@ fn test_window_open_and_render(cx: &mut TestAppContext) {
             ..Default::default()
         };
 
-        gpui_kit::open_window(options, cx, |_, cx| {
-            cx.new(|_| DummyView)
-        })
-        .expect("開啟視窗失敗")
+        gpui_kit::open_window(options, cx, |_, cx| cx.new(|_| DummyView)).expect("開啟視窗失敗")
     });
 
     cx.update_window(window_handle.into(), |_, window, cx| {
