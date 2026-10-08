@@ -2,6 +2,7 @@ use gpui_kit::*;
 use stock_gpui::{AppView, CoreState};
 
 fn main() {
+    let _tokio_guard = stock_gpui::state::TOKIO_RUNTIME.enter();
     gpui_kit::application().run(|cx| {
         gpui_kit::init(cx);
 

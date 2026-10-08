@@ -1,7 +1,14 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::sync::atomic::{AtomicBool, Ordering};
+
+pub static TOKIO_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("初始化 Tokio 執行期失敗")
+});
 
 use stock_core::backtest::engine::BacktestEngine;
 use stock_core::backtest::performance::calculate_metrics;
@@ -375,19 +382,29 @@ impl CoreState {
             let date_str = current.format("%Y-%m-%d").to_string();
             on_progress(days_done, total_days, date_str.clone());
 
-            let pipeline = self.pipeline.lock().await;
-            if let Ok(outcome) = pipeline.fetch_date(&date_str).await {
+            let pipeline = self.pipeline.clone();
+            let date_clone = date_str.clone();
+            let fetch_task = TOKIO_RUNTIME.spawn(async move {
+                let p = pipeline.lock().await;
+                p.fetch_date(&date_clone).await
+            });
+
+            if let Ok(Ok(outcome)) = fetch_task.await {
                 total_records += outcome.records_inserted;
             }
-            drop(pipeline);
 
             days_done += 1;
             current += chrono::Duration::days(1);
         }
 
         if total_records > 0 {
-            let pipeline = self.pipeline.lock().await;
-            let _ = pipeline.repo.sync_securities();
+            let pipeline = self.pipeline.clone();
+            let _ = TOKIO_RUNTIME
+                .spawn(async move {
+                    let p = pipeline.lock().await;
+                    p.repo.sync_securities()
+                })
+                .await;
         }
 
         on_progress(total_days, total_days, "完成".into());
