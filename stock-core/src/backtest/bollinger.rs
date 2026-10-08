@@ -7,6 +7,7 @@ pub struct BollingerSqueezeBreakout {
     pub bandwidth_limit: f64,
     pub consecutive_days: usize,
     pub min_volume: i64,
+    pub require_break_upper: bool,
 }
 
 impl Default for BollingerSqueezeBreakout {
@@ -15,6 +16,7 @@ impl Default for BollingerSqueezeBreakout {
             bandwidth_limit: 0.08,
             consecutive_days: 5,
             min_volume: 0,
+            require_break_upper: false,
         }
     }
 }
@@ -55,7 +57,12 @@ impl Strategy for BollingerSqueezeBreakout {
             .collect();
 
         let valid_bw: Vec<f64> = bandwidth.iter().filter_map(|b| *b).collect();
-        if valid_bw.len() < self.consecutive_days {
+        let needed_days = if self.require_break_upper {
+            self.consecutive_days + 1
+        } else {
+            self.consecutive_days
+        };
+        if valid_bw.len() < needed_days {
             return Signal {
                 has_signal: false,
                 direction: 0,
@@ -64,13 +71,25 @@ impl Strategy for BollingerSqueezeBreakout {
             };
         }
 
-        let recent: Vec<f64> = valid_bw
-            .iter()
-            .rev()
-            .take(self.consecutive_days)
-            .copied()
-            .rev()
-            .collect();
+        // 若要求突破，擠壓檢驗的是突破前 consecutive_days 天（避免當日突破拉大頻寬而被誤過濾）
+        let recent: Vec<f64> = if self.require_break_upper {
+            valid_bw
+                .iter()
+                .rev()
+                .skip(1)
+                .take(self.consecutive_days)
+                .copied()
+                .rev()
+                .collect()
+        } else {
+            valid_bw
+                .iter()
+                .rev()
+                .take(self.consecutive_days)
+                .copied()
+                .rev()
+                .collect()
+        };
         let max_bw = recent.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         if max_bw > self.bandwidth_limit {
             return Signal {
@@ -97,13 +116,22 @@ impl Strategy for BollingerSqueezeBreakout {
         }
 
         let break_upper = match (latest.open_price, latest.close_price) {
-            (Some(o), Some(c)) if c > o => bollinger
+            (Some(o), Some(c)) if c >= o => bollinger
                 .upper
                 .last()
-                .and_then(|u| u.map(|upper| o < upper && c > upper))
+                .and_then(|u| u.map(|upper| c > upper))
                 .unwrap_or(false),
             _ => false,
         };
+
+        if self.require_break_upper && !break_upper {
+            return Signal {
+                has_signal: false,
+                direction: 0,
+                strength: 0.0,
+                metadata: HashMap::new(),
+            };
+        }
 
         let latest_upper_band = bollinger.upper.last().and_then(|v| *v);
 
@@ -205,6 +233,7 @@ mod tests {
             bandwidth_limit: 0.1,
             consecutive_days: 3,
             min_volume: 0,
+            require_break_upper: false,
         };
         let output = engine.run_date(&latest, &strategy, None).unwrap();
         let symbols: Vec<&str> = output.signals.iter().map(|s| s.symbol.as_str()).collect();
@@ -235,6 +264,7 @@ mod tests {
             bandwidth_limit: 10.0,
             consecutive_days: 1,
             min_volume: 0,
+            require_break_upper: false,
         };
         let output = engine
             .run_date(&latest, &strategy, Some(&["stock".to_string()]))
@@ -262,6 +292,7 @@ mod tests {
             bandwidth_limit: 0.1,
             consecutive_days: 3,
             min_volume: 0,
+            require_break_upper: false,
         };
         // Run range over the last 10 trade dates
         let range_start = (start + chrono::Duration::days(30))
@@ -279,5 +310,39 @@ mod tests {
             .iter()
             .all(|s| s.trade_date >= range_start && s.trade_date <= range_end);
         assert!(all_in_range, "all signals should be within the date range");
+    }
+
+    #[test]
+    fn test_require_break_upper_filter() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let mut quotes = Vec::new();
+        let start = NaiveDate::from_ymd_opt(2024, 2, 1).unwrap();
+        for i in 0..39 {
+            let date = start + chrono::Duration::days(i);
+            let date_str = date.format("%Y-%m-%d").to_string();
+            quotes.push(make_quote("SQUEEZE_FLAT", &date_str, 100.0));
+            quotes.push(make_quote("SQUEEZE_BREAK", &date_str, 100.0));
+        }
+        // 第 40 天：SQUEEZE_FLAT 續平盤；SQUEEZE_BREAK 突破上軌
+        let date_40 = (start + chrono::Duration::days(39)).format("%Y-%m-%d").to_string();
+        quotes.push(make_quote("SQUEEZE_FLAT", &date_40, 100.0));
+        let mut break_quote = make_quote("SQUEEZE_BREAK", &date_40, 115.0);
+        break_quote.open_price = Some(101.0);
+        break_quote.close_price = Some(115.0);
+        quotes.push(break_quote);
+
+        repo.upsert_core_batch(&quotes).unwrap();
+
+        let engine = BacktestEngine::new(&repo);
+        let strategy_with_break = BollingerSqueezeBreakout {
+            bandwidth_limit: 0.1,
+            consecutive_days: 3,
+            min_volume: 0,
+            require_break_upper: true,
+        };
+        let output = engine.run_date(&date_40, &strategy_with_break, None).unwrap();
+        let symbols: Vec<&str> = output.signals.iter().map(|s| s.symbol.as_str()).collect();
+        assert!(!symbols.contains(&"SQUEEZE_FLAT"), "未突破上軌不應入選");
+        assert!(symbols.contains(&"SQUEEZE_BREAK"), "突破上軌應入選");
     }
 }

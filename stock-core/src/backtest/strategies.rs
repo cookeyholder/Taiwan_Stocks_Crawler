@@ -144,6 +144,7 @@ impl StrategyKind {
                 bandwidth_limit: get("bandwidth_limit", 0.08),
                 consecutive_days: get("consecutive_days", 5.0) as usize,
                 min_volume: get("min_volume", 0.0) as i64,
+                require_break_upper: get("require_break_upper", 0.0) > 0.5,
             })),
             "ma_cross" => Ok(StrategyKind::MaCross(MaCrossStrategy {
                 fast_period: get("fast_period", 5.0) as usize,

@@ -166,6 +166,7 @@ impl Pipeline {
                     bandwidth_limit,
                     consecutive_days: consecutive_days as usize,
                     min_volume,
+                    require_break_upper: false,
                 },
                 instrument_types.as_deref(),
             )

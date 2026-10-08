@@ -211,6 +211,7 @@ impl CoreState {
         min_days: i32,
         instrument_types: Option<Vec<String>>,
         min_volume: i64,
+        require_break_upper: bool,
         on_progress: F,
     ) -> Result<RangeScreenResult, String>
     where
@@ -262,6 +263,7 @@ impl CoreState {
             bandwidth_limit: max_bandwidth,
             consecutive_days: min_days as usize,
             min_volume,
+            require_break_upper,
         };
 
         let types_ref = instrument_types.as_deref();

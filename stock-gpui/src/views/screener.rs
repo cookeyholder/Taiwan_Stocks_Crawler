@@ -61,11 +61,12 @@ impl ScreenerDelegate {
                         .partial_cmp(&b.max_bandwidth)
                         .unwrap_or(std::cmp::Ordering::Equal)
                 }),
-                _ => self.results.sort_by(|a, b| {
+                5 => self.results.sort_by(|a, b| {
                     a.latest_bandwidth
                         .partial_cmp(&b.latest_bandwidth)
                         .unwrap_or(std::cmp::Ordering::Equal)
                 }),
+                _ => self.results.sort_by_key(|a| a.break_upper),
             },
             ColumnSort::Descending => match col {
                 0 => self.results.sort_by(|a, b| b.symbol.cmp(&a.symbol)),
@@ -86,11 +87,14 @@ impl ScreenerDelegate {
                         .partial_cmp(&a.max_bandwidth)
                         .unwrap_or(std::cmp::Ordering::Equal)
                 }),
-                _ => self.results.sort_by(|a, b| {
+                5 => self.results.sort_by(|a, b| {
                     b.latest_bandwidth
                         .partial_cmp(&a.latest_bandwidth)
                         .unwrap_or(std::cmp::Ordering::Equal)
                 }),
+                _ => self
+                    .results
+                    .sort_by_key(|b| std::cmp::Reverse(b.break_upper)),
             },
             ColumnSort::Default => {
                 self.results.sort_by(|a, b| a.symbol.cmp(&b.symbol));
@@ -101,7 +105,7 @@ impl ScreenerDelegate {
 
 impl TableDelegate for ScreenerDelegate {
     fn columns_count(&self, _: &App) -> usize {
-        6
+        7
     }
 
     fn rows_count(&self, _: &App) -> usize {
@@ -115,8 +119,9 @@ impl TableDelegate for ScreenerDelegate {
             2 => Column::new("close", "收盤價").width(px(90.)).sortable(),
             3 => Column::new("volume", "成交量").width(px(100.)).sortable(),
             4 => Column::new("max_bw", "最大頻寬").width(px(90.)).sortable(),
-            _ => Column::new("latest_bw", "最新頻寬")
-                .width(px(90.))
+            5 => Column::new("latest_bw", "最新頻寬").width(px(90.)).sortable(),
+            _ => Column::new("break_upper", "突破上軌")
+                .width(px(80.))
                 .sortable(),
         };
         if self.sort_col == Some(ix) {
@@ -130,9 +135,36 @@ impl TableDelegate for ScreenerDelegate {
         col_ix: usize,
         sort: ColumnSort,
         _window: &mut Window,
-        _cx: &mut Context<TableState<Self>>,
+        cx: &mut Context<TableState<Self>>,
     ) {
         self.sort_by_col(col_ix, sort);
+        cx.notify();
+    }
+
+    fn render_th(
+        &mut self,
+        col_ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        let name = self.column(col_ix, cx).name.clone();
+        let indicator = if self.sort_col == Some(col_ix) {
+            match self.sort_order {
+                ColumnSort::Ascending => " ▲",
+                ColumnSort::Descending => " ▼",
+                ColumnSort::Default => "",
+            }
+        } else {
+            ""
+        };
+        div()
+            .size_full()
+            .cursor_pointer()
+            .text_size(self.font_size.size_px())
+            .font_weight(gpui_kit::FontWeight::BOLD)
+            .flex()
+            .items_center()
+            .child(format!("{}{}", name, indicator))
     }
 
     fn render_td(
@@ -143,18 +175,38 @@ impl TableDelegate for ScreenerDelegate {
         _: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         let r = &self.results[row];
-        let text = match col {
-            0 => r.symbol.clone(),
-            1 => r.name.clone().unwrap_or_default(),
-            2 => format!("{:.2}", r.latest_close.unwrap_or(0.0)),
-            3 => format!("{}", r.latest_volume.unwrap_or(0)),
-            4 => format!("{:.4}", r.max_bandwidth),
-            _ => format!("{:.4}", r.latest_bandwidth),
+        let content: gpui_kit::AnyElement = match col {
+            0 => div().child(r.symbol.clone()).into_any_element(),
+            1 => div().child(r.name.clone().unwrap_or_default()).into_any_element(),
+            2 => div()
+                .child(format!("{:.2}", r.latest_close.unwrap_or(0.0)))
+                .into_any_element(),
+            3 => div()
+                .child(format!("{}", r.latest_volume.unwrap_or(0)))
+                .into_any_element(),
+            4 => div()
+                .child(format!("{:.4}", r.max_bandwidth))
+                .into_any_element(),
+            5 => div()
+                .child(format!("{:.4}", r.latest_bandwidth))
+                .into_any_element(),
+            _ => if r.break_upper {
+                div()
+                    .text_color(rgb(0x10b981))
+                    .font_weight(gpui_kit::FontWeight::BOLD)
+                    .child("✓ 是")
+                    .into_any_element()
+            } else {
+                div()
+                    .text_color(rgb(0x94a3b8))
+                    .child("-")
+                    .into_any_element()
+            },
         };
         div()
             .text_size(self.font_size.size_px())
             .cursor_pointer()
-            .child(text)
+            .child(content)
     }
 }
 
@@ -165,6 +217,7 @@ pub struct ScreenerView {
     pub bandwidth_input: Entity<InputState>,
     pub min_days_input: Entity<InputState>,
     pub include_etf: bool,
+    pub break_upper_only: bool,
     pub show_bollinger: bool,
     pub table_state: Entity<TableState<ScreenerDelegate>>,
     pub is_running: bool,
@@ -221,19 +274,47 @@ impl ScreenerView {
         cx.subscribe(
             &table_state,
             |this: &mut Self, table, event: &TableEvent, cx| {
-                let row_opt = match event {
-                    TableEvent::SelectRow(r) | TableEvent::DoubleClickedRow(r) => Some(*r),
-                    TableEvent::SelectCell(r, _) | TableEvent::DoubleClickedCell(r, _) => Some(*r),
-                    _ => None,
-                };
-                if let Some(row) = row_opt {
-                    let item_opt = {
-                        let d = table.read(cx).delegate();
-                        d.results.get(row).cloned()
-                    };
-                    if let Some(item) = item_opt {
-                        this.select_and_load_chart(&item.symbol, item.name, cx);
+                match event {
+                    TableEvent::SelectRow(r) | TableEvent::DoubleClickedRow(r) => {
+                        let item_opt = {
+                            let d = table.read(cx).delegate();
+                            d.results.get(*r).cloned()
+                        };
+                        if let Some(item) = item_opt {
+                            this.select_and_load_chart(&item.symbol, item.name, cx);
+                        }
                     }
+                    TableEvent::SelectCell(r, _) | TableEvent::DoubleClickedCell(r, _) => {
+                        let item_opt = {
+                            let d = table.read(cx).delegate();
+                            d.results.get(*r).cloned()
+                        };
+                        if let Some(item) = item_opt {
+                            this.select_and_load_chart(&item.symbol, item.name, cx);
+                        }
+                    }
+                    TableEvent::SelectColumn(col) => {
+                        table.update(cx, |t, cx| {
+                            let current_col = t.delegate().sort_col;
+                            let current_sort = t.delegate().sort_order;
+                            let next_sort = if current_col == Some(*col) {
+                                match current_sort {
+                                    ColumnSort::Ascending => ColumnSort::Descending,
+                                    ColumnSort::Descending => ColumnSort::Ascending,
+                                    ColumnSort::Default => ColumnSort::Ascending,
+                                }
+                            } else {
+                                match *col {
+                                    0 | 4 | 5 => ColumnSort::Ascending,
+                                    _ => ColumnSort::Descending,
+                                }
+                            };
+                            t.delegate_mut().sort_by_col(*col, next_sort);
+                            t.refresh(cx);
+                        });
+                        cx.notify();
+                    }
+                    _ => {}
                 }
             },
         )
@@ -246,6 +327,7 @@ impl ScreenerView {
             bandwidth_input,
             min_days_input,
             include_etf: false,
+            break_upper_only: false,
             show_bollinger: true,
             table_state,
             is_running: false,
@@ -338,6 +420,7 @@ impl ScreenerView {
             Some(vec!["stock".to_string()])
         };
 
+        let break_upper_only = self.break_upper_only;
         self.is_running = true;
         self.status_text = "開始執行篩選...".into();
         cx.notify();
@@ -354,6 +437,7 @@ impl ScreenerView {
                     min_days,
                     instrument_types,
                     500_000,
+                    break_upper_only,
                     move |curr, tot, date, _cached| {
                         let _ = tx.send((curr, tot, date));
                     },
@@ -502,6 +586,15 @@ impl Render for ScreenerView {
                     .checked(self.include_etf)
                     .on_click(cx.listener(|this, checked, _, cx| {
                         this.include_etf = *checked;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Checkbox::new("screener-break-upper-only")
+                    .label("僅突破上軌")
+                    .checked(self.break_upper_only)
+                    .on_click(cx.listener(|this, checked, _, cx| {
+                        this.break_upper_only = *checked;
                         cx.notify();
                     })),
             )
