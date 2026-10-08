@@ -25,6 +25,15 @@
 ---
 
 ## 已知教訓（初始）
+### [2026-10-08] 沙盒環境限制使用者全域目錄寫入導致 SQLite 唯讀報錯
+- 背景：啟動桌面應用程式（`stock-gpui-linux`）於背景常駐執行以供操作驗證。
+- 錯誤現象：點擊「清除快取」時出現 `attempt to write a read only database`。
+- 根因：`run_command` 預設在 Standard Sandbox 執行，將工作區外的使用者共享目錄（`~/.local/share/stock-screener/market_data.db`）掛載為唯讀。GUI 程序若在沙盒中啟動，對該全域資料庫的任何寫入操作（如刪除快取或同步）皆會失敗。
+- 當下影響：選股快取無法清除，任何資料庫變更皆拋出唯讀錯誤。
+- 預防措施（下次怎麼做）：
+  - 啟動桌面客戶端或其他需寫入 `~/.local/share/` 的二進位程式時，一律使用 `BypassSandbox: true` 執行。
+- 新增/調整測試：N/A（執行環境權限層面）。
+- 流程更新：啟動 GUI 統一採用 `BypassSandbox: true` 模式。
 ### [2026-03-19] TWSE 代號過濾條件錯誤造成資料遺失
 - 背景：解析 `MI_INDEX_ALL` 時，使用 `i[0] != '='` 過濾資料列。
 - 錯誤現象：大量 `="xxxx"` 開頭的有效代號被丟棄。
