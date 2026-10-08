@@ -26,13 +26,15 @@ pub struct AnalysisView {
 impl AnalysisView {
     pub fn new(core_state: CoreState, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let symbol_input = cx.new(|cx| InputState::new(window, cx).default_value("2330"));
-        Self {
+        let mut view = Self {
             core_state,
             symbol_input,
             current_data: None,
             is_loading: false,
             error_msg: None,
-        }
+        };
+        view.fetch_symbol("2330".into(), cx);
+        view
     }
 
     pub fn fetch_symbol(&mut self, symbol: String, cx: &mut Context<Self>) {
@@ -67,8 +69,6 @@ impl AnalysisView {
 
 impl Render for AnalysisView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let input_val = self.symbol_input.read(cx).value().trim().to_string();
-
         let header = div()
             .flex()
             .items_center()
@@ -85,12 +85,10 @@ impl Render for AnalysisView {
                 Button::new("btn-fetch-analysis")
                     .label("查詢個股分析")
                     .primary()
-                    .on_click(cx.listener({
-                        let sym = input_val.clone();
-                        move |this, _, _, cx| {
-                            if !sym.is_empty() {
-                                this.fetch_symbol(sym.clone(), cx);
-                            }
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        let sym = this.symbol_input.read(cx).value().trim().to_string();
+                        if !sym.is_empty() {
+                            this.fetch_symbol(sym, cx);
                         }
                     })),
             )

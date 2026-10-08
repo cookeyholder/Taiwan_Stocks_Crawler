@@ -1,3 +1,4 @@
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
 use gpui_kit::{
@@ -118,6 +119,17 @@ impl SecuritiesView {
         };
         let table_state = cx.new(|cx| TableState::new(delegate, window, cx).cell_selectable(true));
 
+        cx.subscribe(
+            &search_input,
+            |this: &mut Self, input, event: &gpui_kit::component::input::InputEvent, cx| {
+                if matches!(event, gpui_kit::component::input::InputEvent::Change) {
+                    let q = input.read(cx).value().to_string();
+                    this.apply_filter(&q, cx);
+                }
+            },
+        )
+        .detach();
+
         let mut view = Self {
             core_state,
             search_input,
@@ -126,6 +138,13 @@ impl SecuritiesView {
         };
         view.load_securities(cx);
         view
+    }
+
+    pub fn apply_filter(&mut self, query: &str, cx: &mut Context<Self>) {
+        self.table_state.update(cx, |table, _| {
+            table.delegate_mut().filter(query);
+        });
+        cx.notify();
     }
 
     pub fn load_securities(&mut self, cx: &mut Context<Self>) {
@@ -163,6 +182,15 @@ impl Render for SecuritiesView {
                 div()
                     .w(px(240.))
                     .child(Input::new(&self.search_input).id("securities-search-input")),
+            )
+            .child(
+                Button::new("btn-search-securities")
+                    .label("篩選")
+                    .primary()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        let q = this.search_input.read(cx).value().to_string();
+                        this.apply_filter(&q, cx);
+                    })),
             )
             .child(
                 div()

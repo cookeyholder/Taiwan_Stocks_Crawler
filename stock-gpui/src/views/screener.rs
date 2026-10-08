@@ -28,19 +28,23 @@ impl ScreenerDelegate {
                     a.latest_close
                         .unwrap_or(0.0)
                         .partial_cmp(&b.latest_close.unwrap_or(0.0))
-                        .unwrap()
+                        .unwrap_or(std::cmp::Ordering::Equal)
                 }),
                 3 => self.results.sort_by(|a, b| {
                     a.latest_volume
                         .unwrap_or(0)
                         .cmp(&b.latest_volume.unwrap_or(0))
                 }),
-                4 => self
-                    .results
-                    .sort_by(|a, b| a.max_bandwidth.partial_cmp(&b.max_bandwidth).unwrap()),
-                _ => self
-                    .results
-                    .sort_by(|a, b| a.latest_bandwidth.partial_cmp(&b.latest_bandwidth).unwrap()),
+                4 => self.results.sort_by(|a, b| {
+                    a.max_bandwidth
+                        .partial_cmp(&b.max_bandwidth)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
+                _ => self.results.sort_by(|a, b| {
+                    a.latest_bandwidth
+                        .partial_cmp(&b.latest_bandwidth)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
             },
             ColumnSort::Descending => match col {
                 0 => self.results.sort_by(|a, b| b.symbol.cmp(&a.symbol)),
@@ -49,19 +53,23 @@ impl ScreenerDelegate {
                     b.latest_close
                         .unwrap_or(0.0)
                         .partial_cmp(&a.latest_close.unwrap_or(0.0))
-                        .unwrap()
+                        .unwrap_or(std::cmp::Ordering::Equal)
                 }),
                 3 => self.results.sort_by(|a, b| {
                     b.latest_volume
                         .unwrap_or(0)
                         .cmp(&a.latest_volume.unwrap_or(0))
                 }),
-                4 => self
-                    .results
-                    .sort_by(|a, b| b.max_bandwidth.partial_cmp(&a.max_bandwidth).unwrap()),
-                _ => self
-                    .results
-                    .sort_by(|a, b| b.latest_bandwidth.partial_cmp(&a.latest_bandwidth).unwrap()),
+                4 => self.results.sort_by(|a, b| {
+                    b.max_bandwidth
+                        .partial_cmp(&a.max_bandwidth)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
+                _ => self.results.sort_by(|a, b| {
+                    b.latest_bandwidth
+                        .partial_cmp(&a.latest_bandwidth)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
             },
             ColumnSort::Default => {}
         }
@@ -160,6 +168,13 @@ impl ScreenerView {
     pub fn start_screen(&mut self, cx: &mut Context<Self>) {
         let start_date = self.start_date_input.read(cx).value().trim().to_string();
         let end_date = self.end_date_input.read(cx).value().trim().to_string();
+
+        if start_date.is_empty() || end_date.is_empty() {
+            self.status_text = "請輸入有效的起始與結束日期".into();
+            cx.notify();
+            return;
+        }
+
         let max_bw: f64 = self
             .bandwidth_input
             .read(cx)
@@ -176,39 +191,63 @@ impl ScreenerView {
             .unwrap_or(3);
 
         self.is_running = true;
-        self.status_text = "篩選執行中...".into();
+        self.status_text = "開始執行篩選...".into();
         cx.notify();
 
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(usize, usize, String)>();
         let core = self.core_state.clone();
+
         cx.spawn(async move |this, cx| {
-            let res = core
-                .screen_bollinger_range(
+            let mut screen_task = crate::state::TOKIO_RUNTIME.spawn(async move {
+                core.screen_bollinger_range(
                     &start_date,
                     &end_date,
                     max_bw,
                     min_days,
                     None,
                     500_000,
-                    |_curr, _tot, _date, _cached| {},
+                    move |curr, tot, date, _cached| {
+                        let _ = tx.send((curr, tot, date));
+                    },
                 )
-                .await;
+                .await
+            });
 
-            let _ = this.update(cx, |view, cx| {
-                view.is_running = false;
-                match res {
-                    Ok(data) => {
-                        let count = data.results.len();
-                        view.status_text = format!("篩選完成：共符合 {} 檔標的", count);
-                        view.table_state.update(cx, |table, _| {
-                            table.delegate_mut().results = data.results;
-                        });
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        if let Some((curr, tot, date)) = msg {
+                            let _ = this.update(cx, |view, cx| {
+                                view.status_text = format!("正在篩選 {}（進度: {}/{}）", date, curr, tot);
+                                cx.notify();
+                            });
+                        }
                     }
-                    Err(e) => {
-                        view.status_text = format!("篩選失敗：{}", e);
+                    res = &mut screen_task => {
+                        let final_res = match res {
+                            Ok(inner) => inner,
+                            Err(e) => Err(format!("背景任務異常：{}", e)),
+                        };
+                        let _ = this.update(cx, |view, cx| {
+                            view.is_running = false;
+                            match final_res {
+                                Ok(data) => {
+                                    let count = data.results.len();
+                                    view.status_text = format!("篩選完成：共符合 {} 檔標的", count);
+                                    view.table_state.update(cx, |table, _| {
+                                        table.delegate_mut().results = data.results;
+                                    });
+                                }
+                                Err(e) => {
+                                    view.status_text = format!("篩選失敗：{}", e);
+                                }
+                            }
+                            cx.notify();
+                        });
+                        break;
                     }
                 }
-                cx.notify();
-            });
+            }
         })
         .detach();
     }

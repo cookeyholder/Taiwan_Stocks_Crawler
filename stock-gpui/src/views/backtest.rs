@@ -39,6 +39,13 @@ impl BacktestView {
     pub fn run_backtest(&mut self, cx: &mut Context<Self>) {
         let start_date = self.start_date_input.read(cx).value().trim().to_string();
         let end_date = self.end_date_input.read(cx).value().trim().to_string();
+
+        if start_date.is_empty() || end_date.is_empty() {
+            self.status_text = "請輸入有效的起始與結束日期".into();
+            cx.notify();
+            return;
+        }
+
         let capital: f64 = self
             .capital_input
             .read(cx)

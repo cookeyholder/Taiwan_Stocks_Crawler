@@ -194,6 +194,43 @@ impl DownloadView {
         })
         .detach();
     }
+
+    pub fn delete_range(&mut self, cx: &mut Context<Self>) {
+        if self.is_downloading {
+            return;
+        }
+        let start_date = self.start_date_input.read(cx).value().trim().to_string();
+        let end_date = self.end_date_input.read(cx).value().trim().to_string();
+
+        if start_date.is_empty() || end_date.is_empty() {
+            self.status_text = "請輸入欲刪除的起始與結束日期".into();
+            cx.notify();
+            return;
+        }
+
+        self.is_downloading = true;
+        self.status_text = format!("正在刪除區間 {} ~ {} 的資料...", start_date, end_date);
+        cx.notify();
+
+        let core = self.core_state.clone();
+        cx.spawn(async move |this, cx| {
+            let res = core.delete_date_range(&start_date, &end_date).await;
+            let _ = this.update(cx, |view, cx| {
+                view.is_downloading = false;
+                match res {
+                    Ok(msg) => {
+                        view.status_text = msg;
+                        view.refresh_db_summary(cx);
+                    }
+                    Err(e) => {
+                        view.status_text = format!("刪除失敗：{}", e);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
 }
 
 impl Render for DownloadView {
@@ -251,6 +288,15 @@ impl Render for DownloadView {
                             .disabled(is_dl)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.fill_to_today(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("btn-delete-range")
+                            .label("刪除指定區間")
+                            .danger()
+                            .disabled(is_dl)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.delete_range(cx);
                             })),
                     ),
             )
