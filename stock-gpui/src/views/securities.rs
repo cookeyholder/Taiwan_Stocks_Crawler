@@ -122,7 +122,11 @@ impl SecuritiesView {
         cx.subscribe(
             &search_input,
             |this: &mut Self, input, event: &gpui_kit::component::input::InputEvent, cx| {
-                if matches!(event, gpui_kit::component::input::InputEvent::Change) {
+                if matches!(
+                    event,
+                    gpui_kit::component::input::InputEvent::Change
+                        | gpui_kit::component::input::InputEvent::PressEnter { .. }
+                ) {
                     let q = input.read(cx).value().to_string();
                     this.apply_filter(&q, cx);
                 }

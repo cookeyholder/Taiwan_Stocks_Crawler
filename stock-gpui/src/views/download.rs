@@ -34,6 +34,21 @@ impl DownloadView {
         let start_date_input = cx.new(|cx| InputState::new(window, cx).default_value("2026-07-01"));
         let end_date_input = cx.new(|cx| InputState::new(window, cx).default_value(&today));
 
+        for input_field in [&start_date_input, &end_date_input] {
+            cx.subscribe(
+                input_field,
+                |this: &mut Self, _, event: &gpui_kit::component::input::InputEvent, cx| {
+                    if matches!(
+                        event,
+                        gpui_kit::component::input::InputEvent::PressEnter { .. }
+                    ) {
+                        this.start_download(cx);
+                    }
+                },
+            )
+            .detach();
+        }
+
         let mut view = Self {
             core_state,
             start_date_input,

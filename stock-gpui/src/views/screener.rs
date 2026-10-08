@@ -180,6 +180,26 @@ impl ScreenerView {
                 .row_selectable(true)
         });
 
+        for input_field in [
+            &start_date_input,
+            &end_date_input,
+            &bandwidth_input,
+            &min_days_input,
+        ] {
+            cx.subscribe(
+                input_field,
+                |this: &mut Self, _, event: &gpui_kit::component::input::InputEvent, cx| {
+                    if matches!(
+                        event,
+                        gpui_kit::component::input::InputEvent::PressEnter { .. }
+                    ) {
+                        this.start_screen(cx);
+                    }
+                },
+            )
+            .detach();
+        }
+
         cx.subscribe(
             &table_state,
             |this: &mut Self, table, event: &TableEvent, cx| {
