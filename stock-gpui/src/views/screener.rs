@@ -2,6 +2,7 @@ use gpui_kit::base::Disableable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window,
     div, px, rgb,
@@ -251,6 +252,31 @@ impl ScreenerView {
         })
         .detach();
     }
+
+    pub fn cancel_screen(&mut self, cx: &mut Context<Self>) {
+        self.core_state.cancel();
+        self.status_text = "已送出取消篩選請求...".into();
+        cx.notify();
+    }
+
+    pub fn clear_cache(&mut self, cx: &mut Context<Self>) {
+        let core = self.core_state.clone();
+        cx.spawn(async move |this, cx| {
+            let res = core.clear_screener_cache().await;
+            let _ = this.update(cx, |view, cx| {
+                match res {
+                    Ok(count) => {
+                        view.status_text = format!("已清除選股快取，共刪除 {} 筆", count);
+                    }
+                    Err(e) => {
+                        view.status_text = format!("清除快取失敗：{}", e);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
 }
 
 impl Render for ScreenerView {
@@ -267,23 +293,51 @@ impl Render for ScreenerView {
             .border_color(rgb(0x313244))
             .child(
                 div()
-                    .w(px(120.))
-                    .child(Input::new(&self.start_date_input).id("screen-start-date")),
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("起始:"))
+                    .child(
+                        div()
+                            .w(px(120.))
+                            .child(Input::new(&self.start_date_input).id("screen-start-date")),
+                    ),
             )
             .child(
                 div()
-                    .w(px(120.))
-                    .child(Input::new(&self.end_date_input).id("screen-end-date")),
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("結束:"))
+                    .child(
+                        div()
+                            .w(px(120.))
+                            .child(Input::new(&self.end_date_input).id("screen-end-date")),
+                    ),
             )
             .child(
                 div()
-                    .w(px(90.))
-                    .child(Input::new(&self.bandwidth_input).id("screen-bandwidth")),
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("頻寬:"))
+                    .child(
+                        div()
+                            .w(px(80.))
+                            .child(Input::new(&self.bandwidth_input).id("screen-bandwidth")),
+                    ),
             )
             .child(
                 div()
-                    .w(px(70.))
-                    .child(Input::new(&self.min_days_input).id("screen-min-days")),
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("天數:"))
+                    .child(
+                        div()
+                            .w(px(60.))
+                            .child(Input::new(&self.min_days_input).id("screen-min-days")),
+                    ),
             )
             .child(
                 Button::new("btn-start-screen")
@@ -298,6 +352,26 @@ impl Render for ScreenerView {
                         this.start_screen(cx);
                     })),
             )
+            .when(is_running, |this| {
+                this.child(
+                    Button::new("btn-cancel-screen")
+                        .label("取消篩選")
+                        .danger()
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.cancel_screen(cx);
+                        })),
+                )
+            })
+            .when(!is_running, |this| {
+                this.child(
+                    Button::new("btn-clear-screen-cache")
+                        .label("清除快取")
+                        .secondary()
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.clear_cache(cx);
+                        })),
+                )
+            })
             .child(
                 div()
                     .text_color(rgb(0xa6adc8))

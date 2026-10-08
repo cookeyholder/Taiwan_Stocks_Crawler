@@ -180,8 +180,15 @@ impl Render for SecuritiesView {
             .border_color(rgb(0x313244))
             .child(
                 div()
-                    .w(px(240.))
-                    .child(Input::new(&self.search_input).id("securities-search-input")),
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("搜尋標的:"))
+                    .child(
+                        div()
+                            .w(px(240.))
+                            .child(Input::new(&self.search_input).id("securities-search-input")),
+                    ),
             )
             .child(
                 Button::new("btn-search-securities")

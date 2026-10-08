@@ -79,6 +79,26 @@ impl CoreState {
         self.cancel_flag.store(true, Ordering::SeqCst);
     }
 
+    pub fn cancel(&self) {
+        self.cancel_flag.store(true, Ordering::SeqCst);
+    }
+
+    pub async fn clear_screener_cache(&self) -> Result<usize, String> {
+        let pipeline = self.pipeline.lock().await;
+        pipeline
+            .repo
+            .clear_screener_cache()
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn get_screener_cache_count(&self) -> Result<usize, String> {
+        let pipeline = self.pipeline.lock().await;
+        pipeline
+            .repo
+            .get_screener_cache_count()
+            .map_err(|e| e.to_string())
+    }
+
     pub async fn get_securities(&self) -> Result<Vec<SecurityItem>, String> {
         let pipeline = self.pipeline.lock().await;
         let rows = pipeline.repo.get_securities().map_err(|e| e.to_string())?;

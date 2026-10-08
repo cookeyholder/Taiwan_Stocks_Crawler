@@ -25,7 +25,11 @@ pub struct AnalysisView {
 
 impl AnalysisView {
     pub fn new(core_state: CoreState, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let symbol_input = cx.new(|cx| InputState::new(window, cx).default_value("2330"));
+        let symbol_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value("2330")
+                .placeholder("輸入股票代號...")
+        });
         let mut view = Self {
             core_state,
             symbol_input,
@@ -78,8 +82,15 @@ impl Render for AnalysisView {
             .border_color(rgb(0x313244))
             .child(
                 div()
-                    .w(px(160.))
-                    .child(Input::new(&self.symbol_input).id("analysis-symbol-input")),
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("股票代號:"))
+                    .child(
+                        div()
+                            .w(px(160.))
+                            .child(Input::new(&self.symbol_input).id("analysis-symbol-input")),
+                    ),
             )
             .child(
                 Button::new("btn-fetch-analysis")

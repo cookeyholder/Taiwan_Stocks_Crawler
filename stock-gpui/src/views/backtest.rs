@@ -1,19 +1,158 @@
 use gpui_kit::base::Disableable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
 use gpui_kit::{
-    AppContext, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window, div,
-    px, rgb,
+    App, AppContext, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window,
+    div, px, rgb,
 };
-use stock_core::models::BacktestReport;
+use stock_core::models::{BacktestReport, TradeRecord};
 
 use crate::state::CoreState;
+
+pub struct TradesDelegate {
+    pub trades: Vec<TradeRecord>,
+    pub sort_col: Option<usize>,
+    pub sort_order: ColumnSort,
+}
+
+impl TradesDelegate {
+    pub fn sort_by_col(&mut self, col: usize, sort: ColumnSort) {
+        self.sort_col = Some(col);
+        self.sort_order = sort;
+        match sort {
+            ColumnSort::Ascending => match col {
+                0 => self.trades.sort_by(|a, b| a.buy_date.cmp(&b.buy_date)),
+                1 => self.trades.sort_by(|a, b| a.sell_date.cmp(&b.sell_date)),
+                2 => self.trades.sort_by(|a, b| a.symbol.cmp(&b.symbol)),
+                3 => self.trades.sort_by(|a, b| a.name.cmp(&b.name)),
+                4 => self.trades.sort_by_key(|a| a.shares),
+                5 => self.trades.sort_by(|a, b| {
+                    a.buy_price
+                        .partial_cmp(&b.buy_price)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
+                6 => self.trades.sort_by(|a, b| {
+                    a.sell_price
+                        .partial_cmp(&b.sell_price)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
+                7 => self.trades.sort_by(|a, b| {
+                    a.pnl
+                        .partial_cmp(&b.pnl)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
+                _ => self.trades.sort_by(|a, b| {
+                    a.pnl_pct
+                        .partial_cmp(&b.pnl_pct)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
+            },
+            ColumnSort::Descending => match col {
+                0 => self.trades.sort_by(|a, b| b.buy_date.cmp(&a.buy_date)),
+                1 => self.trades.sort_by(|a, b| b.sell_date.cmp(&a.sell_date)),
+                2 => self.trades.sort_by(|a, b| b.symbol.cmp(&a.symbol)),
+                3 => self.trades.sort_by(|a, b| b.name.cmp(&a.name)),
+                4 => self.trades.sort_by_key(|b| std::cmp::Reverse(b.shares)),
+                5 => self.trades.sort_by(|a, b| {
+                    b.buy_price
+                        .partial_cmp(&a.buy_price)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
+                6 => self.trades.sort_by(|a, b| {
+                    b.sell_price
+                        .partial_cmp(&a.sell_price)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
+                7 => self.trades.sort_by(|a, b| {
+                    b.pnl
+                        .partial_cmp(&a.pnl)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
+                _ => self.trades.sort_by(|a, b| {
+                    b.pnl_pct
+                        .partial_cmp(&a.pnl_pct)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
+            },
+            ColumnSort::Default => {}
+        }
+    }
+}
+
+impl TableDelegate for TradesDelegate {
+    fn columns_count(&self, _: &App) -> usize {
+        9
+    }
+
+    fn rows_count(&self, _: &App) -> usize {
+        self.trades.len()
+    }
+
+    fn column(&self, ix: usize, _: &App) -> Column {
+        match ix {
+            0 => Column::new("buy_date", "買入日").width(px(95.)).sortable(),
+            1 => Column::new("sell_date", "賣出日").width(px(95.)).sortable(),
+            2 => Column::new("symbol", "代號").width(px(80.)).sortable(),
+            3 => Column::new("name", "名稱").width(px(100.)).sortable(),
+            4 => Column::new("shares", "股數").width(px(80.)).sortable(),
+            5 => Column::new("buy_price", "買價").width(px(80.)).sortable(),
+            6 => Column::new("sell_price", "賣價").width(px(80.)).sortable(),
+            7 => Column::new("pnl", "損益").width(px(90.)).sortable(),
+            _ => Column::new("pnl_pct", "報酬率").width(px(85.)).sortable(),
+        }
+    }
+
+    fn perform_sort(
+        &mut self,
+        col_ix: usize,
+        sort: ColumnSort,
+        _window: &mut Window,
+        _cx: &mut Context<TableState<Self>>,
+    ) {
+        self.sort_by_col(col_ix, sort);
+    }
+
+    fn render_td(
+        &mut self,
+        row: usize,
+        col: usize,
+        _: &mut Window,
+        _: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        let t = &self.trades[row];
+        let pnl_color = if t.pnl >= 0.0 {
+            rgb(0xa6e3a1)
+        } else {
+            rgb(0xf38ba8)
+        };
+
+        match col {
+            0 => div().child(t.buy_date.clone()),
+            1 => div().child(t.sell_date.clone().unwrap_or_else(|| "持有中".into())),
+            2 => div().child(t.symbol.clone()),
+            3 => div().child(t.name.clone().unwrap_or_default()),
+            4 => div().child(format!("{}", t.shares)),
+            5 => div().child(format!("{:.2}", t.buy_price)),
+            6 => div().child(
+                t.sell_price
+                    .map(|p| format!("{:.2}", p))
+                    .unwrap_or_else(|| "-".into()),
+            ),
+            7 => div().text_color(pnl_color).child(format!("{:+0.0}", t.pnl)),
+            _ => div()
+                .text_color(pnl_color)
+                .child(format!("{:+.2}%", t.pnl_pct)),
+        }
+    }
+}
 
 pub struct BacktestView {
     pub core_state: CoreState,
     pub start_date_input: Entity<InputState>,
     pub end_date_input: Entity<InputState>,
     pub capital_input: Entity<InputState>,
+    pub table_state: Entity<TableState<TradesDelegate>>,
     pub report: Option<BacktestReport>,
     pub is_running: bool,
     pub status_text: String,
@@ -25,11 +164,19 @@ impl BacktestView {
         let end_date_input = cx.new(|cx| InputState::new(window, cx).default_value("2026-03-20"));
         let capital_input = cx.new(|cx| InputState::new(window, cx).default_value("1000000"));
 
+        let delegate = TradesDelegate {
+            trades: Vec::new(),
+            sort_col: None,
+            sort_order: ColumnSort::Default,
+        };
+        let table_state = cx.new(|cx| TableState::new(delegate, window, cx).cell_selectable(true));
+
         Self {
             core_state,
             start_date_input,
             end_date_input,
             capital_input,
+            table_state,
             report: None,
             is_running: false,
             status_text: "就緒".into(),
@@ -82,6 +229,9 @@ impl BacktestView {
                             "回測完成：總報酬率 {:.2}%，交易次數 {}",
                             report.metrics.total_return_pct, report.metrics.total_trades
                         );
+                        view.table_state.update(cx, |table, _| {
+                            table.delegate_mut().trades = report.trades.clone();
+                        });
                         view.report = Some(report);
                     }
                     Err(e) => {
@@ -109,18 +259,39 @@ impl Render for BacktestView {
             .border_color(rgb(0x313244))
             .child(
                 div()
-                    .w(px(120.))
-                    .child(Input::new(&self.start_date_input).id("bt-start-date")),
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("起始:"))
+                    .child(
+                        div()
+                            .w(px(120.))
+                            .child(Input::new(&self.start_date_input).id("bt-start-date")),
+                    ),
             )
             .child(
                 div()
-                    .w(px(120.))
-                    .child(Input::new(&self.end_date_input).id("bt-end-date")),
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("結束:"))
+                    .child(
+                        div()
+                            .w(px(120.))
+                            .child(Input::new(&self.end_date_input).id("bt-end-date")),
+                    ),
             )
             .child(
                 div()
-                    .w(px(120.))
-                    .child(Input::new(&self.capital_input).id("bt-capital")),
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("資金:"))
+                    .child(
+                        div()
+                            .w(px(120.))
+                            .child(Input::new(&self.capital_input).id("bt-capital")),
+                    ),
             )
             .child(
                 Button::new("btn-run-backtest")
@@ -187,7 +358,33 @@ impl Render for BacktestView {
                 .items_center()
                 .justify_center()
                 .text_color(rgb(0x6c7086))
-                .child("設定日期區間與初始資金後點擊「執行回測」以檢視策略 KPI 績效卡片")
+                .child("設定日期區間與初始資金後點擊「執行回測」以檢視策略 KPI 績效與交易明細")
+        };
+
+        let trades_count = self.table_state.read(cx).delegate().trades.len();
+        let trades_area = if trades_count > 0 {
+            div()
+                .flex_1()
+                .size_full()
+                .p_4()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(gpui_kit::FontWeight::BOLD)
+                        .text_color(rgb(0x89b4fa))
+                        .child(format!("交易明細（共 {} 筆）", trades_count)),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .size_full()
+                        .child(DataTable::new(&self.table_state)),
+                )
+        } else {
+            div()
         };
 
         div()
@@ -196,6 +393,7 @@ impl Render for BacktestView {
             .flex_col()
             .child(toolbar)
             .child(kpi_area)
+            .child(trades_area)
     }
 }
 

@@ -2,6 +2,7 @@ use gpui_kit::base::Disableable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::progress::Progress;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window, div,
     px, rgb,
@@ -231,6 +232,12 @@ impl DownloadView {
         })
         .detach();
     }
+
+    pub fn cancel_download(&mut self, cx: &mut Context<Self>) {
+        self.core_state.cancel();
+        self.status_text = "已送出取消下載請求...".into();
+        cx.notify();
+    }
 }
 
 impl Render for DownloadView {
@@ -256,17 +263,32 @@ impl Render for DownloadView {
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
                     .items_center()
                     .gap_3()
                     .child(
                         div()
-                            .w(px(140.))
-                            .child(Input::new(&self.start_date_input).id("dl-start-date")),
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(div().text_sm().text_color(rgb(0xa6adc8)).child("起始:"))
+                            .child(
+                                div()
+                                    .w(px(130.))
+                                    .child(Input::new(&self.start_date_input).id("dl-start-date")),
+                            ),
                     )
                     .child(
                         div()
-                            .w(px(140.))
-                            .child(Input::new(&self.end_date_input).id("dl-end-date")),
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(div().text_sm().text_color(rgb(0xa6adc8)).child("結束:"))
+                            .child(
+                                div()
+                                    .w(px(130.))
+                                    .child(Input::new(&self.end_date_input).id("dl-end-date")),
+                            ),
                     )
                     .child(
                         Button::new("btn-start-download")
@@ -298,7 +320,17 @@ impl Render for DownloadView {
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.delete_range(cx);
                             })),
-                    ),
+                    )
+                    .when(is_dl, |this| {
+                        this.child(
+                            Button::new("btn-cancel-download")
+                                .label("取消下載")
+                                .danger()
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.cancel_download(cx);
+                                })),
+                        )
+                    }),
             )
             .child(
                 div()
