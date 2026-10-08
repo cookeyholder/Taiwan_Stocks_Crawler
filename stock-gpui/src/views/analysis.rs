@@ -429,9 +429,16 @@ impl Render for AnalysisView {
                 .value(|d| d.volume_shares.unwrap_or(0) as f64)
                 .interactive(true);
 
-            let rsi_points: Vec<IndicatorPoint> = ohlcv[start_idx..end_idx]
+            let safe_slice = |vec: &[Option<f64>]| -> Vec<Option<f64>> {
+                (start_idx..end_idx)
+                    .map(|i| vec.get(i).copied().flatten())
+                    .collect()
+            };
+
+            let rsi_slice = safe_slice(&data.rsi);
+            let rsi_points: Vec<IndicatorPoint> = visible_ohlcv
                 .iter()
-                .zip(data.rsi[start_idx..end_idx].iter())
+                .zip(rsi_slice.iter())
                 .filter_map(|(rec, val)| {
                     val.map(|v| IndicatorPoint {
                         date: rec.trade_date.clone(),
@@ -448,9 +455,9 @@ impl Render for AnalysisView {
                 .interactive(true);
 
             // 布林通道畫布
-            let visible_upper = data.bollinger_upper[start_idx..end_idx].to_vec();
-            let visible_middle = data.bollinger_middle[start_idx..end_idx].to_vec();
-            let visible_lower = data.bollinger_lower[start_idx..end_idx].to_vec();
+            let visible_upper = safe_slice(&data.bollinger_upper);
+            let visible_middle = safe_slice(&data.bollinger_middle);
+            let visible_lower = safe_slice(&data.bollinger_lower);
             let visible_ohlcv_bb = visible_ohlcv.clone();
 
             let bollinger_canvas = canvas(

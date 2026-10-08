@@ -8,10 +8,11 @@ use gpui_kit::component::table::{
 };
 use gpui_kit::base::Disableable as _;
 use gpui_kit::component::Sizable as _;
+use gpui_kit::component::plot::scale::{Scale, ScaleBand, ScaleLinear};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
-    Render, Styled as _, Window, div, hsla, px, rgb,
+    PathBuilder, Pixels, Render, Styled as _, Window, canvas, div, hsla, point, px, rgb,
 };
 use stock_core::models::ScreenResult;
 
@@ -164,6 +165,7 @@ pub struct ScreenerView {
     pub bandwidth_input: Entity<InputState>,
     pub min_days_input: Entity<InputState>,
     pub include_etf: bool,
+    pub show_bollinger: bool,
     pub table_state: Entity<TableState<ScreenerDelegate>>,
     pub is_running: bool,
     pub status_text: String,
@@ -244,6 +246,7 @@ impl ScreenerView {
             bandwidth_input,
             min_days_input,
             include_etf: false,
+            show_bollinger: true,
             table_state,
             is_running: false,
             status_text: "就緒".into(),
@@ -561,6 +564,7 @@ impl Render for ScreenerView {
 
             let price_scales = compute_price_scales(&visible_ohlcv);
             let vol_scales = compute_volume_scales(&visible_ohlcv);
+            let max_band_w = self.font_size.kline_band_width();
 
             let kline = CandlestickChart::new(visible_ohlcv.clone())
                 .id("screener-candlestick")
@@ -570,10 +574,104 @@ impl Render for ScreenerView {
                 .low(|d| d.low_price.unwrap_or(0.0))
                 .close(|d| d.close_price.unwrap_or(0.0))
                 .body_width_ratio(0.85)
-                .max_band_width(self.font_size.kline_band_width())
+                .max_band_width(max_band_w)
                 .bullish(hsla(0.0, 0.8, 0.5, 1.0))
                 .bearish(hsla(0.33, 0.8, 0.4, 1.0))
                 .interactive(true);
+
+            // 布林通道畫布
+            let safe_slice = |vec: &[Option<f64>]| -> Vec<Option<f64>> {
+                (start_idx..end_idx)
+                    .map(|i| vec.get(i).copied().flatten())
+                    .collect()
+            };
+
+            let visible_upper = safe_slice(&data.bollinger_upper);
+            let visible_middle = safe_slice(&data.bollinger_middle);
+            let visible_lower = safe_slice(&data.bollinger_lower);
+            let visible_ohlcv_bb = visible_ohlcv.clone();
+
+            let bollinger_canvas = canvas(
+                move |_, _, _| {},
+                move |bounds, _, window, _cx| {
+                    let height = bounds.size.height.as_f32() - 20.0;
+                    if height <= 0.0
+                        || bounds.size.width.as_f32() <= 0.0
+                        || visible_ohlcv_bb.is_empty()
+                    {
+                        return;
+                    }
+
+                    let x_scale = ScaleBand::new(
+                        visible_ohlcv_bb.iter().map(|d| d.trade_date.clone()),
+                        [0., bounds.size.width.as_f32()],
+                    )
+                    .max_band_width(max_band_w.as_f32())
+                    .padding_inner(0.4)
+                    .padding_outer(0.2);
+
+                    let all_values: Vec<f64> = visible_ohlcv_bb
+                        .iter()
+                        .flat_map(|d| {
+                            vec![
+                                d.high_price.unwrap_or(0.0),
+                                d.low_price.unwrap_or(0.0),
+                                d.open_price.unwrap_or(0.0),
+                                d.close_price.unwrap_or(0.0),
+                            ]
+                        })
+                        .collect();
+
+                    if all_values.is_empty() {
+                        return;
+                    }
+
+                    let y_scale = ScaleLinear::new(all_values, [height, 10.]);
+                    let half_band = x_scale.band_width() / 2.0;
+
+                    let build_band_path = |series: &[Option<f64>]| -> Option<gpui_kit::Path<Pixels>> {
+                        let mut builder = PathBuilder::stroke(px(1.5));
+                        let mut started = false;
+                        for (d, val_opt) in visible_ohlcv_bb.iter().zip(series.iter()) {
+                            if let Some(val) = val_opt
+                                && let (Some(xt), Some(yt)) =
+                                    (x_scale.tick(&d.trade_date), y_scale.tick(val))
+                            {
+                                let pt = point(
+                                    bounds.origin.x + px(xt + half_band),
+                                    bounds.origin.y + px(yt),
+                                );
+                                if !started {
+                                    builder.move_to(pt);
+                                    started = true;
+                                } else {
+                                    builder.line_to(pt);
+                                }
+                            }
+                        }
+                        if started {
+                            builder.build().ok()
+                        } else {
+                            None
+                        }
+                    };
+
+                    window.with_content_mask(Some(gpui_kit::ContentMask { bounds }), |window| {
+                        // 上軌：紫色 (Violet)
+                        if let Some(upper_path) = build_band_path(&visible_upper) {
+                            window.paint_path(upper_path, hsla(0.80, 0.75, 0.55, 0.9));
+                        }
+                        // 中軌：橙黃色 (20MA)
+                        if let Some(middle_path) = build_band_path(&visible_middle) {
+                            window.paint_path(middle_path, hsla(0.10, 0.85, 0.50, 0.9));
+                        }
+                        // 下軌：青藍色 (Cyan)
+                        if let Some(lower_path) = build_band_path(&visible_lower) {
+                            window.paint_path(lower_path, hsla(0.55, 0.75, 0.45, 0.9));
+                        }
+                    });
+                },
+            );
 
             let vol_chart = BarChart::new(visible_ohlcv.clone())
                 .id("screener-volume")
@@ -718,7 +816,69 @@ impl Render for ScreenerView {
                                     this.chart_viewport.reset();
                                     cx.notify();
                                 })),
-                        ),
+                        )
+                        .child(div().w(px(1.)).h(px(18.)).bg(rgb(0xcbd5e1)))
+                        .child(
+                            Checkbox::new("screener-show-bollinger")
+                                .label("布林通道")
+                                .checked(self.show_bollinger)
+                                .on_click(cx.listener(|this, checked, _, cx| {
+                                    this.show_bollinger = *checked;
+                                    cx.notify();
+                                })),
+                        )
+                        .when(self.show_bollinger, |this| {
+                            this.child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .text_xs()
+                                    .text_color(rgb(0x64748b))
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(3.))
+                                                    .rounded_sm()
+                                                    .bg(hsla(0.80, 0.75, 0.55, 1.0)),
+                                            )
+                                            .child("上軌"),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(3.))
+                                                    .rounded_sm()
+                                                    .bg(hsla(0.10, 0.85, 0.50, 1.0)),
+                                            )
+                                            .child("中軌"),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(3.))
+                                                    .rounded_sm()
+                                                    .bg(hsla(0.55, 0.75, 0.45, 1.0)),
+                                            )
+                                            .child("下軌"),
+                                    ),
+                            )
+                        }),
                 )
                 .child(
                     div()
@@ -732,7 +892,21 @@ impl Render for ScreenerView {
                 .size_full()
                 .flex()
                 .flex_row()
-                .child(div().flex_1().h_full().child(kline))
+                .child(
+                    div()
+                        .relative()
+                        .flex_1()
+                        .h_full()
+                        .child(kline)
+                        .when(self.show_bollinger, |this| {
+                            this.child(
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .child(bollinger_canvas),
+                            )
+                        }),
+                )
                 .child(price_axis);
 
             let vol_with_axis = div()
