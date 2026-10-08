@@ -147,6 +147,14 @@ impl TableDelegate for TradesDelegate {
     }
 }
 
+fn get_today_str() -> String {
+    let tz_offset = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
+    chrono::Utc::now()
+        .with_timezone(&tz_offset)
+        .format("%Y-%m-%d")
+        .to_string()
+}
+
 pub struct BacktestView {
     pub core_state: CoreState,
     pub start_date_input: Entity<InputState>,
@@ -160,8 +168,9 @@ pub struct BacktestView {
 
 impl BacktestView {
     pub fn new(core_state: CoreState, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let today = get_today_str();
         let start_date_input = cx.new(|cx| InputState::new(window, cx).default_value("2026-01-01"));
-        let end_date_input = cx.new(|cx| InputState::new(window, cx).default_value("2026-03-20"));
+        let end_date_input = cx.new(|cx| InputState::new(window, cx).default_value(&today));
         let capital_input = cx.new(|cx| InputState::new(window, cx).default_value("1000000"));
 
         let delegate = TradesDelegate {
