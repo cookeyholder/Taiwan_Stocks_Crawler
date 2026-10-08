@@ -58,12 +58,17 @@ fn test_app_view_tabs_and_theme_switching(cx: &mut TestAppContext) {
         app.set_tab(NavTab::Securities, cx);
         assert_eq!(app.active_tab, NavTab::Securities);
 
-        // 驗證主題切換
-        assert!(app.is_dark);
-        app.toggle_theme(cx);
+        // 驗證主題切換（預設為淺色模式）
         assert!(!app.is_dark);
         app.toggle_theme(cx);
         assert!(app.is_dark);
+        app.toggle_theme(cx);
+        assert!(!app.is_dark);
+
+        // 驗證字體大小調整
+        assert_eq!(app.font_size, stock_gpui::app::FontSizeLevel::Medium);
+        app.cycle_font_size(cx);
+        assert_eq!(app.font_size, stock_gpui::app::FontSizeLevel::Large);
 
         // 驗證優雅退出
         app.shutdown();
