@@ -1,5 +1,6 @@
 use gpui_kit::base::Disableable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
 use gpui_kit::{
@@ -160,6 +161,7 @@ pub struct BacktestView {
     pub start_date_input: Entity<InputState>,
     pub end_date_input: Entity<InputState>,
     pub capital_input: Entity<InputState>,
+    pub include_etf: bool,
     pub table_state: Entity<TableState<TradesDelegate>>,
     pub report: Option<BacktestReport>,
     pub is_running: bool,
@@ -173,6 +175,21 @@ impl BacktestView {
         let end_date_input = cx.new(|cx| InputState::new(window, cx).default_value(&today));
         let capital_input = cx.new(|cx| InputState::new(window, cx).default_value("1000000"));
 
+        for input_field in [&start_date_input, &end_date_input, &capital_input] {
+            cx.subscribe(
+                input_field,
+                |this: &mut Self, _, event: &gpui_kit::component::input::InputEvent, cx| {
+                    if matches!(
+                        event,
+                        gpui_kit::component::input::InputEvent::PressEnter { .. }
+                    ) {
+                        this.run_backtest(cx);
+                    }
+                },
+            )
+            .detach();
+        }
+
         let delegate = TradesDelegate {
             trades: Vec::new(),
             sort_col: None,
@@ -185,6 +202,7 @@ impl BacktestView {
             start_date_input,
             end_date_input,
             capital_input,
+            include_etf: false,
             table_state,
             report: None,
             is_running: false,
@@ -210,6 +228,12 @@ impl BacktestView {
             .parse()
             .unwrap_or(1_000_000.0);
 
+        let instrument_types = if self.include_etf {
+            Some(vec!["stock".to_string(), "etf".to_string()])
+        } else {
+            Some(vec!["stock".to_string()])
+        };
+
         self.is_running = true;
         self.status_text = "回測執行中...".into();
         cx.notify();
@@ -226,7 +250,7 @@ impl BacktestView {
                     &start_date,
                     &end_date,
                     capital,
-                    None,
+                    instrument_types,
                 )
                 .await;
 
@@ -301,6 +325,15 @@ impl Render for BacktestView {
                             .w(px(120.))
                             .child(Input::new(&self.capital_input).id("bt-capital")),
                     ),
+            )
+            .child(
+                Checkbox::new("backtest-include-etf")
+                    .label("包含 ETF")
+                    .checked(self.include_etf)
+                    .on_click(cx.listener(|this, checked, _, cx| {
+                        this.include_etf = *checked;
+                        cx.notify();
+                    })),
             )
             .child(
                 Button::new("btn-run-backtest")

@@ -30,6 +30,23 @@ impl AnalysisView {
                 .default_value("2330")
                 .placeholder("輸入股票代號...")
         });
+
+        cx.subscribe(
+            &symbol_input,
+            |this: &mut Self, input, event: &gpui_kit::component::input::InputEvent, cx| {
+                if matches!(
+                    event,
+                    gpui_kit::component::input::InputEvent::PressEnter { .. }
+                ) {
+                    let sym = input.read(cx).value().trim().to_string();
+                    if !sym.is_empty() {
+                        this.fetch_symbol(sym, cx);
+                    }
+                }
+            },
+        )
+        .detach();
+
         let mut view = Self {
             core_state,
             symbol_input,
