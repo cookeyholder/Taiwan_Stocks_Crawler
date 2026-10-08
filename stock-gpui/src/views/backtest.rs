@@ -3,18 +3,21 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
+use gpui_kit::component::Sizable as _;
 use gpui_kit::{
     App, AppContext, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window,
     div, px, rgb,
 };
 use stock_core::models::{BacktestReport, TradeRecord};
 
+use crate::app::FontSizeLevel;
 use crate::state::CoreState;
 
 pub struct TradesDelegate {
     pub trades: Vec<TradeRecord>,
     pub sort_col: Option<usize>,
     pub sort_order: ColumnSort,
+    pub font_size: FontSizeLevel,
 }
 
 impl TradesDelegate {
@@ -128,20 +131,27 @@ impl TableDelegate for TradesDelegate {
             rgb(0xf38ba8)
         };
 
+        let fs = self.font_size.size_px();
         match col {
-            0 => div().child(t.buy_date.clone()),
-            1 => div().child(t.sell_date.clone().unwrap_or_else(|| "持有中".into())),
-            2 => div().child(t.symbol.clone()),
-            3 => div().child(t.name.clone().unwrap_or_default()),
-            4 => div().child(format!("{}", t.shares)),
-            5 => div().child(format!("{:.2}", t.buy_price)),
-            6 => div().child(
+            0 => div().text_size(fs).child(t.buy_date.clone()),
+            1 => div()
+                .text_size(fs)
+                .child(t.sell_date.clone().unwrap_or_else(|| "持有中".into())),
+            2 => div().text_size(fs).child(t.symbol.clone()),
+            3 => div().text_size(fs).child(t.name.clone().unwrap_or_default()),
+            4 => div().text_size(fs).child(format!("{}", t.shares)),
+            5 => div().text_size(fs).child(format!("{:.2}", t.buy_price)),
+            6 => div().text_size(fs).child(
                 t.sell_price
                     .map(|p| format!("{:.2}", p))
                     .unwrap_or_else(|| "-".into()),
             ),
-            7 => div().text_color(pnl_color).child(format!("{:+0.0}", t.pnl)),
+            7 => div()
+                .text_size(fs)
+                .text_color(pnl_color)
+                .child(format!("{:+0.0}", t.pnl)),
             _ => div()
+                .text_size(fs)
                 .text_color(pnl_color)
                 .child(format!("{:+.2}%", t.pnl_pct)),
         }
@@ -166,6 +176,7 @@ pub struct BacktestView {
     pub report: Option<BacktestReport>,
     pub is_running: bool,
     pub status_text: String,
+    pub font_size: FontSizeLevel,
 }
 
 impl BacktestView {
@@ -194,6 +205,7 @@ impl BacktestView {
             trades: Vec::new(),
             sort_col: None,
             sort_order: ColumnSort::Default,
+            font_size: FontSizeLevel::Medium,
         };
         let table_state = cx.new(|cx| TableState::new(delegate, window, cx).cell_selectable(true));
 
@@ -207,7 +219,17 @@ impl BacktestView {
             report: None,
             is_running: false,
             status_text: "就緒".into(),
+            font_size: FontSizeLevel::Medium,
         }
+    }
+
+    pub fn set_font_size(&mut self, font_size: FontSizeLevel, cx: &mut Context<Self>) {
+        self.font_size = font_size;
+        self.table_state.update(cx, |table, cx| {
+            table.delegate_mut().font_size = font_size;
+            table.refresh(cx);
+        });
+        cx.notify();
     }
 
     pub fn run_backtest(&mut self, cx: &mut Context<Self>) {
@@ -423,7 +445,10 @@ impl Render for BacktestView {
                     div()
                         .flex_1()
                         .size_full()
-                        .child(DataTable::new(&self.table_state)),
+                        .child(
+                            DataTable::new(&self.table_state)
+                                .with_size(self.font_size.table_size()),
+                        ),
                 )
         } else {
             div()

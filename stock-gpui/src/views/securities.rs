@@ -1,11 +1,13 @@
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
+use gpui_kit::component::Sizable as _;
 use gpui_kit::{
     App, AppContext, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window,
     div, px, rgb,
 };
 
+use crate::app::FontSizeLevel;
 use crate::state::{CoreState, SecurityItem};
 
 pub struct SecuritiesListDelegate {
@@ -13,6 +15,7 @@ pub struct SecuritiesListDelegate {
     pub filtered_items: Vec<SecurityItem>,
     pub sort_col: Option<usize>,
     pub sort_order: ColumnSort,
+    pub font_size: FontSizeLevel,
 }
 
 impl SecuritiesListDelegate {
@@ -96,7 +99,9 @@ impl TableDelegate for SecuritiesListDelegate {
             1 => item.market.as_str(),
             _ => item.name.as_str(),
         };
-        div().child(text.to_string())
+        div()
+            .text_size(self.font_size.size_px())
+            .child(text.to_string())
     }
 }
 
@@ -105,6 +110,7 @@ pub struct SecuritiesView {
     pub search_input: Entity<InputState>,
     pub table_state: Entity<TableState<SecuritiesListDelegate>>,
     pub is_loaded: bool,
+    pub font_size: FontSizeLevel,
 }
 
 impl SecuritiesView {
@@ -116,6 +122,7 @@ impl SecuritiesView {
             filtered_items: Vec::new(),
             sort_col: None,
             sort_order: ColumnSort::Default,
+            font_size: FontSizeLevel::Medium,
         };
         let table_state = cx.new(|cx| TableState::new(delegate, window, cx).cell_selectable(true));
 
@@ -139,9 +146,19 @@ impl SecuritiesView {
             search_input,
             table_state,
             is_loaded: false,
+            font_size: FontSizeLevel::Medium,
         };
         view.load_securities(cx);
         view
+    }
+
+    pub fn set_font_size(&mut self, font_size: FontSizeLevel, cx: &mut Context<Self>) {
+        self.font_size = font_size;
+        self.table_state.update(cx, |table, cx| {
+            table.delegate_mut().font_size = font_size;
+            table.refresh(cx);
+        });
+        cx.notify();
     }
 
     pub fn apply_filter(&mut self, query: &str, cx: &mut Context<Self>) {
@@ -187,7 +204,12 @@ impl Render for SecuritiesView {
                     .flex()
                     .items_center()
                     .gap_1()
-                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("搜尋標的:"))
+                    .child(
+                        div()
+                            .text_size(self.font_size.size_px())
+                            .text_color(rgb(0xa6adc8))
+                            .child("搜尋標的:"),
+                    )
                     .child(
                         div()
                             .w(px(240.))
@@ -206,7 +228,7 @@ impl Render for SecuritiesView {
             .child(
                 div()
                     .text_color(rgb(0xa6adc8))
-                    .text_sm()
+                    .text_size(self.font_size.size_px())
                     .child(format!("共 {} 檔證券標的", count)),
             );
 
@@ -214,7 +236,10 @@ impl Render for SecuritiesView {
             .flex_1()
             .size_full()
             .p_3()
-            .child(DataTable::new(&self.table_state));
+            .child(
+                DataTable::new(&self.table_state)
+                    .with_size(self.font_size.table_size()),
+            );
 
         div()
             .size_full()

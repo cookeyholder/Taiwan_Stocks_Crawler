@@ -2,15 +2,19 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::chart::{BarChart, CandlestickChart, LineChart};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::plot::scale::{Scale, ScaleBand, ScaleLinear};
 use gpui_kit::component::resizable::{h_resizable, resizable_panel};
 use gpui_kit::component::table::{
     Column, ColumnSort, DataTable, TableDelegate, TableEvent, TableState,
 };
+use gpui_kit::component::Sizable as _;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
-    Render, Styled as _, Window, div, hsla, px, rgb,
+    PathBuilder, Pixels, Render, Styled as _, Window, canvas, div, hsla, point, px, rgb,
 };
 
+use crate::app::FontSizeLevel;
 use crate::state::{AnalysisData, CoreState, SecurityItem};
 use crate::views::chart_viewport::{ChartViewport, compute_price_scales, compute_volume_scales};
 
@@ -27,6 +31,7 @@ pub struct AnalysisSecuritiesDelegate {
     pub sort_order: ColumnSort,
     pub include_etf: bool,
     pub search_query: String,
+    pub font_size: FontSizeLevel,
 }
 
 impl Default for AnalysisSecuritiesDelegate {
@@ -44,6 +49,7 @@ impl AnalysisSecuritiesDelegate {
             sort_order: ColumnSort::Default,
             include_etf: false,
             search_query: String::new(),
+            font_size: FontSizeLevel::Medium,
         }
     }
 
@@ -149,7 +155,10 @@ impl TableDelegate for AnalysisSecuritiesDelegate {
             1 => item.market.as_str(),
             _ => item.name.as_str(),
         };
-        div().cursor_pointer().child(text.to_string())
+        div()
+            .text_size(self.font_size.size_px())
+            .cursor_pointer()
+            .child(text.to_string())
     }
 }
 
@@ -163,6 +172,8 @@ pub struct AnalysisView {
     pub is_loading: bool,
     pub error_msg: Option<String>,
     pub chart_viewport: ChartViewport,
+    pub font_size: FontSizeLevel,
+    pub show_bollinger: bool,
 }
 
 impl AnalysisView {
@@ -231,11 +242,22 @@ impl AnalysisView {
             is_loading: false,
             error_msg: None,
             chart_viewport: ChartViewport::default(),
+            font_size: FontSizeLevel::Medium,
+            show_bollinger: true,
         };
 
         view.load_securities(cx);
         view.fetch_symbol("2330".into(), cx);
         view
+    }
+
+    pub fn set_font_size(&mut self, font_size: FontSizeLevel, cx: &mut Context<Self>) {
+        self.font_size = font_size;
+        self.table_state.update(cx, |table, cx| {
+            table.delegate_mut().font_size = font_size;
+            table.refresh(cx);
+        });
+        cx.notify();
     }
 
     pub fn load_securities(&mut self, cx: &mut Context<Self>) {
@@ -352,7 +374,10 @@ impl Render for AnalysisView {
                     .flex_1()
                     .size_full()
                     .p_1()
-                    .child(DataTable::new(&self.table_state)),
+                    .child(
+                        DataTable::new(&self.table_state)
+                            .with_size(self.font_size.table_size()),
+                    ),
             );
 
         // 右側圖表與指標內容
@@ -381,6 +406,10 @@ impl Render for AnalysisView {
             let price_scales = compute_price_scales(&visible_ohlcv);
             let vol_scales = compute_volume_scales(&visible_ohlcv);
 
+            let max_band_w = self.font_size.kline_band_width();
+            let axis_font_size = self.font_size.axis_font_size();
+            let axis_w = self.font_size.axis_width();
+
             let kline = CandlestickChart::new(visible_ohlcv.clone())
                 .id("analysis-candlestick")
                 .x(|d| d.trade_date.clone())
@@ -389,7 +418,7 @@ impl Render for AnalysisView {
                 .low(|d| d.low_price.unwrap_or(0.0))
                 .close(|d| d.close_price.unwrap_or(0.0))
                 .body_width_ratio(0.85)
-                .max_band_width(px(60.0))
+                .max_band_width(max_band_w)
                 .bullish(hsla(0.0, 0.8, 0.5, 1.0))
                 .bearish(hsla(0.33, 0.8, 0.4, 1.0))
                 .interactive(true);
@@ -418,9 +447,97 @@ impl Render for AnalysisView {
                 .stroke(hsla(0.15, 0.9, 0.6, 1.0))
                 .interactive(true);
 
+            // 布林通道畫布
+            let visible_upper = data.bollinger_upper[start_idx..end_idx].to_vec();
+            let visible_middle = data.bollinger_middle[start_idx..end_idx].to_vec();
+            let visible_lower = data.bollinger_lower[start_idx..end_idx].to_vec();
+            let visible_ohlcv_bb = visible_ohlcv.clone();
+
+            let bollinger_canvas = canvas(
+                move |_, _, _| {},
+                move |bounds, _, window, _cx| {
+                    let height = bounds.size.height.as_f32() - 20.0;
+                    if height <= 0.0
+                        || bounds.size.width.as_f32() <= 0.0
+                        || visible_ohlcv_bb.is_empty()
+                    {
+                        return;
+                    }
+
+                    let x_scale = ScaleBand::new(
+                        visible_ohlcv_bb.iter().map(|d| d.trade_date.clone()),
+                        [0., bounds.size.width.as_f32()],
+                    )
+                    .max_band_width(max_band_w.as_f32())
+                    .padding_inner(0.4)
+                    .padding_outer(0.2);
+
+                    let all_values: Vec<f64> = visible_ohlcv_bb
+                        .iter()
+                        .flat_map(|d| {
+                            vec![
+                                d.high_price.unwrap_or(0.0),
+                                d.low_price.unwrap_or(0.0),
+                                d.open_price.unwrap_or(0.0),
+                                d.close_price.unwrap_or(0.0),
+                            ]
+                        })
+                        .collect();
+
+                    if all_values.is_empty() {
+                        return;
+                    }
+
+                    let y_scale = ScaleLinear::new(all_values, [height, 10.]);
+                    let half_band = x_scale.band_width() / 2.0;
+
+                    let build_band_path = |series: &[Option<f64>]| -> Option<gpui_kit::Path<Pixels>> {
+                        let mut builder = PathBuilder::stroke(px(1.5));
+                        let mut started = false;
+                        for (d, val_opt) in visible_ohlcv_bb.iter().zip(series.iter()) {
+                            if let Some(val) = val_opt
+                                && let (Some(xt), Some(yt)) =
+                                    (x_scale.tick(&d.trade_date), y_scale.tick(val))
+                            {
+                                let pt = point(
+                                    bounds.origin.x + px(xt + half_band),
+                                    bounds.origin.y + px(yt),
+                                );
+                                if !started {
+                                    builder.move_to(pt);
+                                    started = true;
+                                } else {
+                                    builder.line_to(pt);
+                                }
+                            }
+                        }
+                        if started {
+                            builder.build().ok()
+                        } else {
+                            None
+                        }
+                    };
+
+                    window.with_content_mask(Some(gpui_kit::ContentMask { bounds }), |window| {
+                        // 上軌：紫色 (Violet)
+                        if let Some(upper_path) = build_band_path(&visible_upper) {
+                            window.paint_path(upper_path, hsla(0.80, 0.75, 0.55, 0.9));
+                        }
+                        // 中軌：橙黃色 (20MA)
+                        if let Some(middle_path) = build_band_path(&visible_middle) {
+                            window.paint_path(middle_path, hsla(0.10, 0.85, 0.50, 0.9));
+                        }
+                        // 下軌：青藍色 (Cyan)
+                        if let Some(lower_path) = build_band_path(&visible_lower) {
+                            window.paint_path(lower_path, hsla(0.55, 0.75, 0.45, 0.9));
+                        }
+                    });
+                },
+            );
+
             // 縱軸價格刻度
             let price_axis = div()
-                .w(px(70.))
+                .w(axis_w)
                 .h_full()
                 .flex()
                 .flex_col()
@@ -437,7 +554,7 @@ impl Render for AnalysisView {
                                 .into_iter()
                                 .map(|p| {
                                     div()
-                                        .text_xs()
+                                        .text_size(axis_font_size)
                                         .font_weight(gpui_kit::FontWeight::BOLD)
                                         .text_color(rgb(0x475569))
                                         .child(format!("{:.2}", p))
@@ -449,7 +566,7 @@ impl Render for AnalysisView {
 
             // 縱軸成交量刻度
             let vol_axis = div()
-                .w(px(70.))
+                .w(axis_w)
                 .h_full()
                 .flex()
                 .flex_col()
@@ -464,15 +581,15 @@ impl Render for AnalysisView {
                         .map(|(max_v, half_v, _)| {
                             vec![
                                 div()
-                                    .text_xs()
+                                    .text_size(axis_font_size)
                                     .text_color(rgb(0x475569))
                                     .child(format!("{}張", max_v / 1000)),
                                 div()
-                                    .text_xs()
+                                    .text_size(axis_font_size)
                                     .text_color(rgb(0x475569))
                                     .child(format!("{}張", half_v / 1000)),
                                 div()
-                                    .text_xs()
+                                    .text_size(axis_font_size)
                                     .text_color(rgb(0x475569))
                                     .child("0張".to_string()),
                             ]
@@ -552,11 +669,73 @@ impl Render for AnalysisView {
                                     this.chart_viewport.reset();
                                     cx.notify();
                                 })),
-                        ),
+                        )
+                        .child(div().w(px(1.)).h(px(18.)).bg(rgb(0xcbd5e1)))
+                        .child(
+                            Checkbox::new("analysis-show-bollinger")
+                                .label("布林通道")
+                                .checked(self.show_bollinger)
+                                .on_click(cx.listener(|this, checked, _, cx| {
+                                    this.show_bollinger = *checked;
+                                    cx.notify();
+                                })),
+                        )
+                        .when(self.show_bollinger, |this| {
+                            this.child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .text_xs()
+                                    .text_color(rgb(0x64748b))
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(3.))
+                                                    .rounded_sm()
+                                                    .bg(hsla(0.80, 0.75, 0.55, 1.0)),
+                                            )
+                                            .child("上軌"),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(3.))
+                                                    .rounded_sm()
+                                                    .bg(hsla(0.10, 0.85, 0.50, 1.0)),
+                                            )
+                                            .child("中軌"),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(3.))
+                                                    .rounded_sm()
+                                                    .bg(hsla(0.55, 0.75, 0.45, 1.0)),
+                                            )
+                                            .child("下軌"),
+                                    ),
+                            )
+                        }),
                 )
                 .child(
                     div()
-                        .text_sm()
+                        .text_size(self.font_size.size_px())
                         .font_weight(gpui_kit::FontWeight::BOLD)
                         .text_color(rgb(0x334155))
                         .child(date_range_label),
@@ -566,7 +745,21 @@ impl Render for AnalysisView {
                 .size_full()
                 .flex()
                 .flex_row()
-                .child(div().flex_1().h_full().child(kline))
+                .child(
+                    div()
+                        .relative()
+                        .flex_1()
+                        .h_full()
+                        .child(kline)
+                        .when(self.show_bollinger, |this| {
+                            this.child(
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .child(bollinger_canvas),
+                            )
+                        }),
+                )
                 .child(price_axis);
 
             let vol_with_axis = div()
@@ -597,14 +790,14 @@ impl Render for AnalysisView {
                         .gap_3()
                         .child(
                             div()
-                                .text_xl()
+                                .text_size(self.font_size.size_px() * 1.5)
                                 .font_weight(gpui_kit::FontWeight::BOLD)
                                 .text_color(rgb(0x1d4ed8))
                                 .child(data.symbol.clone()),
                         )
                         .child(
                             div()
-                                .text_base()
+                                .text_size(self.font_size.size_px() * 1.15)
                                 .font_weight(gpui_kit::FontWeight::BOLD)
                                 .text_color(rgb(0x1e293b))
                                 .child(data.name.clone().unwrap_or_default()),
@@ -620,10 +813,15 @@ impl Render for AnalysisView {
                                 .flex()
                                 .items_center()
                                 .gap_1()
-                                .child(div().text_xs().text_color(rgb(0x64748b)).child("收盤價:"))
                                 .child(
                                     div()
-                                        .text_base()
+                                        .text_size(self.font_size.size_px() * 0.85)
+                                        .text_color(rgb(0x64748b))
+                                        .child("收盤價:"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(self.font_size.size_px() * 1.15)
                                         .font_weight(gpui_kit::FontWeight::BOLD)
                                         .text_color(rgb(0x0f172a))
                                         .child(format!("{:.2}", latest_close)),
@@ -634,10 +832,15 @@ impl Render for AnalysisView {
                                 .flex()
                                 .items_center()
                                 .gap_1()
-                                .child(div().text_xs().text_color(rgb(0x64748b)).child("成交量:"))
                                 .child(
                                     div()
-                                        .text_base()
+                                        .text_size(self.font_size.size_px() * 0.85)
+                                        .text_color(rgb(0x64748b))
+                                        .child("成交量:"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(self.font_size.size_px() * 1.15)
                                         .font_weight(gpui_kit::FontWeight::BOLD)
                                         .text_color(rgb(0x0f172a))
                                         .child(format!("{} 張", latest_vol / 1000)),

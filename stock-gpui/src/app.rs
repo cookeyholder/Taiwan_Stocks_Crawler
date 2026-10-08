@@ -50,6 +50,41 @@ impl FontSizeLevel {
         }
     }
 
+    pub fn table_size(&self) -> gpui_kit::component::Size {
+        match self {
+            FontSizeLevel::Normal => gpui_kit::component::Size::Small,
+            FontSizeLevel::Medium => gpui_kit::component::Size::Medium,
+            FontSizeLevel::Large | FontSizeLevel::XLarge => gpui_kit::component::Size::Large,
+        }
+    }
+
+    pub fn axis_font_size(&self) -> gpui_kit::Pixels {
+        match self {
+            FontSizeLevel::Normal => px(12.0),
+            FontSizeLevel::Medium => px(13.5),
+            FontSizeLevel::Large => px(15.5),
+            FontSizeLevel::XLarge => px(17.5),
+        }
+    }
+
+    pub fn axis_width(&self) -> gpui_kit::Pixels {
+        match self {
+            FontSizeLevel::Normal => px(72.0),
+            FontSizeLevel::Medium => px(80.0),
+            FontSizeLevel::Large => px(90.0),
+            FontSizeLevel::XLarge => px(100.0),
+        }
+    }
+
+    pub fn kline_band_width(&self) -> gpui_kit::Pixels {
+        match self {
+            FontSizeLevel::Normal => px(50.0),
+            FontSizeLevel::Medium => px(60.0),
+            FontSizeLevel::Large => px(72.0),
+            FontSizeLevel::XLarge => px(84.0),
+        }
+    }
+
     pub fn label(&self) -> &'static str {
         match self {
             FontSizeLevel::Normal => "字體: 標準 (14px)",
@@ -122,6 +157,11 @@ impl AppView {
 
     pub fn cycle_font_size(&mut self, cx: &mut Context<Self>) {
         self.font_size = self.font_size.next();
+        let fs = self.font_size;
+        self.analysis_view.update(cx, |v, cx| v.set_font_size(fs, cx));
+        self.screener_view.update(cx, |v, cx| v.set_font_size(fs, cx));
+        self.backtest_view.update(cx, |v, cx| v.set_font_size(fs, cx));
+        self.securities_view.update(cx, |v, cx| v.set_font_size(fs, cx));
         cx.notify();
     }
 

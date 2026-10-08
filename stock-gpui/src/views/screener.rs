@@ -1,4 +1,3 @@
-use gpui_kit::base::Disableable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::chart::{BarChart, CandlestickChart};
 use gpui_kit::component::checkbox::Checkbox;
@@ -7,6 +6,8 @@ use gpui_kit::component::resizable::{h_resizable, resizable_panel};
 use gpui_kit::component::table::{
     Column, ColumnSort, DataTable, TableDelegate, TableEvent, TableState,
 };
+use gpui_kit::base::Disableable as _;
+use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
@@ -14,6 +15,7 @@ use gpui_kit::{
 };
 use stock_core::models::ScreenResult;
 
+use crate::app::FontSizeLevel;
 use crate::state::{AnalysisData, CoreState};
 use crate::views::chart_viewport::{ChartViewport, compute_price_scales, compute_volume_scales};
 
@@ -31,6 +33,7 @@ pub struct ScreenerDelegate {
     pub results: Vec<ScreenResult>,
     pub sort_col: Option<usize>,
     pub sort_order: ColumnSort,
+    pub font_size: FontSizeLevel,
 }
 
 impl ScreenerDelegate {
@@ -147,7 +150,10 @@ impl TableDelegate for ScreenerDelegate {
             4 => format!("{:.4}", r.max_bandwidth),
             _ => format!("{:.4}", r.latest_bandwidth),
         };
-        div().cursor_pointer().child(text)
+        div()
+            .text_size(self.font_size.size_px())
+            .cursor_pointer()
+            .child(text)
     }
 }
 
@@ -166,6 +172,7 @@ pub struct ScreenerView {
     pub chart_data: Option<AnalysisData>,
     pub is_chart_loading: bool,
     pub chart_viewport: ChartViewport,
+    pub font_size: FontSizeLevel,
 }
 
 impl ScreenerView {
@@ -181,6 +188,7 @@ impl ScreenerView {
             results: Vec::new(),
             sort_col: None,
             sort_order: ColumnSort::Default,
+            font_size: FontSizeLevel::Medium,
         };
         let table_state = cx.new(|cx| {
             TableState::new(delegate, window, cx)
@@ -244,7 +252,17 @@ impl ScreenerView {
             chart_data: None,
             is_chart_loading: false,
             chart_viewport: ChartViewport::default(),
+            font_size: FontSizeLevel::Medium,
         }
+    }
+
+    pub fn set_font_size(&mut self, font_size: FontSizeLevel, cx: &mut Context<Self>) {
+        self.font_size = font_size;
+        self.table_state.update(cx, |table, cx| {
+            table.delegate_mut().font_size = font_size;
+            table.refresh(cx);
+        });
+        cx.notify();
     }
 
     pub fn select_and_load_chart(
@@ -552,7 +570,7 @@ impl Render for ScreenerView {
                 .low(|d| d.low_price.unwrap_or(0.0))
                 .close(|d| d.close_price.unwrap_or(0.0))
                 .body_width_ratio(0.85)
-                .max_band_width(px(60.0))
+                .max_band_width(self.font_size.kline_band_width())
                 .bullish(hsla(0.0, 0.8, 0.5, 1.0))
                 .bearish(hsla(0.33, 0.8, 0.4, 1.0))
                 .interactive(true);
@@ -563,9 +581,12 @@ impl Render for ScreenerView {
                 .value(|d| d.volume_shares.unwrap_or(0) as f64)
                 .interactive(true);
 
+            let axis_font_size = self.font_size.axis_font_size();
+            let axis_w = self.font_size.axis_width();
+
             // 縱軸價格刻度
             let price_axis = div()
-                .w(px(70.))
+                .w(axis_w)
                 .h_full()
                 .flex()
                 .flex_col()
@@ -582,7 +603,7 @@ impl Render for ScreenerView {
                                 .into_iter()
                                 .map(|p| {
                                     div()
-                                        .text_xs()
+                                        .text_size(axis_font_size)
                                         .font_weight(gpui_kit::FontWeight::BOLD)
                                         .text_color(rgb(0x475569))
                                         .child(format!("{:.2}", p))
@@ -594,7 +615,7 @@ impl Render for ScreenerView {
 
             // 縱軸成交量刻度
             let vol_axis = div()
-                .w(px(70.))
+                .w(axis_w)
                 .h_full()
                 .flex()
                 .flex_col()
@@ -609,15 +630,15 @@ impl Render for ScreenerView {
                         .map(|(max_v, half_v, _)| {
                             vec![
                                 div()
-                                    .text_xs()
+                                    .text_size(axis_font_size)
                                     .text_color(rgb(0x475569))
                                     .child(format!("{}張", max_v / 1000)),
                                 div()
-                                    .text_xs()
+                                    .text_size(axis_font_size)
                                     .text_color(rgb(0x475569))
                                     .child(format!("{}張", half_v / 1000)),
                                 div()
-                                    .text_xs()
+                                    .text_size(axis_font_size)
                                     .text_color(rgb(0x475569))
                                     .child("0張".to_string()),
                             ]
@@ -806,7 +827,10 @@ impl Render for ScreenerView {
                     div()
                         .size_full()
                         .p_3()
-                        .child(DataTable::new(&self.table_state)),
+                        .child(
+                            DataTable::new(&self.table_state)
+                                .with_size(self.font_size.table_size()),
+                        ),
                 ),
             )
             .child(
