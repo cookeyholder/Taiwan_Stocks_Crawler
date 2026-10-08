@@ -10,6 +10,7 @@ pub static TOKIO_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
         .expect("初始化 Tokio 執行期失敗")
 });
 
+use stock_core::backtest::bollinger::BollingerSqueezeBreakout;
 use stock_core::backtest::engine::BacktestEngine;
 use stock_core::backtest::performance::calculate_metrics;
 use stock_core::backtest::portfolio::PortfolioSimulator;
@@ -17,7 +18,7 @@ use stock_core::backtest::strategies::StrategyKind;
 use stock_core::db::MarketRepository;
 use stock_core::fetcher::{HttpClient, HttpPolicy};
 use stock_core::models::*;
-use stock_core::pipeline::{Pipeline, build_cache_key};
+use stock_core::pipeline::Pipeline;
 
 pub fn default_db_path() -> PathBuf {
     if let Ok(dir) = std::env::var("STOCK_DATA_DIR") {
@@ -215,8 +216,7 @@ impl CoreState {
     where
         F: Fn(usize, usize, String, bool) + Send + Sync,
     {
-        const SCREEN_CACHE_VERSION: &str = "v1";
-        const MAX_TRADING_DAYS: usize = 60;
+        const MAX_TRADING_DAYS: usize = 120;
 
         let _start = chrono::NaiveDate::parse_from_str(start_date, "%Y-%m-%d")
             .map_err(|_| format!("日期格式錯誤：{}", start_date))?;
@@ -229,15 +229,24 @@ impl CoreState {
         self.cancel_flag.store(false, Ordering::SeqCst);
         let pipeline = self.pipeline.lock().await;
 
-        let types = instrument_types.as_deref().unwrap_or(&[]);
-        let mut sorted_types = types.to_vec();
-        sorted_types.sort();
-        let types_str = sorted_types.join(",");
-
         let trade_dates = pipeline
             .repo
             .get_trade_dates_in_range(start_date, end_date)
             .map_err(|e| e.to_string())?;
+
+        if trade_dates.is_empty() {
+            return Ok(RangeScreenResult {
+                results: vec![],
+                meta: RangeMeta {
+                    start_date: start_date.to_string(),
+                    end_date: end_date.to_string(),
+                    trading_days: 0,
+                    cached_days: 0,
+                    calculated_days: 0,
+                    failed_days: vec![],
+                },
+            });
+        }
 
         if trade_dates.len() > MAX_TRADING_DAYS {
             return Err(format!(
@@ -247,80 +256,60 @@ impl CoreState {
             ));
         }
 
-        let total = trade_dates.len();
-        let mut cached_days = 0usize;
-        let mut calculated_days = 0usize;
-        let mut failed_days = Vec::new();
-        let mut last_results: Vec<ScreenResult> = Vec::new();
+        on_progress(1, 2, "正在批次載入歷史報價與計算技術指標...".into(), false);
 
-        for (i, date) in trade_dates.iter().enumerate() {
-            if self.cancel_flag.load(Ordering::SeqCst) {
-                break;
-            }
+        let strategy = BollingerSqueezeBreakout {
+            bandwidth_limit: max_bandwidth,
+            consecutive_days: min_days as usize,
+            min_volume,
+        };
 
-            let cache_key = build_cache_key(
-                SCREEN_CACHE_VERSION,
-                date,
-                &sorted_types,
-                max_bandwidth,
-                min_days,
-                min_volume,
-            );
+        let types_ref = instrument_types.as_deref();
+        let engine = BacktestEngine::new(&pipeline.repo);
+        let output = engine
+            .run_range(start_date, end_date, &strategy, types_ref)
+            .map_err(|e| e.to_string())?;
 
-            if let Some(cached) = pipeline
-                .repo
-                .get_cached_screening(&cache_key)
-                .map_err(|e| e.to_string())?
-            {
-                cached_days += 1;
-                last_results = cached;
-                on_progress(i + 1, total, date.clone(), true);
-                continue;
-            }
-
-            match pipeline
-                .screen(
-                    max_bandwidth,
-                    min_days,
-                    instrument_types.clone(),
-                    min_volume,
-                    Some(date),
-                )
-                .await
-            {
-                Ok(results) => {
-                    calculated_days += 1;
-                    let cache_params = CacheParams {
-                        query_date: date.clone(),
-                        instrument_types: types_str.clone(),
-                        max_bandwidth,
-                        min_days,
-                        min_volume,
-                    };
-                    let _ = pipeline
-                        .repo
-                        .set_cached_screening(&cache_key, &cache_params, &results);
-                    last_results = results;
-                }
-                Err(e) => {
-                    failed_days.push(date.clone());
-                    last_results = Vec::new();
-                    eprintln!("篩選日期 {} 失敗: {}", date, e);
-                }
-            }
-
-            on_progress(i + 1, total, date.clone(), false);
+        if self.cancel_flag.load(Ordering::SeqCst) {
+            return Err("選股已被使用者取消".into());
         }
 
+        let mut symbol_map: HashMap<String, (String, ScreenResult)> = HashMap::new();
+        for signal in output.signals {
+            let trade_date = signal.trade_date.clone();
+            let item = signal.to_screen_result();
+            match symbol_map.get_mut(&item.symbol) {
+                Some((existing_date, existing_item)) => {
+                    if trade_date >= *existing_date {
+                        *existing_date = trade_date;
+                        *existing_item = item;
+                    }
+                }
+                None => {
+                    symbol_map.insert(item.symbol.clone(), (trade_date, item));
+                }
+            }
+        }
+
+        let mut results: Vec<ScreenResult> =
+            symbol_map.into_values().map(|(_, item)| item).collect();
+        results.sort_by(|a, b| {
+            a.latest_bandwidth
+                .partial_cmp(&b.latest_bandwidth)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        on_progress(2, 2, "完成".into(), false);
+
         Ok(RangeScreenResult {
-            results: last_results,
+            results,
             meta: RangeMeta {
                 start_date: start_date.to_string(),
                 end_date: end_date.to_string(),
                 trading_days: trade_dates.len(),
-                cached_days,
-                calculated_days,
-                failed_days,
+                cached_days: 0,
+                calculated_days: trade_dates.len(),
+                failed_days: vec![],
             },
         })
     }

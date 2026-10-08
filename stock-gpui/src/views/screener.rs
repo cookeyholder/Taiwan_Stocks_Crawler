@@ -1,15 +1,28 @@
 use gpui_kit::base::Disableable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::chart::{BarChart, CandlestickChart};
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
+use gpui_kit::component::table::{
+    Column, ColumnSort, DataTable, TableDelegate, TableEvent, TableState,
+};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window,
-    div, px, rgb,
+    div, hsla, px, rgb,
 };
 use stock_core::models::ScreenResult;
 
-use crate::state::CoreState;
+use crate::state::{AnalysisData, CoreState};
+
+fn get_screener_default_dates() -> (String, String) {
+    let tz_offset = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
+    let today = chrono::Utc::now().with_timezone(&tz_offset).date_naive();
+    let start = today - chrono::Duration::days(60);
+    (
+        start.format("%Y-%m-%d").to_string(),
+        today.format("%Y-%m-%d").to_string(),
+    )
+}
 
 pub struct ScreenerDelegate {
     pub results: Vec<ScreenResult>,
@@ -88,13 +101,13 @@ impl TableDelegate for ScreenerDelegate {
 
     fn column(&self, ix: usize, _: &App) -> Column {
         match ix {
-            0 => Column::new("symbol", "股票代號").width(px(100.)).sortable(),
-            1 => Column::new("name", "證券名稱").width(px(120.)).sortable(),
-            2 => Column::new("close", "收盤價").width(px(100.)).sortable(),
-            3 => Column::new("volume", "成交量").width(px(120.)).sortable(),
-            4 => Column::new("max_bw", "最大頻寬").width(px(100.)).sortable(),
+            0 => Column::new("symbol", "股票代號").width(px(90.)).sortable(),
+            1 => Column::new("name", "證券名稱").width(px(100.)).sortable(),
+            2 => Column::new("close", "收盤價").width(px(90.)).sortable(),
+            3 => Column::new("volume", "成交量").width(px(100.)).sortable(),
+            4 => Column::new("max_bw", "最大頻寬").width(px(90.)).sortable(),
             _ => Column::new("latest_bw", "最新頻寬")
-                .width(px(100.))
+                .width(px(90.))
                 .sortable(),
         }
     }
@@ -125,7 +138,7 @@ impl TableDelegate for ScreenerDelegate {
             4 => format!("{:.4}", r.max_bandwidth),
             _ => format!("{:.4}", r.latest_bandwidth),
         };
-        div().child(text)
+        div().cursor_pointer().child(text)
     }
 }
 
@@ -138,12 +151,18 @@ pub struct ScreenerView {
     pub table_state: Entity<TableState<ScreenerDelegate>>,
     pub is_running: bool,
     pub status_text: String,
+    pub selected_symbol: Option<String>,
+    pub selected_name: Option<String>,
+    pub chart_data: Option<AnalysisData>,
+    pub is_chart_loading: bool,
 }
 
 impl ScreenerView {
     pub fn new(core_state: CoreState, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let start_date_input = cx.new(|cx| InputState::new(window, cx).default_value("2026-03-01"));
-        let end_date_input = cx.new(|cx| InputState::new(window, cx).default_value("2026-03-20"));
+        let (default_start, default_end) = get_screener_default_dates();
+        let start_date_input =
+            cx.new(|cx| InputState::new(window, cx).default_value(&default_start));
+        let end_date_input = cx.new(|cx| InputState::new(window, cx).default_value(&default_end));
         let bandwidth_input = cx.new(|cx| InputState::new(window, cx).default_value("0.10"));
         let min_days_input = cx.new(|cx| InputState::new(window, cx).default_value("3"));
 
@@ -152,7 +171,32 @@ impl ScreenerView {
             sort_col: None,
             sort_order: ColumnSort::Default,
         };
-        let table_state = cx.new(|cx| TableState::new(delegate, window, cx).cell_selectable(true));
+        let table_state = cx.new(|cx| {
+            TableState::new(delegate, window, cx)
+                .cell_selectable(true)
+                .row_selectable(true)
+        });
+
+        cx.subscribe(
+            &table_state,
+            |this: &mut Self, table, event: &TableEvent, cx| {
+                let row_opt = match event {
+                    TableEvent::SelectRow(r) | TableEvent::DoubleClickedRow(r) => Some(*r),
+                    TableEvent::SelectCell(r, _) | TableEvent::DoubleClickedCell(r, _) => Some(*r),
+                    _ => None,
+                };
+                if let Some(row) = row_opt {
+                    let item_opt = {
+                        let d = table.read(cx).delegate();
+                        d.results.get(row).cloned()
+                    };
+                    if let Some(item) = item_opt {
+                        this.select_and_load_chart(&item.symbol, item.name, cx);
+                    }
+                }
+            },
+        )
+        .detach();
 
         Self {
             core_state,
@@ -163,7 +207,49 @@ impl ScreenerView {
             table_state,
             is_running: false,
             status_text: "就緒".into(),
+            selected_symbol: None,
+            selected_name: None,
+            chart_data: None,
+            is_chart_loading: false,
         }
+    }
+
+    pub fn select_and_load_chart(
+        &mut self,
+        symbol: &str,
+        name: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.selected_symbol.as_deref() == Some(symbol) && self.chart_data.is_some() {
+            return;
+        }
+        self.selected_symbol = Some(symbol.to_string());
+        self.selected_name = name;
+        self.is_chart_loading = true;
+        cx.notify();
+
+        let sym = symbol.to_string();
+        let core = self.core_state.clone();
+        cx.spawn(async move |this, cx| {
+            let res = core
+                .get_analysis(&sym, &[5, 10, 20], Some(14), Some(12), Some(26), Some(9))
+                .await;
+
+            let _ = this.update(cx, |view, cx| {
+                view.is_chart_loading = false;
+                match res {
+                    Ok(data) => {
+                        view.chart_data = Some(data);
+                    }
+                    Err(e) => {
+                        eprintln!("載入股票 {} K 線圖失敗: {}", sym, e);
+                        view.chart_data = None;
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub fn start_screen(&mut self, cx: &mut Context<Self>) {
@@ -217,9 +303,9 @@ impl ScreenerView {
             loop {
                 tokio::select! {
                     msg = rx.recv() => {
-                        if let Some((curr, tot, date)) = msg {
+                        if let Some((curr, tot, msg_text)) = msg {
                             let _ = this.update(cx, |view, cx| {
-                                view.status_text = format!("正在篩選 {}（進度: {}/{}）", date, curr, tot);
+                                view.status_text = format!("{}（進度: {}/{}）", msg_text, curr, tot);
                                 cx.notify();
                             });
                         }
@@ -235,6 +321,11 @@ impl ScreenerView {
                                 Ok(data) => {
                                     let count = data.results.len();
                                     view.status_text = format!("篩選完成：共符合 {} 檔標的", count);
+                                    if let Some(first) = data.results.first() {
+                                        let sym = first.symbol.clone();
+                                        let name = first.name.clone();
+                                        view.select_and_load_chart(&sym, name, cx);
+                                    }
                                     view.table_state.update(cx, |table, _| {
                                         table.delegate_mut().results = data.results;
                                     });
@@ -379,17 +470,100 @@ impl Render for ScreenerView {
                     .child(self.status_text.clone()),
             );
 
-        let table = div()
+        let chart_section = if self.is_chart_loading {
+            div()
+                .w(px(520.))
+                .h_full()
+                .border_1()
+                .border_color(rgb(0x313244))
+                .rounded_md()
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_color(rgb(0x89b4fa))
+                .child("載入 K 線圖中...")
+        } else if let Some(data) = &self.chart_data {
+            let ohlcv = data.ohlcv.clone();
+            let kline = CandlestickChart::new(ohlcv.clone())
+                .id("screener-candlestick")
+                .x(|d| d.trade_date.clone())
+                .open(|d| d.open_price.unwrap_or(0.0))
+                .high(|d| d.high_price.unwrap_or(0.0))
+                .low(|d| d.low_price.unwrap_or(0.0))
+                .close(|d| d.close_price.unwrap_or(0.0))
+                .bullish(hsla(0.0, 0.8, 0.5, 1.0))
+                .bearish(hsla(0.33, 0.8, 0.4, 1.0))
+                .interactive(true);
+
+            let vol_chart = BarChart::new(ohlcv)
+                .id("screener-volume")
+                .band(|d| d.trade_date.clone())
+                .value(|d| d.volume_shares.unwrap_or(0) as f64)
+                .interactive(true);
+
+            div()
+                .w(px(520.))
+                .h_full()
+                .border_1()
+                .border_color(rgb(0x313244))
+                .rounded_md()
+                .p_3()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .font_weight(gpui_kit::FontWeight::BOLD)
+                                .text_color(rgb(0x89b4fa))
+                                .child(data.symbol.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_color(rgb(0xa6adc8))
+                                .child(data.name.clone().unwrap_or_default()),
+                        ),
+                )
+                .child(div().flex_1().child(kline))
+                .child(div().h(px(130.)).child(vol_chart))
+        } else {
+            div()
+                .w(px(520.))
+                .h_full()
+                .border_1()
+                .border_color(rgb(0x313244))
+                .rounded_md()
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_color(rgb(0x6c7086))
+                .child("點擊左側股票列以即時檢視 K 線與走勢圖")
+        };
+
+        let content = div()
             .flex_1()
             .size_full()
+            .flex()
             .p_3()
-            .child(DataTable::new(&self.table_state));
+            .gap_3()
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(380.))
+                    .size_full()
+                    .child(DataTable::new(&self.table_state)),
+            )
+            .child(chart_section);
 
         div()
             .size_full()
             .flex()
             .flex_col()
             .child(toolbar)
-            .child(table)
+            .child(content)
     }
 }
