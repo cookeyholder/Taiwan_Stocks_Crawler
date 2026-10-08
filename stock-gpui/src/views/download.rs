@@ -9,6 +9,14 @@ use gpui_kit::{
 
 use crate::state::CoreState;
 
+fn get_today_str() -> String {
+    let tz_offset = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
+    chrono::Utc::now()
+        .with_timezone(&tz_offset)
+        .format("%Y-%m-%d")
+        .to_string()
+}
+
 pub struct DownloadView {
     pub core_state: CoreState,
     pub start_date_input: Entity<InputState>,
@@ -21,8 +29,9 @@ pub struct DownloadView {
 
 impl DownloadView {
     pub fn new(core_state: CoreState, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let start_date_input = cx.new(|cx| InputState::new(window, cx).default_value("2026-03-01"));
-        let end_date_input = cx.new(|cx| InputState::new(window, cx).default_value("2026-03-20"));
+        let today = get_today_str();
+        let start_date_input = cx.new(|cx| InputState::new(window, cx).default_value("2026-07-01"));
+        let end_date_input = cx.new(|cx| InputState::new(window, cx).default_value(&today));
 
         let mut view = Self {
             core_state,
@@ -62,36 +71,125 @@ impl DownloadView {
         .detach();
     }
 
+    pub fn run_download(&mut self, start_date: String, end_date: String, cx: &mut Context<Self>) {
+        if self.is_downloading {
+            return;
+        }
+        self.is_downloading = true;
+        self.progress_ratio = 0.0;
+        self.status_text = format!("開始下載區間 {} ~ {}...", start_date, end_date);
+        cx.notify();
+
+        let core = self.core_state.clone();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(usize, usize, String)>();
+
+        cx.spawn(async move |this, cx| {
+            let mut dl_task = crate::state::TOKIO_RUNTIME.spawn(async move {
+                core.batch_download(&start_date, &end_date, move |done, total, date| {
+                    let _ = tx.send((done, total, date));
+                })
+                .await
+            });
+
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        if let Some((done, total, date)) = msg {
+                            let _ = this.update(cx, |view, cx| {
+                                view.progress_ratio = if total > 0 { done as f32 / total as f32 } else { 0.0 };
+                                let pct = (view.progress_ratio * 100.0) as u32;
+                                view.status_text = format!("正在下載 {}（進度: {}/{}，{}%）", date, done, total, pct);
+                                cx.notify();
+                            });
+                        }
+                    }
+                    res = &mut dl_task => {
+                        let final_res = match res {
+                            Ok(inner) => inner,
+                            Err(e) => Err(format!("背景任務異常：{}", e)),
+                        };
+                        let _ = this.update(cx, |view, cx| {
+                            view.is_downloading = false;
+                            view.progress_ratio = 1.0;
+                            match final_res {
+                                Ok(msg) => {
+                                    view.status_text = msg;
+                                    view.refresh_db_summary(cx);
+                                }
+                                Err(e) => {
+                                    view.status_text = format!("下載失敗：{}", e);
+                                }
+                            }
+                            cx.notify();
+                        });
+                        break;
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
     pub fn start_download(&mut self, cx: &mut Context<Self>) {
+        if self.is_downloading {
+            return;
+        }
         let start_date = self.start_date_input.read(cx).value().trim().to_string();
         let end_date = self.end_date_input.read(cx).value().trim().to_string();
 
+        if start_date.is_empty() || end_date.is_empty() {
+            self.status_text = "請輸入有效的起始與結束日期".into();
+            cx.notify();
+            return;
+        }
+
+        self.run_download(start_date, end_date, cx);
+    }
+
+    pub fn fill_to_today(&mut self, cx: &mut Context<Self>) {
+        if self.is_downloading {
+            return;
+        }
         self.is_downloading = true;
         self.progress_ratio = 0.0;
-        self.status_text = "開始下載...".into();
+        self.status_text = "檢查最新資料日期中...".into();
         cx.notify();
 
         let core = self.core_state.clone();
         cx.spawn(async move |this, cx| {
-            let res = core
-                .batch_download(&start_date, &end_date, |_done, _total, date| {
-                    let _ = date;
-                })
-                .await;
+            let latest_opt = core.get_latest_trade_date().await;
+            let today = get_today_str();
+
+            let target = match latest_opt {
+                Ok(Some(latest)) => {
+                    if latest >= today {
+                        Err(format!("資料已是最新（最後記錄日：{}）", latest))
+                    } else {
+                        let next_day = chrono::NaiveDate::parse_from_str(&latest, "%Y-%m-%d")
+                            .map(|d| {
+                                (d + chrono::Duration::days(1))
+                                    .format("%Y-%m-%d")
+                                    .to_string()
+                            })
+                            .unwrap_or_else(|_| today.clone());
+                        Ok((next_day, today))
+                    }
+                }
+                Ok(None) => Err("資料庫尚無資料，請先手動指定起始與結束日期進行下載。".into()),
+                Err(e) => Err(format!("查詢最新交易日失敗：{}", e)),
+            };
 
             let _ = this.update(cx, |view, cx| {
                 view.is_downloading = false;
-                view.progress_ratio = 1.0;
-                match res {
-                    Ok(msg) => {
-                        view.status_text = msg;
-                        view.refresh_db_summary(cx);
+                match target {
+                    Ok((start_date, end_date)) => {
+                        view.run_download(start_date, end_date, cx);
                     }
-                    Err(e) => {
-                        view.status_text = format!("下載失敗：{}", e);
+                    Err(msg) => {
+                        view.status_text = msg;
+                        cx.notify();
                     }
                 }
-                cx.notify();
             });
         })
         .detach();
@@ -152,7 +250,7 @@ impl Render for DownloadView {
                             .secondary()
                             .disabled(is_dl)
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.start_download(cx);
+                                this.fill_to_today(cx);
                             })),
                     ),
             )
