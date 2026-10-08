@@ -88,7 +88,9 @@ impl ScreenerDelegate {
                         .unwrap_or(std::cmp::Ordering::Equal)
                 }),
             },
-            ColumnSort::Default => {}
+            ColumnSort::Default => {
+                self.results.sort_by(|a, b| a.symbol.cmp(&b.symbol));
+            }
         }
     }
 }
@@ -103,7 +105,7 @@ impl TableDelegate for ScreenerDelegate {
     }
 
     fn column(&self, ix: usize, _: &App) -> Column {
-        match ix {
+        let mut col = match ix {
             0 => Column::new("symbol", "股票代號").width(px(90.)).sortable(),
             1 => Column::new("name", "證券名稱").width(px(100.)).sortable(),
             2 => Column::new("close", "收盤價").width(px(90.)).sortable(),
@@ -112,7 +114,11 @@ impl TableDelegate for ScreenerDelegate {
             _ => Column::new("latest_bw", "最新頻寬")
                 .width(px(90.))
                 .sortable(),
+        };
+        if self.sort_col == Some(ix) {
+            col = col.sort(self.sort_order);
         }
+        col
     }
 
     fn perform_sort(
@@ -360,8 +366,13 @@ impl ScreenerView {
                                         let name = first.name.clone();
                                         view.select_and_load_chart(&sym, name, cx);
                                     }
-                                    view.table_state.update(cx, |table, _| {
-                                        table.delegate_mut().results = data.results;
+                                    view.table_state.update(cx, |table, cx| {
+                                        let d = table.delegate_mut();
+                                        d.results = data.results;
+                                        if let Some(col) = d.sort_col {
+                                            d.sort_by_col(col, d.sort_order);
+                                        }
+                                        table.refresh(cx);
                                     });
                                 }
                                 Err(e) => {
