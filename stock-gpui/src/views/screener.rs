@@ -1,7 +1,9 @@
 use gpui_kit::base::Disableable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::chart::{BarChart, CandlestickChart};
+use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::resizable::{h_resizable, resizable_panel};
 use gpui_kit::component::table::{
     Column, ColumnSort, DataTable, TableDelegate, TableEvent, TableState,
 };
@@ -148,6 +150,7 @@ pub struct ScreenerView {
     pub end_date_input: Entity<InputState>,
     pub bandwidth_input: Entity<InputState>,
     pub min_days_input: Entity<InputState>,
+    pub include_etf: bool,
     pub table_state: Entity<TableState<ScreenerDelegate>>,
     pub is_running: bool,
     pub status_text: String,
@@ -204,6 +207,7 @@ impl ScreenerView {
             end_date_input,
             bandwidth_input,
             min_days_input,
+            include_etf: false,
             table_state,
             is_running: false,
             status_text: "就緒".into(),
@@ -277,6 +281,12 @@ impl ScreenerView {
             .parse()
             .unwrap_or(3);
 
+        let instrument_types = if self.include_etf {
+            Some(vec!["stock".to_string(), "etf".to_string()])
+        } else {
+            Some(vec!["stock".to_string()])
+        };
+
         self.is_running = true;
         self.status_text = "開始執行篩選...".into();
         cx.notify();
@@ -291,7 +301,7 @@ impl ScreenerView {
                     &end_date,
                     max_bw,
                     min_days,
-                    None,
+                    instrument_types,
                     500_000,
                     move |curr, tot, date, _cached| {
                         let _ = tx.send((curr, tot, date));
@@ -431,6 +441,15 @@ impl Render for ScreenerView {
                     ),
             )
             .child(
+                Checkbox::new("screener-include-etf")
+                    .label("包含 ETF")
+                    .checked(self.include_etf)
+                    .on_click(cx.listener(|this, checked, _, cx| {
+                        this.include_etf = *checked;
+                        cx.notify();
+                    })),
+            )
+            .child(
                 Button::new("btn-start-screen")
                     .label(if is_running {
                         "篩選中..."
@@ -472,8 +491,7 @@ impl Render for ScreenerView {
 
         let chart_section = if self.is_chart_loading {
             div()
-                .w(px(520.))
-                .h_full()
+                .size_full()
                 .border_1()
                 .border_color(rgb(0x313244))
                 .rounded_md()
@@ -502,8 +520,7 @@ impl Render for ScreenerView {
                 .interactive(true);
 
             div()
-                .w(px(520.))
-                .h_full()
+                .size_full()
                 .border_1()
                 .border_color(rgb(0x313244))
                 .rounded_md()
@@ -532,8 +549,7 @@ impl Render for ScreenerView {
                 .child(div().h(px(130.)).child(vol_chart))
         } else {
             div()
-                .w(px(520.))
-                .h_full()
+                .size_full()
                 .border_1()
                 .border_color(rgb(0x313244))
                 .rounded_md()
@@ -544,26 +560,27 @@ impl Render for ScreenerView {
                 .child("點擊左側股票列以即時檢視 K 線與走勢圖")
         };
 
-        let content = div()
-            .flex_1()
-            .size_full()
-            .flex()
-            .p_3()
-            .gap_3()
+        let content = h_resizable("screener-resizable-layout")
             .child(
-                div()
-                    .flex_1()
-                    .min_w(px(380.))
-                    .size_full()
-                    .child(DataTable::new(&self.table_state)),
+                resizable_panel().child(
+                    div()
+                        .size_full()
+                        .p_3()
+                        .child(DataTable::new(&self.table_state)),
+                ),
             )
-            .child(chart_section);
+            .child(
+                resizable_panel()
+                    .size(px(520.))
+                    .size_range(px(320.)..px(1200.))
+                    .child(div().size_full().p_3().child(chart_section)),
+            );
 
         div()
             .size_full()
             .flex()
             .flex_col()
             .child(toolbar)
-            .child(content)
+            .child(div().flex_1().size_full().child(content))
     }
 }
