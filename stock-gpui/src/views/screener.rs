@@ -17,17 +17,21 @@ use gpui_kit::{
 use stock_core::models::ScreenResult;
 
 use crate::app::FontSizeLevel;
-use crate::state::{AnalysisData, CoreState};
+use crate::state::{default_db_path, AnalysisData, CoreState};
 use crate::views::chart_viewport::{ChartViewport, compute_price_scales, compute_volume_scales};
+use stock_core::db::MarketRepository;
 
 fn get_screener_default_dates() -> (String, String) {
+    let db_path = default_db_path();
+    if let Ok(repo) = MarketRepository::open(db_path.to_str().unwrap_or(""))
+        && let Ok(Some(latest)) = repo.get_latest_trade_date()
+    {
+        return (latest.clone(), latest);
+    }
     let tz_offset = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
     let today = chrono::Utc::now().with_timezone(&tz_offset).date_naive();
-    let start = today - chrono::Duration::days(60);
-    (
-        start.format("%Y-%m-%d").to_string(),
-        today.format("%Y-%m-%d").to_string(),
-    )
+    let today_str = today.format("%Y-%m-%d").to_string();
+    (today_str.clone(), today_str)
 }
 
 pub struct ScreenerDelegate {
@@ -45,23 +49,24 @@ impl ScreenerDelegate {
             ColumnSort::Ascending => match col {
                 0 => self.results.sort_by(|a, b| a.symbol.cmp(&b.symbol)),
                 1 => self.results.sort_by(|a, b| a.name.cmp(&b.name)),
-                2 => self.results.sort_by(|a, b| {
+                2 => self.results.sort_by(|a, b| a.trade_date.cmp(&b.trade_date)),
+                3 => self.results.sort_by(|a, b| {
                     a.latest_close
                         .unwrap_or(0.0)
                         .partial_cmp(&b.latest_close.unwrap_or(0.0))
                         .unwrap_or(std::cmp::Ordering::Equal)
                 }),
-                3 => self.results.sort_by(|a, b| {
+                4 => self.results.sort_by(|a, b| {
                     a.latest_volume
                         .unwrap_or(0)
                         .cmp(&b.latest_volume.unwrap_or(0))
                 }),
-                4 => self.results.sort_by(|a, b| {
+                5 => self.results.sort_by(|a, b| {
                     a.max_bandwidth
                         .partial_cmp(&b.max_bandwidth)
                         .unwrap_or(std::cmp::Ordering::Equal)
                 }),
-                5 => self.results.sort_by(|a, b| {
+                6 => self.results.sort_by(|a, b| {
                     a.latest_bandwidth
                         .partial_cmp(&b.latest_bandwidth)
                         .unwrap_or(std::cmp::Ordering::Equal)
@@ -71,23 +76,24 @@ impl ScreenerDelegate {
             ColumnSort::Descending => match col {
                 0 => self.results.sort_by(|a, b| b.symbol.cmp(&a.symbol)),
                 1 => self.results.sort_by(|a, b| b.name.cmp(&a.name)),
-                2 => self.results.sort_by(|a, b| {
+                2 => self.results.sort_by(|a, b| b.trade_date.cmp(&a.trade_date)),
+                3 => self.results.sort_by(|a, b| {
                     b.latest_close
                         .unwrap_or(0.0)
                         .partial_cmp(&a.latest_close.unwrap_or(0.0))
                         .unwrap_or(std::cmp::Ordering::Equal)
                 }),
-                3 => self.results.sort_by(|a, b| {
+                4 => self.results.sort_by(|a, b| {
                     b.latest_volume
                         .unwrap_or(0)
                         .cmp(&a.latest_volume.unwrap_or(0))
                 }),
-                4 => self.results.sort_by(|a, b| {
+                5 => self.results.sort_by(|a, b| {
                     b.max_bandwidth
                         .partial_cmp(&a.max_bandwidth)
                         .unwrap_or(std::cmp::Ordering::Equal)
                 }),
-                5 => self.results.sort_by(|a, b| {
+                6 => self.results.sort_by(|a, b| {
                     b.latest_bandwidth
                         .partial_cmp(&a.latest_bandwidth)
                         .unwrap_or(std::cmp::Ordering::Equal)
@@ -105,7 +111,7 @@ impl ScreenerDelegate {
 
 impl TableDelegate for ScreenerDelegate {
     fn columns_count(&self, _: &App) -> usize {
-        7
+        8
     }
 
     fn rows_count(&self, _: &App) -> usize {
@@ -114,14 +120,15 @@ impl TableDelegate for ScreenerDelegate {
 
     fn column(&self, ix: usize, _: &App) -> Column {
         let mut col = match ix {
-            0 => Column::new("symbol", "股票代號").width(px(90.)).sortable(),
-            1 => Column::new("name", "證券名稱").width(px(100.)).sortable(),
-            2 => Column::new("close", "收盤價").width(px(90.)).sortable(),
-            3 => Column::new("volume", "成交量").width(px(100.)).sortable(),
-            4 => Column::new("max_bw", "最大頻寬").width(px(90.)).sortable(),
-            5 => Column::new("latest_bw", "最新頻寬").width(px(90.)).sortable(),
+            0 => Column::new("symbol", "股票代號").width(px(85.)).sortable(),
+            1 => Column::new("name", "證券名稱").width(px(95.)).sortable(),
+            2 => Column::new("date", "訊號日期").width(px(95.)).sortable(),
+            3 => Column::new("close", "收盤價").width(px(85.)).sortable(),
+            4 => Column::new("volume", "成交量").width(px(90.)).sortable(),
+            5 => Column::new("max_bw", "最大頻寬").width(px(80.)).sortable(),
+            6 => Column::new("latest_bw", "觸發頻寬").width(px(80.)).sortable(),
             _ => Column::new("break_upper", "突破上軌")
-                .width(px(80.))
+                .width(px(75.))
                 .sortable(),
         };
         if self.sort_col == Some(ix) {
@@ -178,16 +185,17 @@ impl TableDelegate for ScreenerDelegate {
         let content: gpui_kit::AnyElement = match col {
             0 => div().child(r.symbol.clone()).into_any_element(),
             1 => div().child(r.name.clone().unwrap_or_default()).into_any_element(),
-            2 => div()
+            2 => div().child(r.trade_date.clone()).into_any_element(),
+            3 => div()
                 .child(format!("{:.2}", r.latest_close.unwrap_or(0.0)))
                 .into_any_element(),
-            3 => div()
+            4 => div()
                 .child(format!("{}", r.latest_volume.unwrap_or(0)))
                 .into_any_element(),
-            4 => div()
+            5 => div()
                 .child(format!("{:.4}", r.max_bandwidth))
                 .into_any_element(),
-            5 => div()
+            6 => div()
                 .child(format!("{:.4}", r.latest_bandwidth))
                 .into_any_element(),
             _ => if r.break_upper {
@@ -224,6 +232,7 @@ pub struct ScreenerView {
     pub status_text: String,
     pub selected_symbol: Option<String>,
     pub selected_name: Option<String>,
+    pub selected_signal_date: Option<String>,
     pub chart_data: Option<AnalysisData>,
     pub is_chart_loading: bool,
     pub chart_viewport: ChartViewport,
@@ -281,7 +290,12 @@ impl ScreenerView {
                             d.results.get(*r).cloned()
                         };
                         if let Some(item) = item_opt {
-                            this.select_and_load_chart(&item.symbol, item.name, cx);
+                            this.select_and_load_chart(
+                                &item.symbol,
+                                item.name,
+                                Some(item.trade_date),
+                                cx,
+                            );
                         }
                     }
                     TableEvent::SelectCell(r, _) | TableEvent::DoubleClickedCell(r, _) => {
@@ -290,7 +304,12 @@ impl ScreenerView {
                             d.results.get(*r).cloned()
                         };
                         if let Some(item) = item_opt {
-                            this.select_and_load_chart(&item.symbol, item.name, cx);
+                            this.select_and_load_chart(
+                                &item.symbol,
+                                item.name,
+                                Some(item.trade_date),
+                                cx,
+                            );
                         }
                     }
                     TableEvent::SelectColumn(col) => {
@@ -305,7 +324,7 @@ impl ScreenerView {
                                 }
                             } else {
                                 match *col {
-                                    0 | 4 | 5 => ColumnSort::Ascending,
+                                    0 | 5 | 6 => ColumnSort::Ascending,
                                     _ => ColumnSort::Descending,
                                 }
                             };
@@ -334,6 +353,7 @@ impl ScreenerView {
             status_text: "就緒".into(),
             selected_symbol: None,
             selected_name: None,
+            selected_signal_date: None,
             chart_data: None,
             is_chart_loading: false,
             chart_viewport: ChartViewport::default(),
@@ -354,9 +374,12 @@ impl ScreenerView {
         &mut self,
         symbol: &str,
         name: Option<String>,
+        signal_date: Option<String>,
         cx: &mut Context<Self>,
     ) {
+        self.selected_signal_date = signal_date;
         if self.selected_symbol.as_deref() == Some(symbol) && self.chart_data.is_some() {
+            cx.notify();
             return;
         }
         self.selected_symbol = Some(symbol.to_string());
@@ -469,7 +492,8 @@ impl ScreenerView {
                                     if let Some(first) = data.results.first() {
                                         let sym = first.symbol.clone();
                                         let name = first.name.clone();
-                                        view.select_and_load_chart(&sym, name, cx);
+                                        let sig_date = Some(first.trade_date.clone());
+                                        view.select_and_load_chart(&sym, name, sig_date, cx);
                                     }
                                     view.table_state.update(cx, |table, cx| {
                                         let d = table.delegate_mut();
@@ -840,13 +864,26 @@ impl Render for ScreenerView {
 
             let date_range_label =
                 if let (Some(first), Some(last)) = (visible_ohlcv.first(), visible_ohlcv.last()) {
-                    format!(
-                        "顯示 {} / {} 根（{} ~ {}）",
-                        visible_ohlcv.len(),
-                        total_candles,
-                        first.trade_date,
-                        last.trade_date
-                    )
+                    if let Some(sig_date) = &self.selected_signal_date {
+                        format!(
+                            "顯示 {} / {} 根（{} ~ {}） | ⚡ 訊號日: {}",
+                            visible_ohlcv.len(),
+                            total_candles,
+                            first.trade_date,
+                            last.trade_date,
+                            sig_date
+                        )
+                    } else {
+                        format!(
+                            "顯示 {} / {} 根（{} ~ {}）",
+                            visible_ohlcv.len(),
+                            total_candles,
+                            first.trade_date,
+                            last.trade_date
+                        )
+                    }
+                } else if let Some(sig_date) = &self.selected_signal_date {
+                    format!("顯示 {} / {} 根 | ⚡ 訊號日: {}", visible_ohlcv.len(), total_candles, sig_date)
                 } else {
                     format!("顯示 {} / {} 根", visible_ohlcv.len(), total_candles)
                 };

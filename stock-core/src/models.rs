@@ -71,6 +71,7 @@ pub struct ParsedRecord {
 pub struct ScreenResult {
     pub symbol: String,
     pub name: Option<String>,
+    pub trade_date: String,
     pub latest_close: Option<f64>,
     pub latest_volume: Option<i64>,
     pub max_bandwidth: f64,
@@ -106,6 +107,7 @@ impl SignalRecord {
         ScreenResult {
             symbol: self.symbol.clone(),
             name: self.name.clone(),
+            trade_date: self.trade_date.clone(),
             latest_close: self.close_price,
             latest_volume: self.volume,
             max_bandwidth: get_f64("max_bandwidth"),
