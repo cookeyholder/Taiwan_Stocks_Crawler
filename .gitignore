@@ -88,3 +88,6 @@ data/
 # CodeGraph
 .codegraph/
 
+# Scratch exploration directory
+scratch/
+

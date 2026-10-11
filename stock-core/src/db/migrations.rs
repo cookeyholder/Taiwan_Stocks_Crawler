@@ -95,6 +95,21 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX IF NOT EXISTS idx_inst_investors_symbol_date
      ON institutional_investors(symbol_clean, trade_date);",
+    // V8: broker_trades (集中市場券商營業據點買賣日報表)
+    "CREATE TABLE IF NOT EXISTS broker_trades (
+        trade_date       TEXT NOT NULL,
+        symbol_clean     TEXT NOT NULL,
+        broker_id        TEXT NOT NULL,
+        broker_name      TEXT NOT NULL,
+        price            REAL NOT NULL,
+        buy_shares       INTEGER NOT NULL DEFAULT 0,
+        sell_shares      INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (trade_date, symbol_clean, broker_id, price)
+    );
+    CREATE INDEX IF NOT EXISTS idx_broker_trades_symbol_date
+     ON broker_trades(symbol_clean, trade_date);
+    CREATE INDEX IF NOT EXISTS idx_broker_trades_broker_date
+     ON broker_trades(broker_id, trade_date);",
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -133,6 +148,8 @@ mod tests {
         conn.execute("SELECT 1 FROM watchlists LIMIT 1", [])
             .unwrap();
         conn.execute("SELECT 1 FROM institutional_investors LIMIT 1", [])
+            .unwrap();
+        conn.execute("SELECT 1 FROM broker_trades LIMIT 1", [])
             .unwrap();
     }
 
