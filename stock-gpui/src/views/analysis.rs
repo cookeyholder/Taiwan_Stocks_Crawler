@@ -23,7 +23,11 @@ use crate::views::chart_viewport::{ChartViewport, compute_price_scales, compute_
 use stock_core::models::InstitutionalRecord;
 
 fn format_shares_as_lots(shares: i64) -> String {
-    format!("{:+.3}張", shares as f64 / 1000.0)
+    if shares == 0 {
+        "0張".to_string()
+    } else {
+        format!("{:+.3}張", shares as f64 / 1000.0)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1988,5 +1992,6 @@ mod tests {
     fn institutional_lots_preserve_sub_lot_values_and_direction() {
         assert_eq!(format_shares_as_lots(999), "+0.999張");
         assert_eq!(format_shares_as_lots(-999), "-0.999張");
+        assert_eq!(format_shares_as_lots(0), "0張");
     }
 }

@@ -3,4 +3,4 @@ pub mod state;
 pub mod views;
 
 pub use app::{AppView, NavTab};
-pub use state::CoreState;
+pub use state::{CoreState, RepairError};

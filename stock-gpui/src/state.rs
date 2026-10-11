@@ -119,6 +119,29 @@ pub struct SecurityItem {
     pub name: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepairError {
+    pub message: String,
+    pub remaining_dates: Vec<String>,
+    pub inserted_days: usize,
+    pub total_records: usize,
+}
+
+impl std::ops::Deref for RepairError {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.message
+    }
+}
+
+impl std::fmt::Display for RepairError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for RepairError {}
+
 #[derive(Clone)]
 pub struct CoreState {
     pub pipeline: Arc<tokio::sync::Mutex<Pipeline>>,
@@ -763,7 +786,7 @@ impl CoreState {
         &self,
         missing_dates: &[String],
         on_progress: F,
-    ) -> Result<String, String>
+    ) -> Result<String, RepairError>
     where
         F: Fn(usize, usize, String) + Send + Sync,
     {
@@ -777,11 +800,13 @@ impl CoreState {
         let mut inserted_days = 0usize;
         let mut failure_count = 0usize;
         let mut failure_details = Vec::new();
+        let mut failed_dates = Vec::new();
 
         self.cancel_flag.store(false, Ordering::SeqCst);
 
-        for date_str in missing_dates {
+        for (idx, date_str) in missing_dates.iter().enumerate() {
             if self.cancel_flag.load(Ordering::SeqCst) {
+                failed_dates.extend(missing_dates[idx..].iter().cloned());
                 break;
             }
 
@@ -807,6 +832,7 @@ impl CoreState {
             };
             if let Some(error) = failure {
                 failure_count += 1;
+                failed_dates.push(date_str.clone());
                 if failure_details.len() < 5 {
                     failure_details.push(format!("{}：{}", date_str, error));
                 }
@@ -831,10 +857,15 @@ impl CoreState {
                 total_days,
                 format!("已取消修補（處理至第 {} 日）", days_done),
             );
-            return Err(format!(
-                "修補作業已被使用者取消（已完成 {}/{} 日，成功入庫 {} 日共 {} 筆資料）",
-                days_done, total_days, inserted_days, total_records
-            ));
+            return Err(RepairError {
+                message: format!(
+                    "修補作業已被使用者取消（已完成 {}/{} 日，成功入庫 {} 日共 {} 筆資料）",
+                    days_done, total_days, inserted_days, total_records
+                ),
+                remaining_dates: failed_dates,
+                inserted_days,
+                total_records,
+            });
         }
 
         if failure_count > 0 {
@@ -846,14 +877,19 @@ impl CoreState {
             } else {
                 String::new()
             };
-            return Err(format!(
-                "修補未完成：{} 個日期抓取失敗，已入庫 {} 個交易日共 {} 筆資料。{}{}",
-                failure_count,
+            return Err(RepairError {
+                message: format!(
+                    "修補未完成：{} 個日期抓取失敗，已入庫 {} 個交易日共 {} 筆資料。{}{}",
+                    failure_count,
+                    inserted_days,
+                    total_records,
+                    failure_details.join("；"),
+                    extra
+                ),
+                remaining_dates: failed_dates,
                 inserted_days,
                 total_records,
-                failure_details.join("；"),
-                extra
-            ));
+            });
         }
 
         on_progress(total_days, total_days, "完成".into());

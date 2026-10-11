@@ -58,7 +58,9 @@ async fn test_core_state_repair_gaps_cancellation() {
         .await;
 
     assert!(res.is_err());
-    assert!(res.unwrap_err().contains("取消"));
+    let err = res.unwrap_err();
+    assert!(err.contains("取消"));
+    assert!(!err.remaining_dates.is_empty());
 }
 
 #[gpui_kit::test]
