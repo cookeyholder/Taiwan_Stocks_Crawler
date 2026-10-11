@@ -271,3 +271,13 @@ pub struct MacdResult {
     pub signal_line: Vec<Option<f64>>,
     pub histogram: Vec<Option<f64>>,
 }
+
+/// 資料庫缺漏交易日診斷報告
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GapReport {
+    pub start_date: String,
+    pub end_date: String,
+    pub total_workdays: usize,
+    pub recorded_dates: usize,
+    pub missing_dates: Vec<String>,
+}

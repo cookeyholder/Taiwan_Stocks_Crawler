@@ -1,10 +1,11 @@
 pub mod migrations;
 
+use chrono::Datelike;
 use rusqlite::{Connection, Result as SqlResult, params};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::models::{CacheParams, CanonicalQuote, OhlcvRecord, ScreenResult};
+use crate::models::{CacheParams, CanonicalQuote, GapReport, OhlcvRecord, ScreenResult};
 
 pub struct MarketRepository {
     conn: Mutex<Connection>,
@@ -310,6 +311,84 @@ impl MarketRepository {
         )?;
         let rows = stmt.query_map(params![start, end], |row| row.get(0))?;
         rows.collect()
+    }
+
+    /// 查詢指定日期區間內所有未入庫之平日工作日（自動排除週六與週日）
+    pub fn find_missing_dates(&self, start: &str, end: &str) -> SqlResult<Vec<String>> {
+        let start_date = chrono::NaiveDate::parse_from_str(start, "%Y-%m-%d")
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let end_date = chrono::NaiveDate::parse_from_str(end, "%Y-%m-%d")
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        if start_date > end_date {
+            return Ok(Vec::new());
+        }
+
+        let recorded_dates: std::collections::HashSet<String> = self
+            .get_trade_dates_in_range(start, end)?
+            .into_iter()
+            .collect();
+
+        let mut missing = Vec::new();
+        let mut curr = start_date;
+        while curr <= end_date {
+            let weekday = curr.weekday();
+            if weekday != chrono::Weekday::Sat && weekday != chrono::Weekday::Sun {
+                let date_str = curr.format("%Y-%m-%d").to_string();
+                if !recorded_dates.contains(&date_str) {
+                    missing.push(date_str);
+                }
+            }
+            curr += chrono::Duration::days(1);
+        }
+
+        Ok(missing)
+    }
+
+    /// 診斷指定日期區間之平日交易日缺漏狀況並回傳診斷報告
+    pub fn diagnose_gaps(&self, start: &str, end: &str) -> SqlResult<GapReport> {
+        let start_date = chrono::NaiveDate::parse_from_str(start, "%Y-%m-%d")
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let end_date = chrono::NaiveDate::parse_from_str(end, "%Y-%m-%d")
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        if start_date > end_date {
+            return Ok(GapReport {
+                start_date: start.to_string(),
+                end_date: end.to_string(),
+                total_workdays: 0,
+                recorded_dates: 0,
+                missing_dates: Vec::new(),
+            });
+        }
+
+        let recorded_dates_vec = self.get_trade_dates_in_range(start, end)?;
+        let recorded_set: std::collections::HashSet<String> =
+            recorded_dates_vec.into_iter().collect();
+
+        let mut total_workdays = 0;
+        let mut missing_dates = Vec::new();
+        let mut curr = start_date;
+
+        while curr <= end_date {
+            let weekday = curr.weekday();
+            if weekday != chrono::Weekday::Sat && weekday != chrono::Weekday::Sun {
+                total_workdays += 1;
+                let date_str = curr.format("%Y-%m-%d").to_string();
+                if !recorded_set.contains(&date_str) {
+                    missing_dates.push(date_str);
+                }
+            }
+            curr += chrono::Duration::days(1);
+        }
+
+        Ok(GapReport {
+            start_date: start.to_string(),
+            end_date: end.to_string(),
+            total_workdays,
+            recorded_dates: recorded_set.len(),
+            missing_dates,
+        })
     }
 
     pub fn get_active_symbols(
@@ -783,5 +862,66 @@ mod tests {
 
         let groups = repo.get_watchlist_groups().unwrap();
         assert_eq!(groups, vec!["群組A".to_string(), "群組B".to_string()]);
+    }
+
+    #[test]
+    fn test_diagnose_gaps_and_find_missing() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+
+        // 2026-07-06(週一) ~ 2026-07-12(週日)
+        // 平日為 07-06, 07-07, 07-08, 07-09, 07-10 (共 5 天)
+        // 週末為 07-11(六), 07-12(日)
+        let report_empty = repo.diagnose_gaps("2026-07-06", "2026-07-12").unwrap();
+        assert_eq!(report_empty.total_workdays, 5);
+        assert_eq!(report_empty.recorded_dates, 0);
+        assert_eq!(report_empty.missing_dates.len(), 5);
+        assert_eq!(
+            report_empty.missing_dates,
+            vec![
+                "2026-07-06",
+                "2026-07-07",
+                "2026-07-08",
+                "2026-07-09",
+                "2026-07-10"
+            ]
+        );
+
+        // 插入週一 (07-06) 與週三 (07-08)
+        let quotes = vec![
+            make_quote("2330", "2026-07-06", 500.0),
+            make_quote("2330", "2026-07-08", 505.0),
+        ];
+        repo.upsert_core_batch(&quotes).unwrap();
+
+        let report_partial = repo.diagnose_gaps("2026-07-06", "2026-07-12").unwrap();
+        assert_eq!(report_partial.total_workdays, 5);
+        assert_eq!(report_partial.recorded_dates, 2);
+        assert_eq!(report_partial.missing_dates.len(), 3);
+        assert_eq!(
+            report_partial.missing_dates,
+            vec!["2026-07-07", "2026-07-09", "2026-07-10"]
+        );
+
+        // 插入剩餘平日
+        let quotes_rest = vec![
+            make_quote("2330", "2026-07-07", 510.0),
+            make_quote("2330", "2026-07-09", 515.0),
+            make_quote("2330", "2026-07-10", 520.0),
+        ];
+        repo.upsert_core_batch(&quotes_rest).unwrap();
+
+        let report_full = repo.diagnose_gaps("2026-07-06", "2026-07-12").unwrap();
+        assert_eq!(report_full.total_workdays, 5);
+        assert_eq!(report_full.recorded_dates, 5);
+        assert_eq!(report_full.missing_dates.len(), 0);
+        assert!(report_full.missing_dates.is_empty());
+    }
+
+    #[test]
+    fn test_diagnose_gaps_invalid_range() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let report = repo.diagnose_gaps("2026-07-10", "2026-07-01").unwrap();
+        assert_eq!(report.total_workdays, 0);
+        assert_eq!(report.missing_dates.len(), 0);
     }
 }

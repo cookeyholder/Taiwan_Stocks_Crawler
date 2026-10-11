@@ -8,6 +8,8 @@ use gpui_kit::{
     px, rgb,
 };
 
+use stock_core::models::GapReport;
+
 use crate::state::CoreState;
 
 fn get_today_str() -> String {
@@ -23,9 +25,11 @@ pub struct DownloadView {
     pub start_date_input: Entity<InputState>,
     pub end_date_input: Entity<InputState>,
     pub is_downloading: bool,
+    pub is_diagnosing: bool,
     pub progress_ratio: f32,
     pub status_text: String,
     pub db_summary: String,
+    pub gap_report: Option<GapReport>,
 }
 
 impl DownloadView {
@@ -54,9 +58,11 @@ impl DownloadView {
             start_date_input,
             end_date_input,
             is_downloading: false,
+            is_diagnosing: false,
             progress_ratio: 0.0,
             status_text: "就緒".into(),
             db_summary: "讀取中...".into(),
+            gap_report: None,
         };
         view.refresh_db_summary(cx);
         view
@@ -250,14 +256,141 @@ impl DownloadView {
 
     pub fn cancel_download(&mut self, cx: &mut Context<Self>) {
         self.core_state.cancel();
-        self.status_text = "已送出取消下載請求...".into();
+        self.status_text = "已送出取消請求...".into();
         cx.notify();
+    }
+
+    pub fn diagnose_gaps(&mut self, cx: &mut Context<Self>) {
+        if self.is_downloading || self.is_diagnosing {
+            return;
+        }
+        let start_date = self.start_date_input.read(cx).value().trim().to_string();
+        let end_date = self.end_date_input.read(cx).value().trim().to_string();
+
+        if start_date.is_empty() || end_date.is_empty() {
+            self.status_text = "請輸入有效的起始與結束日期進行診斷".into();
+            cx.notify();
+            return;
+        }
+
+        self.is_diagnosing = true;
+        self.status_text = format!(
+            "正在診斷區間 {} ~ {} 的缺漏平日交易日...",
+            start_date, end_date
+        );
+        cx.notify();
+
+        let core = self.core_state.clone();
+        cx.spawn(async move |this, cx| {
+            let res = core.diagnose_gaps(&start_date, &end_date).await;
+            let _ = this.update(cx, |view, cx| {
+                view.is_diagnosing = false;
+                match res {
+                    Ok(report) => {
+                        let missing_num = report.missing_dates.len();
+                        if missing_num == 0 {
+                            view.status_text = format!(
+                                "診斷完成：區間內共 {} 個平日均已有資料，無缺漏交易日！",
+                                report.total_workdays
+                            );
+                        } else {
+                            view.status_text = format!(
+                                "診斷完成：共 {} 個平日中，發現 {} 天缺漏交易日待修補",
+                                report.total_workdays, missing_num
+                            );
+                        }
+                        view.gap_report = Some(report);
+                    }
+                    Err(e) => {
+                        view.status_text = format!("診斷失敗：{}", e);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub fn repair_gaps(&mut self, cx: &mut Context<Self>) {
+        if self.is_downloading {
+            return;
+        }
+        let missing_dates = match &self.gap_report {
+            Some(report) if !report.missing_dates.is_empty() => report.missing_dates.clone(),
+            _ => {
+                self.status_text = "目前無缺漏日可修補，請先點擊「診斷缺漏交易日」".into();
+                cx.notify();
+                return;
+            }
+        };
+
+        self.is_downloading = true;
+        self.progress_ratio = 0.0;
+        self.status_text = format!("開始定向修補共 {} 個缺漏交易日...", missing_dates.len());
+        cx.notify();
+
+        let core = self.core_state.clone();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(usize, usize, String)>();
+
+        cx.spawn(async move |this, cx| {
+            let missing_clone = missing_dates.clone();
+            let mut repair_task = crate::state::TOKIO_RUNTIME.spawn(async move {
+                core.repair_gaps(&missing_clone, move |done, total, date| {
+                    let _ = tx.send((done, total, date));
+                })
+                .await
+            });
+
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        if let Some((done, total, date)) = msg {
+                            let _ = this.update(cx, |view, cx| {
+                                view.progress_ratio = if total > 0 { done as f32 / total as f32 } else { 0.0 };
+                                let pct = (view.progress_ratio * 100.0) as u32;
+                                view.status_text = format!("正在修補 {}（進度: {}/{}，{}%）", date, done, total, pct);
+                                cx.notify();
+                            });
+                        }
+                    }
+                    res = &mut repair_task => {
+                        let final_res = match res {
+                            Ok(inner) => inner,
+                            Err(e) => Err(format!("背景修補任務異常：{}", e)),
+                        };
+                        let _ = this.update(cx, |view, cx| {
+                            view.is_downloading = false;
+                            view.progress_ratio = 1.0;
+                            match final_res {
+                                Ok(msg) => {
+                                    view.status_text = msg;
+                                    view.gap_report = None;
+                                    view.refresh_db_summary(cx);
+                                }
+                                Err(e) => {
+                                    view.status_text = format!("修補失敗：{}", e);
+                                }
+                            }
+                            cx.notify();
+                        });
+                        break;
+                    }
+                }
+            }
+        })
+        .detach();
     }
 }
 
 impl Render for DownloadView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_dl = self.is_downloading;
+        let is_diag = self.is_diagnosing;
+        let missing_count = self
+            .gap_report
+            .as_ref()
+            .map(|r| r.missing_dates.len())
+            .unwrap_or(0);
 
         div()
             .size_full()
@@ -328,6 +461,29 @@ impl Render for DownloadView {
                             })),
                     )
                     .child(
+                        Button::new("btn-diagnose-gaps")
+                            .label(if is_diag {
+                                "診斷中..."
+                            } else {
+                                "🔍 診斷缺漏交易日"
+                            })
+                            .secondary()
+                            .disabled(is_dl || is_diag)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.diagnose_gaps(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("btn-repair-gaps")
+                            .label(format!("🔧 一鍵修補缺漏 ({})", missing_count))
+                            .when(missing_count > 0, |b| b.primary())
+                            .when(missing_count == 0, |b| b.secondary())
+                            .disabled(is_dl || is_diag || missing_count == 0)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.repair_gaps(cx);
+                            })),
+                    )
+                    .child(
                         Button::new("btn-delete-range")
                             .label("刪除指定區間")
                             .danger()
@@ -339,7 +495,7 @@ impl Render for DownloadView {
                     .when(is_dl, |this| {
                         this.child(
                             Button::new("btn-cancel-download")
-                                .label("取消下載")
+                                .label("取消作業")
                                 .danger()
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.cancel_download(cx);
@@ -347,6 +503,65 @@ impl Render for DownloadView {
                         )
                     }),
             )
+            .when_some(self.gap_report.clone(), |this, report| {
+                if report.missing_dates.is_empty() {
+                    this.child(
+                        div()
+                            .p_2p5()
+                            .rounded_md()
+                            .border_1()
+                            .border_color(rgb(0x16a34a))
+                            .bg(rgb(0x0f291e))
+                            .text_color(rgb(0x4ade80))
+                            .text_sm()
+                            .child(format!(
+                                "✅ 診斷完成：{} ~ {} 區間共 {} 個平日均已完整入庫，無缺漏交易日！",
+                                report.start_date, report.end_date, report.total_workdays
+                            )),
+                    )
+                } else {
+                    let preview_dates = if report.missing_dates.len() > 10 {
+                        format!(
+                            "{} 等共 {} 天",
+                            report.missing_dates[..10].join(", "),
+                            report.missing_dates.len()
+                        )
+                    } else {
+                        report.missing_dates.join(", ")
+                    };
+                    this.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .p_2p5()
+                            .rounded_md()
+                            .border_1()
+                            .border_color(rgb(0xd97706))
+                            .bg(rgb(0x2d1a0e))
+                            .child(
+                                div()
+                                    .text_color(rgb(0xfbbf24))
+                                    .font_weight(gpui_kit::FontWeight::BOLD)
+                                    .text_sm()
+                                    .child(format!(
+                                        "⚠️ 缺漏警示：{} ~ {} 區間共 {} 個平日中，已入庫 {} 天，缺漏 {} 天待修補",
+                                        report.start_date,
+                                        report.end_date,
+                                        report.total_workdays,
+                                        report.recorded_dates,
+                                        report.missing_dates.len()
+                                    )),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0xfcd34d))
+                                    .child(format!("缺漏日期清單：{}", preview_dates)),
+                            ),
+                    )
+                }
+            })
             .child(
                 div()
                     .w_full()
