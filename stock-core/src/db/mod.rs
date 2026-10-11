@@ -703,6 +703,7 @@ mod tests {
             latest_bandwidth: 0.04,
             latest_upper_band: Some(1050.0),
             break_upper: false,
+            tags: vec![],
         }];
         repo.set_cached_screening(key, &params, &results).unwrap();
         let cached = repo.get_cached_screening(key).unwrap().unwrap();
@@ -739,6 +740,7 @@ mod tests {
             latest_bandwidth: 0.0,
             latest_upper_band: None,
             break_upper: false,
+            tags: vec![],
         }];
         let second = vec![ScreenResult {
             symbol: "1101".into(),
@@ -750,6 +752,7 @@ mod tests {
             latest_bandwidth: 0.0,
             latest_upper_band: None,
             break_upper: false,
+            tags: vec![],
         }];
         repo.set_cached_screening(key, &params, &first).unwrap();
         repo.set_cached_screening(key, &params, &second).unwrap();
