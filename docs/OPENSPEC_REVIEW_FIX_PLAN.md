@@ -19,4 +19,4 @@ openspec instructions tasks --change "review-pr-38-42-fixes"
 - [x] OpenSpec delta 規格與實作任務對應全部修正項目。
 - [x] 已執行 `openspec validate review-pr-38-42-fixes --strict`。
 - [ ] 工作區測試、建置、Clippy 與格式檢查全數通過。
-- [ ] 建立連結本次審查 issue 的修正 PR。
+- [x] 已建立 [PR #44](https://github.com/cookeyholder/Taiwan_Stocks_Crawler/pull/44)，並關聯 Issue #43。
