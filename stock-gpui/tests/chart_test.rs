@@ -245,6 +245,7 @@ fn test_analysis_crosshair_and_hud(cx: &mut TestAppContext) {
             macd_line: vec![Some(2.5); 20],
             macd_signal: vec![Some(1.8); 20],
             macd_histogram: vec![Some(0.7); 20],
+            institutional: vec![None; 20],
         });
 
         // 模擬滑鼠移動至第 5 根 K 棒

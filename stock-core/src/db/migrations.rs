@@ -77,6 +77,24 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (symbol_clean, group_name)
     );
     CREATE INDEX IF NOT EXISTS idx_watchlists_group ON watchlists(group_name);",
+    // V7: institutional_investors (三大法人買賣超)
+    "CREATE TABLE IF NOT EXISTS institutional_investors (
+        trade_date       TEXT NOT NULL,
+        symbol_clean     TEXT NOT NULL,
+        foreign_buy      INTEGER NOT NULL DEFAULT 0,
+        foreign_sell     INTEGER NOT NULL DEFAULT 0,
+        foreign_net      INTEGER NOT NULL DEFAULT 0,
+        trust_buy        INTEGER NOT NULL DEFAULT 0,
+        trust_sell       INTEGER NOT NULL DEFAULT 0,
+        trust_net        INTEGER NOT NULL DEFAULT 0,
+        dealer_buy       INTEGER NOT NULL DEFAULT 0,
+        dealer_sell      INTEGER NOT NULL DEFAULT 0,
+        dealer_net       INTEGER NOT NULL DEFAULT 0,
+        total_net        INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (trade_date, symbol_clean)
+    );
+    CREATE INDEX IF NOT EXISTS idx_inst_investors_symbol_date
+     ON institutional_investors(symbol_clean, trade_date);",
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -113,6 +131,8 @@ mod tests {
         conn.execute("SELECT 1 FROM screener_cache LIMIT 1", [])
             .unwrap();
         conn.execute("SELECT 1 FROM watchlists LIMIT 1", [])
+            .unwrap();
+        conn.execute("SELECT 1 FROM institutional_investors LIMIT 1", [])
             .unwrap();
     }
 

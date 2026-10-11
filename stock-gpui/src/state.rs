@@ -102,6 +102,7 @@ pub struct AnalysisData {
     pub macd_line: Vec<Option<f64>>,
     pub macd_signal: Vec<Option<f64>>,
     pub macd_histogram: Vec<Option<f64>>,
+    pub institutional: Vec<Option<InstitutionalRecord>>,
 }
 
 #[derive(Clone, Debug)]
@@ -293,6 +294,27 @@ impl CoreState {
 
         let name = pipeline.repo.get_symbol_name(symbol).ok().flatten();
 
+        let inst_records =
+            if let (Some(first), Some(last)) = (output.ohlcv.first(), output.ohlcv.last()) {
+                pipeline
+                    .repo
+                    .get_institutional_records(symbol, &first.trade_date, &last.trade_date)
+                    .unwrap_or_default()
+            } else {
+                vec![]
+            };
+
+        let inst_map: HashMap<String, InstitutionalRecord> = inst_records
+            .into_iter()
+            .map(|r| (r.trade_date.clone(), r))
+            .collect();
+
+        let institutional: Vec<Option<InstitutionalRecord>> = output
+            .ohlcv
+            .iter()
+            .map(|bar| inst_map.get(&bar.trade_date).cloned())
+            .collect();
+
         let empty = vec![];
         Ok(AnalysisData {
             symbol: symbol.to_string(),
@@ -332,6 +354,7 @@ impl CoreState {
                 .as_ref()
                 .map(|m| m.histogram.clone())
                 .unwrap_or_default(),
+            institutional,
         })
     }
 

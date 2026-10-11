@@ -293,3 +293,20 @@ pub struct GapReport {
     pub recorded_dates: usize,
     pub missing_dates: Vec<String>,
 }
+
+/// 三大法人買賣超記錄
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InstitutionalRecord {
+    pub trade_date: String,
+    pub symbol: String,
+    pub foreign_buy: i64,
+    pub foreign_sell: i64,
+    pub foreign_net: i64,
+    pub trust_buy: i64,
+    pub trust_sell: i64,
+    pub trust_net: i64,
+    pub dealer_buy: i64,
+    pub dealer_sell: i64,
+    pub dealer_net: i64,
+    pub total_net: i64,
+}
