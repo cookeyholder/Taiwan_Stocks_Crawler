@@ -63,6 +63,27 @@ impl ChartViewport {
         (start, end)
     }
 
+    /// 依據滑鼠相對 X 座標換算對應的可見 K 棒相對索引（0..visible_count）與全域絕對索引（0..total）
+    pub fn candle_index_at_x(
+        &self,
+        relative_x: f32,
+        chart_width: f32,
+        total: usize,
+    ) -> Option<(usize, usize)> {
+        if total == 0 || chart_width <= 0.0 || relative_x < 0.0 || relative_x > chart_width {
+            return None;
+        }
+        let (start, end) = self.slice_range(total);
+        let vis_len = end.saturating_sub(start);
+        if vis_len == 0 {
+            return None;
+        }
+        let col = ((relative_x / chart_width) * vis_len as f32).floor() as usize;
+        let col = col.min(vis_len.saturating_sub(1));
+        let abs_idx = start + col;
+        Some((col, abs_idx))
+    }
+
     /// 處理滑鼠滾輪縮放與平移
     pub fn handle_scroll_wheel(&mut self, delta: &ScrollDelta, total: usize) -> bool {
         match delta {
