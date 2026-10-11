@@ -16,7 +16,7 @@ impl Default for BollingerSqueezeBreakout {
             bandwidth_limit: 0.08,
             consecutive_days: 5,
             min_volume: 0,
-            require_break_upper: false,
+            require_break_upper: true,
         }
     }
 }

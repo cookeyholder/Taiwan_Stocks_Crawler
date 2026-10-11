@@ -244,3 +244,16 @@ fn test_screener_view_mode_switching_headless(cx: &mut gpui_kit::TestAppContext)
         assert_eq!(delegate.results.len(), 0);
     });
 }
+
+#[test]
+fn test_yahoo_stock_url_generation() {
+    use stock_gpui::views::screener::get_yahoo_stock_url;
+    assert_eq!(
+        get_yahoo_stock_url("2330"),
+        "https://tw.stock.yahoo.com/quote/2330.TW/technical-analysis"
+    );
+    assert_eq!(
+        get_yahoo_stock_url("2608"),
+        "https://tw.stock.yahoo.com/quote/2608.TW/technical-analysis"
+    );
+}

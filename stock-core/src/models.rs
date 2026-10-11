@@ -310,3 +310,25 @@ pub struct InstitutionalRecord {
     pub dealer_net: i64,
     pub total_net: i64,
 }
+
+/// 券商營業據點買賣明細記錄
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BrokerTradeRecord {
+    pub trade_date: String,
+    pub symbol: String,
+    pub broker_id: String,
+    pub broker_name: String,
+    pub price: f64,
+    pub buy_shares: i64,
+    pub sell_shares: i64,
+}
+
+/// 券商分點買賣超彙總
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BrokerSummary {
+    pub broker_id: String,
+    pub broker_name: String,
+    pub total_buy: i64,
+    pub total_sell: i64,
+    pub net_shares: i64,
+}

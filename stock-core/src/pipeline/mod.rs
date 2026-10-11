@@ -7,6 +7,21 @@ use crate::{date_utils, fetcher::HttpClient};
 
 use chrono::NaiveDate;
 
+pub mod broker;
+
+/// 過濾 TWSE 上市普通股代碼
+/// 規則：4 碼純數字且非 0 開頭（排除 00xx ETF、02xx ETN、權證 6 碼與特別股英數字）
+pub fn filter_twse_common_stock_symbols(symbols: &[String]) -> Vec<String> {
+    let mut filtered: Vec<String> = symbols
+        .iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| s.len() == 4 && s.chars().all(|c| c.is_ascii_digit()) && !s.starts_with('0'))
+        .collect();
+    filtered.sort();
+    filtered.dedup();
+    filtered
+}
+
 pub fn build_cache_key(
     version: &str,
     query_date: &str,
@@ -37,6 +52,12 @@ impl Pipeline {
             repo,
             cancel_flag: None,
         }
+    }
+
+    pub fn get_twse_stock_symbols(&self) -> Result<Vec<String>, PipelineError> {
+        let distinct = self.repo.get_distinct_symbols()?;
+        let symbols: Vec<String> = distinct.into_iter().map(|(s, _, _)| s).collect();
+        Ok(filter_twse_common_stock_symbols(&symbols))
     }
 
     pub async fn fetch_today(&self) -> Result<IngestionOutcome, PipelineError> {
@@ -432,6 +453,26 @@ pub enum PipelineError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_filter_twse_common_stock_symbols() {
+        let input = vec![
+            "1101".to_string(),   // 台泥（普通股）
+            "2330".to_string(),   // 台積電（普通股）
+            "9958".to_string(),   // 世紀鋼（普通股）
+            "0050".to_string(),   // 元大台灣50（ETF - 應排除）
+            "0056".to_string(),   // 元大高股息（ETF - 應排除）
+            "00878".to_string(),  // 國泰永續高股息（ETF - 應排除）
+            "020000".to_string(), // ETN - 應排除
+            "03001P".to_string(), // 認售權證 - 應排除
+            "083922".to_string(), // 權證 - 應排除
+            "2881A".to_string(),  // 特別股 - 應排除
+            " 2330 ".to_string(), // 帶空白重複項 - 應清洗並去重
+        ];
+
+        let result = filter_twse_common_stock_symbols(&input);
+        assert_eq!(result, vec!["1101", "2330", "9958"]);
+    }
 
     #[test]
     fn test_parse_float_normal() {

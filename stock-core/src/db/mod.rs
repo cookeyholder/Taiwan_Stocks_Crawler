@@ -2,11 +2,12 @@ pub mod migrations;
 
 use chrono::Datelike;
 use rusqlite::{Connection, Result as SqlResult, params};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use crate::models::{
-    CacheParams, CanonicalQuote, GapReport, InstitutionalRecord, OhlcvRecord, ScreenResult,
+    BrokerSummary, BrokerTradeRecord, CacheParams, CanonicalQuote, GapReport, InstitutionalRecord,
+    OhlcvRecord, ScreenResult,
 };
 
 pub struct MarketRepository {
@@ -705,6 +706,111 @@ impl MarketRepository {
         })?;
         rows.collect()
     }
+
+    /// 批次寫入或更新券商買賣分點成交明細資料
+    pub fn upsert_broker_trades_batch(&self, records: &[BrokerTradeRecord]) -> SqlResult<usize> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let mut count = 0;
+        {
+            let mut stmt = tx.prepare_cached(
+                "INSERT INTO broker_trades (
+                    trade_date, symbol_clean, broker_id, broker_name,
+                    price, buy_shares, sell_shares
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                ON CONFLICT(trade_date, symbol_clean, broker_id, price) DO UPDATE SET
+                    broker_name = excluded.broker_name,
+                    buy_shares = excluded.buy_shares,
+                    sell_shares = excluded.sell_shares
+                ",
+            )?;
+            for r in records {
+                stmt.execute(params![
+                    r.trade_date,
+                    r.symbol,
+                    r.broker_id,
+                    r.broker_name,
+                    r.price,
+                    r.buy_shares,
+                    r.sell_shares,
+                ])?;
+                count += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(count)
+    }
+
+    /// 查詢指定個股與交易日之券商分點成交明細（依券商代號與價格排序）
+    pub fn get_broker_trades(
+        &self,
+        symbol: &str,
+        trade_date: &str,
+    ) -> SqlResult<Vec<BrokerTradeRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT trade_date, symbol_clean, broker_id, broker_name,
+                    price, buy_shares, sell_shares
+             FROM broker_trades
+             WHERE symbol_clean = ?1 AND trade_date = ?2
+             ORDER BY broker_id ASC, price ASC",
+        )?;
+        let rows = stmt.query_map(params![symbol, trade_date], |row| {
+            Ok(BrokerTradeRecord {
+                trade_date: row.get(0)?,
+                symbol: row.get(1)?,
+                broker_id: row.get(2)?,
+                broker_name: row.get(3)?,
+                price: row.get(4)?,
+                buy_shares: row.get(5)?,
+                sell_shares: row.get(6)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    /// 查詢指定交易日中已完成分點數據入庫之所有個股代號集合（供斷點續傳比對）
+    pub fn get_broker_completed_symbols(&self, trade_date: &str) -> SqlResult<HashSet<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT DISTINCT symbol_clean FROM broker_trades WHERE trade_date = ?1",
+        )?;
+        let rows = stmt.query_map(params![trade_date], |row| row.get(0))?;
+        let mut set = HashSet::new();
+        for r in rows {
+            set.insert(r?);
+        }
+        Ok(set)
+    }
+
+    /// 查詢指定個股與交易日之券商分點買賣超彙總（依淨買賣張數絕對值降冪排序）
+    pub fn get_broker_summary(
+        &self,
+        symbol: &str,
+        trade_date: &str,
+    ) -> SqlResult<Vec<BrokerSummary>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT broker_id, broker_name,
+                    SUM(buy_shares) as total_buy,
+                    SUM(sell_shares) as total_sell,
+                    SUM(buy_shares - sell_shares) as net_shares
+             FROM broker_trades
+             WHERE symbol_clean = ?1 AND trade_date = ?2
+             GROUP BY broker_id, broker_name
+             ORDER BY ABS(SUM(buy_shares - sell_shares)) DESC",
+        )?;
+        let rows = stmt.query_map(params![symbol, trade_date], |row| {
+            Ok(BrokerSummary {
+                broker_id: row.get(0)?,
+                broker_name: row.get(1)?,
+                total_buy: row.get(2)?,
+                total_sell: row.get(3)?,
+                net_shares: row.get(4)?,
+            })
+        })?;
+        rows.collect()
+    }
 }
 
 #[cfg(test)]
@@ -1069,5 +1175,68 @@ mod tests {
         let report = repo.diagnose_gaps("2026-07-10", "2026-07-01").unwrap();
         assert_eq!(report.total_workdays, 0);
         assert_eq!(report.missing_dates.len(), 0);
+    }
+
+    #[test]
+    fn test_broker_trades_upsert_and_query() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let records = vec![
+            BrokerTradeRecord {
+                trade_date: "2026-10-08".to_string(),
+                symbol: "2330".to_string(),
+                broker_id: "1020".to_string(),
+                broker_name: "合庫".to_string(),
+                price: 2550.0,
+                buy_shares: 8000,
+                sell_shares: 0,
+            },
+            BrokerTradeRecord {
+                trade_date: "2026-10-08".to_string(),
+                symbol: "2330".to_string(),
+                broker_id: "1020".to_string(),
+                broker_name: "合庫".to_string(),
+                price: 2555.0,
+                buy_shares: 5018,
+                sell_shares: 8,
+            },
+            BrokerTradeRecord {
+                trade_date: "2026-10-08".to_string(),
+                symbol: "2317".to_string(),
+                broker_id: "9A00".to_string(),
+                broker_name: "永豐金".to_string(),
+                price: 200.0,
+                buy_shares: 10000,
+                sell_shares: 2000,
+            },
+        ];
+
+        let count = repo.upsert_broker_trades_batch(&records).unwrap();
+        assert_eq!(count, 3);
+
+        // 測試重複寫入冪等性
+        let count_again = repo.upsert_broker_trades_batch(&records).unwrap();
+        assert_eq!(count_again, 3);
+
+        // 查詢 2330 交易日明細
+        let trades_2330 = repo.get_broker_trades("2330", "2026-10-08").unwrap();
+        assert_eq!(trades_2330.len(), 2);
+        assert_eq!(trades_2330[0].broker_id, "1020");
+        assert_eq!(trades_2330[0].price, 2550.0);
+        assert_eq!(trades_2330[1].price, 2555.0);
+
+        // 查詢已完成代號集合
+        let completed = repo.get_broker_completed_symbols("2026-10-08").unwrap();
+        assert_eq!(completed.len(), 2);
+        assert!(completed.contains("2330"));
+        assert!(completed.contains("2317"));
+        assert!(!completed.contains("2454"));
+
+        // 測試買賣超彙總
+        let summary_2330 = repo.get_broker_summary("2330", "2026-10-08").unwrap();
+        assert_eq!(summary_2330.len(), 1);
+        assert_eq!(summary_2330[0].broker_id, "1020");
+        assert_eq!(summary_2330[0].total_buy, 13018);
+        assert_eq!(summary_2330[0].total_sell, 8);
+        assert_eq!(summary_2330[0].net_shares, 13010);
     }
 }

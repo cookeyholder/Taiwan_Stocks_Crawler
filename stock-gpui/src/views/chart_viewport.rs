@@ -15,7 +15,7 @@ pub struct ChartViewport {
 impl Default for ChartViewport {
     fn default() -> Self {
         Self {
-            visible_count: 40,
+            visible_count: 30,
             offset: 0,
             drag_start_x: None,
         }
@@ -45,7 +45,7 @@ impl ChartViewport {
     }
 
     pub fn reset(&mut self) {
-        self.visible_count = 40;
+        self.visible_count = 30;
         self.offset = 0;
         self.drag_start_x = None;
     }

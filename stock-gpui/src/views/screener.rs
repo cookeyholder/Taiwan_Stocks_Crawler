@@ -21,6 +21,14 @@ use crate::state::{AnalysisData, CoreState, ScreenerMode, ScreenerParams, defaul
 use crate::views::chart_viewport::{ChartViewport, compute_price_scales, compute_volume_scales};
 use stock_core::db::MarketRepository;
 
+/// 產生 Yahoo! 股市技術分析頁面連結
+pub fn get_yahoo_stock_url(symbol: &str) -> String {
+    format!(
+        "https://tw.stock.yahoo.com/quote/{}.TW/technical-analysis",
+        symbol
+    )
+}
+
 fn get_screener_default_dates() -> (String, String) {
     let db_path = default_db_path();
     if let Ok(repo) = MarketRepository::open(db_path.to_str().unwrap_or(""))
@@ -190,7 +198,10 @@ impl TableDelegate for ScreenerDelegate {
     ) -> impl IntoElement {
         let r = &self.results[row];
         let content: gpui_kit::AnyElement = match col {
-            0 => div().child(r.symbol.clone()).into_any_element(),
+            0 => div()
+                .text_color(rgb(0x3b82f6))
+                .child(format!("{} ↗", r.symbol))
+                .into_any_element(),
             1 => div()
                 .child(r.name.clone().unwrap_or_default())
                 .into_any_element(),
@@ -270,6 +281,7 @@ pub struct ScreenerView {
     pub lookback_input: Entity<InputState>,
     pub include_etf: bool,
     pub break_upper_only: bool,
+    pub latest_day_only: bool,
     pub show_bollinger: bool,
     pub table_state: Entity<TableState<ScreenerDelegate>>,
     pub is_running: bool,
@@ -351,12 +363,18 @@ impl ScreenerView {
                         );
                     }
                 }
-                TableEvent::SelectCell(r, _) | TableEvent::DoubleClickedCell(r, _) => {
+                TableEvent::SelectCell(r, c) | TableEvent::DoubleClickedCell(r, c) => {
                     let item_opt = {
                         let d = table.read(cx).delegate();
                         d.results.get(*r).cloned()
                     };
                     if let Some(item) = item_opt {
+                        if *c == 0 {
+                            let url = get_yahoo_stock_url(&item.symbol);
+                            if let Err(e) = open::that(&url) {
+                                eprintln!("開啟 Yahoo 股市連結失敗: {}", e);
+                            }
+                        }
                         this.select_and_load_chart(
                             &item.symbol,
                             item.name,
@@ -404,7 +422,8 @@ impl ScreenerView {
             long_ma_input,
             lookback_input,
             include_etf: false,
-            break_upper_only: false,
+            break_upper_only: true,
+            latest_day_only: true,
             show_bollinger: true,
             table_state,
             is_running: false,
@@ -547,6 +566,7 @@ impl ScreenerView {
             max_bandwidth: max_bw,
             min_days,
             require_break_upper: break_upper_only,
+            latest_day_only: self.latest_day_only,
             short_period,
             mid_period,
             long_period,
@@ -875,6 +895,15 @@ impl Render for ScreenerView {
                                 })),
                         )
                     })
+                    .child(
+                        Checkbox::new("screener-latest-day-only")
+                            .label("僅結束日觸發")
+                            .checked(self.latest_day_only)
+                            .on_click(cx.listener(|this, checked, _, cx| {
+                                this.latest_day_only = *checked;
+                                cx.notify();
+                            })),
+                    )
                     .child(
                         Button::new("btn-start-screen")
                             .label(if is_running {
@@ -1386,8 +1415,8 @@ impl Render for ScreenerView {
                 )))
                 .child(
                     resizable_panel()
-                        .size(px(520.))
-                        .size_range(px(320.)..px(1200.))
+                        .size(px(720.))
+                        .size_range(px(360.)..px(1600.))
                         .child(div().size_full().p_3().child(chart_section)),
                 );
 

@@ -11,7 +11,8 @@ use gpui_kit::component::table::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
-    PathBuilder, Pixels, Render, Styled as _, Window, canvas, div, hsla, point, px, rgb,
+    PathBuilder, Pixels, Render, StatefulInteractiveElement as _, Styled as _, Window, canvas, div,
+    hsla, point, px, rgb,
 };
 
 use std::collections::HashSet;
@@ -170,22 +171,32 @@ impl TableDelegate for AnalysisSecuritiesDelegate {
     ) -> impl IntoElement {
         let item = &self.filtered_items[row];
         let is_fav = self.watchlist.contains(&item.symbol);
-        let text = match col {
+        match col {
             0 => {
-                if is_fav {
-                    format!("★ {}", item.symbol)
+                let sym_text = if is_fav {
+                    format!("★ {} ↗", item.symbol)
                 } else {
-                    item.symbol.clone()
-                }
+                    format!("{} ↗", item.symbol)
+                };
+                div()
+                    .text_size(self.font_size.size_px())
+                    .cursor_pointer()
+                    .text_color(if is_fav { rgb(0xeab308) } else { rgb(0x3b82f6) })
+                    .hover(|s| s.underline())
+                    .child(sym_text)
+                    .into_any_element()
             }
-            1 => item.market.clone(),
-            _ => item.name.clone(),
-        };
-        div()
-            .text_size(self.font_size.size_px())
-            .cursor_pointer()
-            .when(col == 0 && is_fav, |this| this.text_color(rgb(0xeab308)))
-            .child(text)
+            1 => div()
+                .text_size(self.font_size.size_px())
+                .cursor_pointer()
+                .child(item.market.clone())
+                .into_any_element(),
+            _ => div()
+                .text_size(self.font_size.size_px())
+                .cursor_pointer()
+                .child(item.name.clone())
+                .into_any_element(),
+        }
     }
 }
 
@@ -249,10 +260,12 @@ impl AnalysisView {
         cx.subscribe(
             &table_state,
             |this: &mut Self, table, event: &TableEvent, cx| {
-                let row_opt = match event {
-                    TableEvent::SelectRow(r) | TableEvent::DoubleClickedRow(r) => Some(*r),
-                    TableEvent::SelectCell(r, _) | TableEvent::DoubleClickedCell(r, _) => Some(*r),
-                    _ => None,
+                let (row_opt, is_symbol_col) = match event {
+                    TableEvent::SelectRow(r) | TableEvent::DoubleClickedRow(r) => (Some(*r), false),
+                    TableEvent::SelectCell(r, c) | TableEvent::DoubleClickedCell(r, c) => {
+                        (Some(*r), *c == 0)
+                    }
+                    _ => (None, false),
                 };
                 if let Some(row) = row_opt {
                     let sym_opt = {
@@ -260,6 +273,12 @@ impl AnalysisView {
                         d.filtered_items.get(row).map(|item| item.symbol.clone())
                     };
                     if let Some(sym) = sym_opt {
+                        if is_symbol_col {
+                            let url = crate::views::screener::get_yahoo_stock_url(&sym);
+                            if let Err(e) = open::that(&url) {
+                                eprintln!("開啟 Yahoo 股市連結失敗: {}", e);
+                            }
+                        }
                         this.fetch_symbol(sym, cx);
                     }
                 }
@@ -1544,10 +1563,25 @@ impl Render for AnalysisView {
                                 .gap_2()
                                 .child(
                                     div()
+                                        .id("stock-header-symbol-link")
+                                        .cursor_pointer()
                                         .text_size(self.font_size.size_px() * 1.4)
                                         .font_weight(gpui_kit::FontWeight::BOLD)
                                         .text_color(text_title)
-                                        .child(data.symbol.clone()),
+                                        .hover(|s| s.underline())
+                                        .child(format!("{} ↗", data.symbol))
+                                        .on_click(cx.listener({
+                                            let sym = data.symbol.clone();
+                                            move |_, _, _, _| {
+                                                let url =
+                                                    crate::views::screener::get_yahoo_stock_url(
+                                                        &sym,
+                                                    );
+                                                if let Err(e) = open::that(&url) {
+                                                    eprintln!("開啟 Yahoo 股市連結失敗: {}", e);
+                                                }
+                                            }
+                                        })),
                                 )
                                 .child(
                                     div()
@@ -1976,8 +2010,8 @@ impl Render for AnalysisView {
         h_resizable("analysis-resizable-layout")
             .child(
                 resizable_panel()
-                    .size(px(320.))
-                    .size_range(px(240.)..px(600.))
+                    .size(px(260.))
+                    .size_range(px(200.)..px(500.))
                     .child(left_panel),
             )
             .child(resizable_panel().child(div().size_full().child(right_content)))
