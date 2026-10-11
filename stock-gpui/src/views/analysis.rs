@@ -14,6 +14,8 @@ use gpui_kit::{
     PathBuilder, Pixels, Render, Styled as _, Window, canvas, div, hsla, point, px, rgb,
 };
 
+use std::sync::{Arc, Mutex};
+
 use crate::app::FontSizeLevel;
 use crate::state::{AnalysisData, CoreState, SecurityItem};
 use crate::views::chart_viewport::{ChartViewport, compute_price_scales, compute_volume_scales};
@@ -177,6 +179,9 @@ pub struct AnalysisView {
     pub show_ma: bool,
     pub show_macd: bool,
     pub is_dark: bool,
+    pub hovered_candle_idx: Option<usize>,
+    pub hover_pos: Option<gpui_kit::Point<Pixels>>,
+    pub main_chart_bounds: Arc<Mutex<Option<gpui_kit::Bounds<Pixels>>>>,
 }
 
 impl AnalysisView {
@@ -250,6 +255,9 @@ impl AnalysisView {
             show_ma: true,
             show_macd: true,
             is_dark: false,
+            hovered_candle_idx: None,
+            hover_pos: None,
+            main_chart_bounds: Arc::new(Mutex::new(None)),
         };
 
         view.load_securities(cx);
@@ -298,6 +306,8 @@ impl AnalysisView {
         self.is_loading = true;
         self.error_msg = None;
         self.chart_viewport.reset();
+        self.hovered_candle_idx = None;
+        self.hover_pos = None;
         cx.notify();
 
         let core = self.core_state.clone();
@@ -663,6 +673,84 @@ impl Render for AnalysisView {
                             window.paint_path(p, hsla(0.85, 0.85, 0.60, 1.0));
                         }
                     });
+                },
+            )
+            .size_full();
+
+            // 十字游標畫布
+            let visible_ohlcv_crosshair = visible_ohlcv.clone();
+            let hovered_idx = self.hovered_candle_idx;
+            let hover_pos = self.hover_pos;
+            let bounds_ref = self.main_chart_bounds.clone();
+
+            let crosshair_canvas = canvas(
+                move |_, _, _| {},
+                move |bounds, _, window, _cx| {
+                    bounds_ref.lock().unwrap().replace(bounds);
+
+                    let height = bounds.size.height.as_f32() - 18.0;
+                    if height <= 0.0
+                        || bounds.size.width.as_f32() <= 0.0
+                        || visible_ohlcv_crosshair.is_empty()
+                    {
+                        return;
+                    }
+
+                    let (Some(target_abs_idx), Some(hover_pt)) = (hovered_idx, hover_pos) else {
+                        return;
+                    };
+
+                    if hover_pt.x < bounds.origin.x
+                        || hover_pt.x > bounds.origin.x + bounds.size.width
+                        || hover_pt.y < bounds.origin.y
+                        || hover_pt.y > bounds.origin.y + bounds.size.height
+                    {
+                        return;
+                    }
+
+                    if target_abs_idx < start_idx || target_abs_idx >= end_idx {
+                        return;
+                    }
+
+                    let x_scale = ScaleBand::new(
+                        visible_ohlcv_crosshair.iter().map(|d| d.trade_date.clone()),
+                        [0., bounds.size.width.as_f32()],
+                    )
+                    .max_band_width(max_band_w.as_f32())
+                    .padding_inner(0.4)
+                    .padding_outer(0.2);
+
+                    let col_idx = target_abs_idx - start_idx;
+                    if let Some(candle) = visible_ohlcv_crosshair.get(col_idx)
+                        && let Some(xt) = x_scale.tick(&candle.trade_date)
+                    {
+                        let half_band = x_scale.band_width() / 2.0;
+                        let line_x = bounds.origin.x + px(xt + half_band);
+
+                        window.with_content_mask(
+                            Some(gpui_kit::ContentMask { bounds }),
+                            |window| {
+                                // 垂直十字線（微透明灰色，對齊 K 棒中心）
+                                let mut v_line = PathBuilder::stroke(px(1.0));
+                                v_line.move_to(point(line_x, bounds.origin.y));
+                                v_line.line_to(point(line_x, bounds.origin.y + bounds.size.height));
+                                if let Ok(path) = v_line.build() {
+                                    window.paint_path(path, hsla(0.6, 0.2, 0.70, 0.75));
+                                }
+
+                                // 水平十字線（跟隨游標 Y 座標）
+                                let mut h_line = PathBuilder::stroke(px(1.0));
+                                h_line.move_to(point(bounds.origin.x, hover_pt.y));
+                                h_line.line_to(point(
+                                    bounds.origin.x + bounds.size.width,
+                                    hover_pt.y,
+                                ));
+                                if let Ok(path) = h_line.build() {
+                                    window.paint_path(path, hsla(0.6, 0.2, 0.70, 0.75));
+                                }
+                            },
+                        );
+                    }
                 },
             )
             .size_full();
@@ -1139,7 +1227,14 @@ impl Render for AnalysisView {
                         })
                         .when(self.show_ma, |this| {
                             this.child(div().absolute().inset_0().size_full().child(ma_canvas))
-                        }),
+                        })
+                        .child(
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .size_full()
+                                .child(crosshair_canvas),
+                        ),
                 )
                 .child(price_axis);
 
@@ -1150,84 +1245,246 @@ impl Render for AnalysisView {
                 .child(div().flex_1().h_full().child(vol_chart))
                 .child(vol_axis);
 
-            let latest_rec = visible_ohlcv.last();
-            let latest_close = latest_rec.and_then(|r| r.close_price).unwrap_or(0.0);
-            let latest_vol = latest_rec.and_then(|r| r.volume_shares).unwrap_or(0);
+            let active_abs_idx = self
+                .hovered_candle_idx
+                .unwrap_or_else(|| total_candles.saturating_sub(1));
+            let is_hovered = self.hovered_candle_idx.is_some();
 
-            // 右側上方行情概況列
-            let stock_header = div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .px_3()
-                .py_2()
-                .bg(header_bg)
-                .border_b_1()
-                .border_color(border_col)
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_3()
-                        .child(
-                            div()
-                                .text_size(self.font_size.size_px() * 1.5)
-                                .font_weight(gpui_kit::FontWeight::BOLD)
-                                .text_color(text_title)
-                                .child(data.symbol.clone()),
-                        )
-                        .child(
-                            div()
-                                .text_size(self.font_size.size_px() * 1.15)
-                                .font_weight(gpui_kit::FontWeight::BOLD)
-                                .text_color(text_primary)
-                                .child(data.name.clone().unwrap_or_default()),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_4()
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_1()
-                                .child(
+            let active_rec = ohlcv.get(active_abs_idx);
+            let active_date = active_rec.map(|r| r.trade_date.as_str()).unwrap_or("");
+            let active_open = active_rec.and_then(|r| r.open_price).unwrap_or(0.0);
+            let active_high = active_rec.and_then(|r| r.high_price).unwrap_or(0.0);
+            let active_low = active_rec.and_then(|r| r.low_price).unwrap_or(0.0);
+            let active_close = active_rec.and_then(|r| r.close_price).unwrap_or(0.0);
+            let active_vol = active_rec.and_then(|r| r.volume_shares).unwrap_or(0);
+
+            let prev_close = if active_abs_idx > 0 {
+                ohlcv.get(active_abs_idx - 1).and_then(|r| r.close_price)
+            } else {
+                None
+            };
+
+            let (diff_val, diff_pct) = match prev_close {
+                Some(pc) if pc > 0.0 => (active_close - pc, ((active_close - pc) / pc) * 100.0),
+                _ => (0.0, 0.0),
+            };
+
+            let (diff_sign, price_color) = if diff_val > 0.0001 {
+                ("+", rgb(0xdc2626)) // 漲紅
+            } else if diff_val < -0.0001 {
+                ("", rgb(0x16a34a)) // 跌綠
+            } else {
+                ("", price_text)
+            };
+
+            let active_ma5 = data.ma5.get(active_abs_idx).copied().flatten();
+            let active_ma10 = data.ma10.get(active_abs_idx).copied().flatten();
+            let active_ma20 = data.ma20.get(active_abs_idx).copied().flatten();
+
+            let active_bb_u = data.bollinger_upper.get(active_abs_idx).copied().flatten();
+            let active_bb_m = data.bollinger_middle.get(active_abs_idx).copied().flatten();
+            let active_bb_l = data.bollinger_lower.get(active_abs_idx).copied().flatten();
+            let active_bb_bw = match (active_bb_u, active_bb_l, active_bb_m) {
+                (Some(u), Some(l), Some(m)) if m > 0.0 => Some((u - l) / m * 100.0),
+                _ => None,
+            };
+
+            let active_rsi = data.rsi.get(active_abs_idx).copied().flatten();
+            let active_macd_dif = data.macd_line.get(active_abs_idx).copied().flatten();
+            let active_macd_dea = data.macd_signal.get(active_abs_idx).copied().flatten();
+            let active_macd_osc = data.macd_histogram.get(active_abs_idx).copied().flatten();
+
+            let mode_badge = if is_hovered {
+                div()
+                    .px_1p5()
+                    .py_0p5()
+                    .rounded_sm()
+                    .bg(hsla(0.6, 0.8, 0.5, 0.2))
+                    .text_color(rgb(0x2563eb))
+                    .text_xs()
+                    .font_weight(gpui_kit::FontWeight::BOLD)
+                    .child("游標檢視")
+            } else {
+                div()
+                    .px_1p5()
+                    .py_0p5()
+                    .rounded_sm()
+                    .bg(hsla(0.0, 0.0, 0.5, 0.15))
+                    .text_color(text_secondary)
+                    .text_xs()
+                    .font_weight(gpui_kit::FontWeight::MEDIUM)
+                    .child("最新收盤")
+            };
+
+            // 右側上方行情概況與技術指標即時 HUD 資訊列
+            let stock_header =
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .px_3()
+                    .py_2()
+                    .bg(header_bg)
+                    .border_b_1()
+                    .border_color(border_col)
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .text_size(self.font_size.size_px() * 1.4)
+                                            .font_weight(gpui_kit::FontWeight::BOLD)
+                                            .text_color(text_title)
+                                            .child(data.symbol.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(self.font_size.size_px() * 1.1)
+                                            .font_weight(gpui_kit::FontWeight::BOLD)
+                                            .text_color(text_primary)
+                                            .child(data.name.clone().unwrap_or_default()),
+                                    )
+                                    .child(mode_badge)
+                                    .child(
+                                        div()
+                                            .text_size(self.font_size.size_px() * 0.9)
+                                            .text_color(text_secondary)
+                                            .child(active_date.to_string()),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_3()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .text_size(self.font_size.size_px() * 0.85)
+                                                    .text_color(text_secondary)
+                                                    .child("收盤:"),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(self.font_size.size_px() * 1.15)
+                                                    .font_weight(gpui_kit::FontWeight::BOLD)
+                                                    .text_color(price_color)
+                                                    .child(format!(
+                                                        "{:.2} ({}{:.2}, {}{:.2}%)",
+                                                        active_close,
+                                                        diff_sign,
+                                                        diff_val,
+                                                        diff_sign,
+                                                        diff_pct
+                                                    )),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(self.font_size.size_px() * 0.85)
+                                            .text_color(text_secondary)
+                                            .child(format!(
+                                                "開: {:.2}  高: {:.2}  低: {:.2}  量: {} 張",
+                                                active_open,
+                                                active_high,
+                                                active_low,
+                                                active_vol / 1000
+                                            )),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_3()
+                            .text_xs()
+                            .text_color(text_secondary)
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(
+                                        div().text_color(hsla(0.12, 0.95, 0.55, 1.0)).child(
+                                            format!("MA5: {:.2}", active_ma5.unwrap_or(0.0)),
+                                        ),
+                                    )
+                                    .child(
+                                        div().text_color(hsla(0.58, 0.90, 0.55, 1.0)).child(
+                                            format!("MA10: {:.2}", active_ma10.unwrap_or(0.0)),
+                                        ),
+                                    )
+                                    .child(
+                                        div().text_color(hsla(0.85, 0.85, 0.60, 1.0)).child(
+                                            format!("MA20: {:.2}", active_ma20.unwrap_or(0.0)),
+                                        ),
+                                    ),
+                            )
+                            .when(self.show_bollinger, |this| {
+                                this.child(div().w(px(1.)).h(px(12.)).bg(border_col)).child(
                                     div()
-                                        .text_size(self.font_size.size_px() * 0.85)
-                                        .text_color(text_secondary)
-                                        .child("收盤價:"),
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(div().text_color(hsla(0.80, 0.85, 0.60, 1.0)).child(
+                                            format!("布林上: {:.2}", active_bb_u.unwrap_or(0.0)),
+                                        ))
+                                        .child(div().text_color(hsla(0.10, 0.95, 0.50, 1.0)).child(
+                                            format!("中: {:.2}", active_bb_m.unwrap_or(0.0)),
+                                        ))
+                                        .child(div().text_color(hsla(0.55, 0.85, 0.45, 1.0)).child(
+                                            format!("下: {:.2}", active_bb_l.unwrap_or(0.0)),
+                                        ))
+                                        .child(div().text_color(text_secondary).child(format!(
+                                            "帶寬: {:.1}%",
+                                            active_bb_bw.unwrap_or(0.0)
+                                        ))),
                                 )
-                                .child(
+                            })
+                            .child(div().w(px(1.)).h(px(12.)).bg(border_col))
+                            .child(
+                                div()
+                                    .text_color(hsla(0.15, 0.9, 0.6, 1.0))
+                                    .child(format!("RSI(14): {:.1}", active_rsi.unwrap_or(0.0))),
+                            )
+                            .when(self.show_macd, |this| {
+                                let osc_col = if active_macd_osc.unwrap_or(0.0) >= 0.0 {
+                                    rgb(0xdc2626)
+                                } else {
+                                    rgb(0x16a34a)
+                                };
+                                this.child(div().w(px(1.)).h(px(12.)).bg(border_col)).child(
                                     div()
-                                        .text_size(self.font_size.size_px() * 1.15)
-                                        .font_weight(gpui_kit::FontWeight::BOLD)
-                                        .text_color(price_text)
-                                        .child(format!("{:.2}", latest_close)),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_1()
-                                .child(
-                                    div()
-                                        .text_size(self.font_size.size_px() * 0.85)
-                                        .text_color(text_secondary)
-                                        .child("成交量:"),
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(div().child(format!(
+                                            "DIF: {:.2}",
+                                            active_macd_dif.unwrap_or(0.0)
+                                        )))
+                                        .child(div().child(format!(
+                                            "DEA: {:.2}",
+                                            active_macd_dea.unwrap_or(0.0)
+                                        )))
+                                        .child(div().text_color(osc_col).child(format!(
+                                            "OSC: {:+.2}",
+                                            active_macd_osc.unwrap_or(0.0)
+                                        ))),
                                 )
-                                .child(
-                                    div()
-                                        .text_size(self.font_size.size_px() * 1.15)
-                                        .font_weight(gpui_kit::FontWeight::BOLD)
-                                        .text_color(price_text)
-                                        .child(format!("{} 張", latest_vol / 1000)),
-                                ),
-                        ),
-                );
+                            }),
+                    );
 
             div()
                 .size_full()
@@ -1268,13 +1525,47 @@ impl Render for AnalysisView {
                                 )
                                 .on_mouse_move(cx.listener(
                                     move |this, event: &gpui_kit::MouseMoveEvent, _, cx| {
-                                        if event.dragging()
-                                            && this.chart_viewport.handle_mouse_move(
+                                        if event.dragging() {
+                                            if this.chart_viewport.handle_mouse_move(
                                                 event.position.x.as_f32(),
                                                 total_candles,
-                                            )
+                                            ) {
+                                                cx.notify();
+                                            }
+                                        } else if let Some(bounds) =
+                                            *this.main_chart_bounds.lock().unwrap()
                                         {
-                                            cx.notify();
+                                            let px_x = event.position.x.as_f32();
+                                            let px_y = event.position.y.as_f32();
+                                            let b_x = bounds.origin.x.as_f32();
+                                            let b_y = bounds.origin.y.as_f32();
+                                            let w = bounds.size.width.as_f32();
+                                            let h = bounds.size.height.as_f32();
+
+                                            let rel_x = px_x - b_x;
+                                            let rel_y = px_y - b_y;
+
+                                            if rel_x >= 0.0
+                                                && rel_x <= w
+                                                && rel_y >= 0.0
+                                                && rel_y <= h
+                                            {
+                                                this.hover_pos = Some(event.position);
+                                                if let Some((_col, abs_idx)) = this
+                                                    .chart_viewport
+                                                    .candle_index_at_x(rel_x, w, total_candles)
+                                                    && this.hovered_candle_idx != Some(abs_idx)
+                                                {
+                                                    this.hovered_candle_idx = Some(abs_idx);
+                                                    cx.notify();
+                                                }
+                                            } else if this.hovered_candle_idx.is_some()
+                                                || this.hover_pos.is_some()
+                                            {
+                                                this.hovered_candle_idx = None;
+                                                this.hover_pos = None;
+                                                cx.notify();
+                                            }
                                         }
                                     },
                                 ))
