@@ -162,9 +162,11 @@ fn test_bollinger_canvas_overlay(cx: &mut TestAppContext) {
 
 #[test]
 fn test_chart_viewport_candle_index_at_x() {
-    let mut vp = stock_gpui::views::chart_viewport::ChartViewport::default();
-    vp.visible_count = 10;
-    vp.offset = 0;
+    let mut vp = stock_gpui::views::chart_viewport::ChartViewport {
+        visible_count: 10,
+        offset: 0,
+        ..Default::default()
+    };
     // 總共 30 根 K 棒，slice_range(30) -> start: 20, end: 30 (10 根)
     assert_eq!(vp.slice_range(30), (20, 30));
 
