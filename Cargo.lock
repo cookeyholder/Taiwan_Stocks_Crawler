@@ -6849,6 +6849,7 @@ dependencies = [
  "chrono",
  "dirs 5.0.1",
  "gpui-kit",
+ "open",
  "stock-core",
  "tempfile",
  "tokio",

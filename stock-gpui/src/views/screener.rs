@@ -21,6 +21,14 @@ use crate::state::{AnalysisData, CoreState, ScreenerMode, ScreenerParams, defaul
 use crate::views::chart_viewport::{ChartViewport, compute_price_scales, compute_volume_scales};
 use stock_core::db::MarketRepository;
 
+/// 產生 Yahoo! 股市技術分析頁面連結
+pub fn get_yahoo_stock_url(symbol: &str) -> String {
+    format!(
+        "https://tw.stock.yahoo.com/quote/{}.TW/technical-analysis",
+        symbol
+    )
+}
+
 fn get_screener_default_dates() -> (String, String) {
     let db_path = default_db_path();
     if let Ok(repo) = MarketRepository::open(db_path.to_str().unwrap_or(""))
@@ -190,7 +198,10 @@ impl TableDelegate for ScreenerDelegate {
     ) -> impl IntoElement {
         let r = &self.results[row];
         let content: gpui_kit::AnyElement = match col {
-            0 => div().child(r.symbol.clone()).into_any_element(),
+            0 => div()
+                .text_color(rgb(0x3b82f6))
+                .child(format!("{} ↗", r.symbol))
+                .into_any_element(),
             1 => div()
                 .child(r.name.clone().unwrap_or_default())
                 .into_any_element(),
@@ -352,12 +363,18 @@ impl ScreenerView {
                         );
                     }
                 }
-                TableEvent::SelectCell(r, _) | TableEvent::DoubleClickedCell(r, _) => {
+                TableEvent::SelectCell(r, c) | TableEvent::DoubleClickedCell(r, c) => {
                     let item_opt = {
                         let d = table.read(cx).delegate();
                         d.results.get(*r).cloned()
                     };
                     if let Some(item) = item_opt {
+                        if *c == 0 {
+                            let url = get_yahoo_stock_url(&item.symbol);
+                            if let Err(e) = open::that(&url) {
+                                eprintln!("開啟 Yahoo 股市連結失敗: {}", e);
+                            }
+                        }
                         this.select_and_load_chart(
                             &item.symbol,
                             item.name,
