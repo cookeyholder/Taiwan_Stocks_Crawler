@@ -39,31 +39,21 @@ gcc --version        # 應顯示 MinGW-w64 gcc 版本
 #### Linux（Ubuntu/Debian）
 
 ```bash
-# Tauri 系統依賴
-sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev \
-                 libsoup-3.0-dev libjavascriptcoregtk-4.1-dev librsvg2-dev \
-                 libdbus-1-dev libssl-dev libayatana-appindicator3-dev \
-                 build-essential curl wget file pkg-config
-```
-
-#### 安裝 Node.js 相依
-
-```bash
-cd stock-tauri && npm install
+# GPUI 系統相依套件 (Ubuntu/Debian)
+sudo apt install build-essential pkg-config libxkbcommon-x11-0 libvulkan1 curl
 ```
 
 #### 驗證
 
 ```bash
 cargo --version
-node --version
-npm --version
+rustc --version
 ```
 
 ### 使用 Dev Container（歷史 Python 開發）
 
 Dev Container 仍保留於 `.devcontainer/`，僅供參考 Python 版原始碼。
-Rust/Tauri 開發建議在本機環境進行。
+Rust / GPUI 開發建議在本機環境進行。
 
 ---
 
@@ -79,37 +69,25 @@ git checkout -b fix/bug名稱
 
 ### 2. 進行變更
 
-修改 Rust 程式碼（`stock-core/`、`stock-cli/`、`stock-tauri/src-tauri/`）
-或 Vue 前端（`stock-tauri/src/`）。
+修改 Rust 程式碼（`stock-core/`、`stock-cli/`、`stock-gpui/`）。
 
 ### 3. 執行測試
 
 ```bash
-# Rust 單元測試（29 項）
-cargo test -p stock-core
+# 全專案測試（核心庫與桌面端）
+cargo test --workspace
 
 # Lint
-cargo clippy -p stock-core
-cargo clippy -p stock-cli
-cargo clippy -p stock-tauri
+cargo clippy --workspace
 
-# 格式化
-cargo fmt -p stock-core
-cargo fmt -p stock-cli
-cargo fmt -p stock-tauri
-
-# 不再維護
-# Python 測試（已停止維護，僅供歷史參考）
-# 詳見 docs/development/測試.md
-# make test
+# 格式化檢查
+cargo fmt --all -- --check
 ```
 
-### 4. 執行前端建置檢查
+### 4. 執行編譯檢查
 
 ```bash
-cd stock-tauri
-npm run build
-npm run typecheck   # 若已設定
+cargo check --workspace
 ```
 
 ### 5. 提交變更
@@ -128,50 +106,42 @@ git commit -m "說明性的提交訊息"
 
 ---
 
-## Tauri 開發模式
+## GPUI 開發模式
 
 ```bash
-cd stock-tauri
-npm run tauri dev
+cargo run -p stock-gpui
 ```
-
-這會啟動：
-1. Vite dev server（Vue 前端 hot-reload）
-2. Tauri Rust 後端（含自動重新編譯）
 
 ### 常用開發指令
 
 ```bash
-# 建置正式版本
-npm run tauri build
-
-# 預覽 Rust 後端日誌
-# 可在 src-tauri/src 中加入 println! 或 tauri::log 輸出
+# 本地發行打包建置
+./scripts/build-linux.sh       # Linux
+powershell ./scripts/build-windows.ps1 # Windows
 ```
 
 ---
 
 ## 常用命令速查
 
-### Rust / Tauri
+### Rust / GPUI
 
 | 命令 | 說明 |
 |------|------|
-| `cargo test -p stock-core` | 執行 Rust 單元測試 |
-| `cargo clippy -p stock-core` | Rust lint |
-| `cargo fmt -p stock-core` | Rust 格式化 |
-| `cd stock-tauri && npm run tauri dev` | 啟動桌面應用開發模式 |
-| `cd stock-tauri && npm run tauri build` | 建置正式桌面應用 |
-| `cargo build -p stock-cli --release` | 建置 CLI |
+| `cargo test --workspace` | 執行所有 Rust 單元與整合測試 |
+| `cargo clippy --workspace` | Rust lint 檢查 |
+| `cargo fmt --all` | Rust 程式碼格式化 |
+| `cargo run -p stock-gpui` | 啟動 GPUI 桌面應用程式 |
+| `cargo build -p stock-cli --release` | 建置 CLI 發行版本 |
 
 ### Makefile
 
 | 命令 | 說明 |
 |------|------|
-| `make tauri-dev` | 啟動 Tauri 開發模式 |
-| `make tauri-build` | 建置正式版 |
+| `make gpui-run` | 啟動 GPUI 桌面應用 |
+| `make gpui-build` | 建置 Linux 正式發行版 |
 | `make stock-cli ARGS="--help"` | 執行 CLI |
-| `make cargo-test` | Rust 單元測試 |
+| `make cargo-test` | 執行測試 |
 | `make help` | 顯示所有命令 |
 
 ---
@@ -201,20 +171,15 @@ Python 原始碼已於 2026-06 停止主動維護並移除，歷史版本可透�
    - 描述測試方法
 
 4. 等待程式碼審查
-5. 根據反饋進行調整並推送新提交
+5. 根據審查意見進行調整並推送新提交
 
 ## 資源連結
 
-### Rust / Tauri
+### Rust / GPUI
 
 - [Rust 官方](https://www.rust-lang.org/)
-- [Tauri v2 文檔](https://v2.tauri.app/)
+- [GPUI-Kit](https://github.com/longbridgeapp/gpui-kit)
 - [clap CLI 框架](https://docs.rs/clap/)
-
-### 前端
-
-- [Vue 3](https://vuejs.org/)
-- [ECharts](https://echarts.apache.org/)
 
 ---
 

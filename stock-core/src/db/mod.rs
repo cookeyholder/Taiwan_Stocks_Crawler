@@ -524,6 +524,7 @@ mod tests {
         let results = vec![ScreenResult {
             symbol: "2330".into(),
             name: Some("台積電".into()),
+            trade_date: "2026-07-14".into(),
             latest_close: Some(1000.0),
             latest_volume: Some(10000000),
             max_bandwidth: 0.08,
@@ -559,6 +560,7 @@ mod tests {
         let first = vec![ScreenResult {
             symbol: "2330".into(),
             name: None,
+            trade_date: "2026-07-14".into(),
             latest_close: None,
             latest_volume: None,
             max_bandwidth: 0.0,
@@ -569,6 +571,7 @@ mod tests {
         let second = vec![ScreenResult {
             symbol: "1101".into(),
             name: None,
+            trade_date: "2026-07-14".into(),
             latest_close: None,
             latest_volume: None,
             max_bandwidth: 0.0,

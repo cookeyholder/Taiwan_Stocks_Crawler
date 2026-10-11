@@ -1,12 +1,12 @@
-.PHONY: help tauri-dev tauri-build stock-cli stock-cli-help cargo-test clean \
+.PHONY: help gpui-run gpui-build stock-cli stock-cli-help cargo-test clean \
         docker-help docker-version docker-ps docker-clean
 
 help:
 	@echo "Stock Trading System - Available commands:"
 	@echo ""
-	@echo "Tauri / Rust:"
-	@echo "  make tauri-dev    - Start Tauri desktop app (dev mode)"
-	@echo "  make tauri-build  - Build Tauri desktop app for production"
+	@echo "GPUI / Rust:"
+	@echo "  make gpui-run     - Start GPUI desktop app"
+	@echo "  make gpui-build   - Build GPUI desktop app for production"
 	@echo "  make stock-cli    - Run Rust CLI (pass args via ARGS=)"
 	@echo "  make cargo-test   - Run Rust unit tests"
 	@echo ""
@@ -19,11 +19,11 @@ help:
 	@echo "Maintenance:"
 	@echo "  make clean        - Remove cache and temporary files"
 
-tauri-dev:
-	cd stock-tauri && npm run tauri dev
+gpui-run:
+	cargo run -p stock-gpui
 
-tauri-build:
-	cd stock-tauri && npm run tauri build
+gpui-build:
+	./scripts/build-linux.sh
 
 stock-cli:
 	cargo run -p stock-cli -- $(ARGS)
@@ -32,10 +32,10 @@ stock-cli-help: ARGS=--help
 stock-cli-help: stock-cli
 
 cargo-test:
-	cargo test -p stock-core
+	cargo test --workspace
 
 clean:
-	rm -rf stock-tauri/src-tauri/target
+	cargo clean
 
 docker-help:
 	@echo "Docker Commands:"

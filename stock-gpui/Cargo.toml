@@ -1,0 +1,23 @@
+[package]
+name = "stock-gpui"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "stock_gpui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "stock-gpui"
+path = "src/main.rs"
+
+[dependencies]
+stock-core = { path = "../stock-core" }
+gpui-kit = "0.7.1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+chrono = "0.4"
+dirs = "5"
+
+[dev-dependencies]
+gpui-kit = { version = "0.7.1", features = ["test-support"] }
+tempfile = "3"
