@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,6 +41,8 @@ jobs:
             libvulkan1 \
             libvulkan-dev \
             libasound2-dev \
+            lld \
+            clang \
             patchelf
 
       - name: Setup Rust stable
@@ -60,7 +65,7 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run Cargo Tests
-        run: cargo test --all-targets --workspace
+        run: cargo test --workspace
 
       - name: Commit Auto-fixes
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
