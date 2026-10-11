@@ -439,6 +439,99 @@ impl MarketRepository {
         let conn = self.conn.lock().unwrap();
         conn.query_row("SELECT COUNT(*) FROM screener_cache", [], |row| row.get(0))
     }
+
+    /// 加入自選股（冪等寫入）
+    pub fn add_to_watchlist(&self, symbol_clean: &str, group_name: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO watchlists (symbol_clean, group_name) VALUES (?1, ?2)",
+            params![symbol_clean, group_name],
+        )?;
+        Ok(())
+    }
+
+    /// 移出自選股（若 group_name 為 None 則移除所有群組的該股票）
+    pub fn remove_from_watchlist(
+        &self,
+        symbol_clean: &str,
+        group_name: Option<&str>,
+    ) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        match group_name {
+            Some(group) => {
+                conn.execute(
+                    "DELETE FROM watchlists WHERE symbol_clean = ?1 AND group_name = ?2",
+                    params![symbol_clean, group],
+                )?;
+            }
+            None => {
+                conn.execute(
+                    "DELETE FROM watchlists WHERE symbol_clean = ?1",
+                    params![symbol_clean],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// 查詢自選股清單（回傳 symbol_clean 列表）
+    pub fn get_watchlist(&self, group_name: Option<&str>) -> SqlResult<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut symbols = Vec::new();
+        match group_name {
+            Some(group) => {
+                let mut stmt = conn.prepare(
+                    "SELECT symbol_clean FROM watchlists WHERE group_name = ?1 ORDER BY created_at DESC, symbol_clean ASC",
+                )?;
+                let rows = stmt.query_map(params![group], |row| row.get(0))?;
+                for sym in rows {
+                    symbols.push(sym?);
+                }
+            }
+            None => {
+                let mut stmt = conn.prepare(
+                    "SELECT DISTINCT symbol_clean FROM watchlists ORDER BY created_at DESC, symbol_clean ASC",
+                )?;
+                let rows = stmt.query_map([], |row| row.get(0))?;
+                for sym in rows {
+                    symbols.push(sym?);
+                }
+            }
+        }
+        Ok(symbols)
+    }
+
+    /// 取得所有已建立之自選群組名稱
+    pub fn get_watchlist_groups(&self) -> SqlResult<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt =
+            conn.prepare("SELECT DISTINCT group_name FROM watchlists ORDER BY group_name ASC")?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        let mut groups = Vec::new();
+        for g in rows {
+            groups.push(g?);
+        }
+        Ok(groups)
+    }
+
+    /// 判斷股票是否已加入自選股
+    pub fn is_in_watchlist(&self, symbol_clean: &str, group_name: Option<&str>) -> SqlResult<bool> {
+        let conn = self.conn.lock().unwrap();
+        let query = match group_name {
+            Some(group) => {
+                let mut stmt = conn.prepare_cached(
+                    "SELECT 1 FROM watchlists WHERE symbol_clean = ?1 AND group_name = ?2 LIMIT 1",
+                )?;
+                stmt.exists(params![symbol_clean, group])?
+            }
+            None => {
+                let mut stmt = conn
+                    .prepare_cached("SELECT 1 FROM watchlists WHERE symbol_clean = ?1 LIMIT 1")?;
+                stmt.exists(params![symbol_clean])?
+            }
+        };
+        Ok(query)
+    }
 }
 
 #[cfg(test)]
@@ -618,5 +711,77 @@ mod tests {
         }
         let result = repo.get_cached_screening(key).unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_watchlist_add_and_query() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        assert_eq!(repo.get_watchlist(None).unwrap().len(), 0);
+
+        repo.add_to_watchlist("2330", "預設自選").unwrap();
+        repo.add_to_watchlist("2454", "預設自選").unwrap();
+        repo.add_to_watchlist("2317", "科技股").unwrap();
+
+        let all = repo.get_watchlist(None).unwrap();
+        assert_eq!(all.len(), 3);
+        assert!(all.contains(&"2330".to_string()));
+        assert!(all.contains(&"2454".to_string()));
+        assert!(all.contains(&"2317".to_string()));
+
+        let default_group = repo.get_watchlist(Some("預設自選")).unwrap();
+        assert_eq!(default_group.len(), 2);
+        assert!(default_group.contains(&"2330".to_string()));
+        assert!(default_group.contains(&"2454".to_string()));
+        assert!(!default_group.contains(&"2317".to_string()));
+
+        let tech_group = repo.get_watchlist(Some("科技股")).unwrap();
+        assert_eq!(tech_group.len(), 1);
+        assert_eq!(tech_group[0], "2317");
+    }
+
+    #[test]
+    fn test_watchlist_remove() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        repo.add_to_watchlist("2330", "預設自選").unwrap();
+        repo.add_to_watchlist("2330", "科技股").unwrap();
+        repo.add_to_watchlist("2454", "預設自選").unwrap();
+
+        assert!(repo.is_in_watchlist("2330", Some("預設自選")).unwrap());
+        assert!(repo.is_in_watchlist("2330", Some("科技股")).unwrap());
+
+        // 移出單人群組
+        repo.remove_from_watchlist("2330", Some("預設自選"))
+            .unwrap();
+        assert!(!repo.is_in_watchlist("2330", Some("預設自選")).unwrap());
+        assert!(repo.is_in_watchlist("2330", Some("科技股")).unwrap());
+        assert!(repo.is_in_watchlist("2330", None).unwrap());
+
+        // 移出全部群組
+        repo.remove_from_watchlist("2330", None).unwrap();
+        assert!(!repo.is_in_watchlist("2330", None).unwrap());
+    }
+
+    #[test]
+    fn test_watchlist_idempotency() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        repo.add_to_watchlist("2330", "預設自選").unwrap();
+        repo.add_to_watchlist("2330", "預設自選").unwrap();
+        let list = repo.get_watchlist(Some("預設自選")).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0], "2330");
+
+        // 移除不存在的項目亦不應報錯
+        repo.remove_from_watchlist("9999", None).unwrap();
+    }
+
+    #[test]
+    fn test_watchlist_groups() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        repo.add_to_watchlist("2330", "群組B").unwrap();
+        repo.add_to_watchlist("2454", "群組A").unwrap();
+        repo.add_to_watchlist("2317", "群組B").unwrap();
+
+        let groups = repo.get_watchlist_groups().unwrap();
+        assert_eq!(groups, vec!["群組A".to_string(), "群組B".to_string()]);
     }
 }

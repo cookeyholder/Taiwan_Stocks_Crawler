@@ -69,6 +69,14 @@ const MIGRATIONS: &[&str] = &[
         results_json     TEXT NOT NULL,
         created_at       TEXT NOT NULL DEFAULT (datetime('now'))
     );",
+    // V6: watchlists for user favorite stocks
+    "CREATE TABLE IF NOT EXISTS watchlists (
+        symbol_clean TEXT NOT NULL,
+        group_name   TEXT NOT NULL DEFAULT '預設自選',
+        created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+        PRIMARY KEY (symbol_clean, group_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_watchlists_group ON watchlists(group_name);",
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -103,6 +111,8 @@ mod tests {
         conn.execute("SELECT 1 FROM securities LIMIT 1", [])
             .unwrap();
         conn.execute("SELECT 1 FROM screener_cache LIMIT 1", [])
+            .unwrap();
+        conn.execute("SELECT 1 FROM watchlists LIMIT 1", [])
             .unwrap();
     }
 

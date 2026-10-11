@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, RwLock};
 
 pub static TOKIO_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
     tokio::runtime::Builder::new_multi_thread()
@@ -60,16 +60,23 @@ pub struct SecurityItem {
 pub struct CoreState {
     pub pipeline: Arc<tokio::sync::Mutex<Pipeline>>,
     pub cancel_flag: Arc<AtomicBool>,
+    pub watchlist_symbols: Arc<RwLock<HashSet<String>>>,
 }
 
 impl CoreState {
     pub fn new_with_db_path(db_path: &str) -> Result<Self, String> {
         let repo = MarketRepository::open(db_path).map_err(|e| e.to_string())?;
+        let initial_watchlist = repo
+            .get_watchlist(None)
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<HashSet<String>>();
         let http = HttpClient::new(HttpPolicy::default());
         let pipeline = Pipeline::new(http, repo);
         Ok(Self {
             pipeline: Arc::new(tokio::sync::Mutex::new(pipeline)),
             cancel_flag: Arc::new(AtomicBool::new(false)),
+            watchlist_symbols: Arc::new(RwLock::new(initial_watchlist)),
         })
     }
 
@@ -84,6 +91,68 @@ impl CoreState {
 
     pub fn cancel(&self) {
         self.cancel_flag.store(true, Ordering::SeqCst);
+    }
+
+    /// 判斷股票是否在自選清單中（同步讀取快取）
+    pub fn is_favorited(&self, symbol: &str) -> bool {
+        self.watchlist_symbols
+            .read()
+            .map(|set| set.contains(symbol))
+            .unwrap_or(false)
+    }
+
+    /// 取得目前所有自選股票代號集合快取
+    pub fn get_watchlist_symbols(&self) -> HashSet<String> {
+        self.watchlist_symbols
+            .read()
+            .map(|set| set.clone())
+            .unwrap_or_default()
+    }
+
+    /// 一鍵切換自選股狀態（非同步寫入資料庫並同步更新快取）
+    pub async fn toggle_watchlist(
+        &self,
+        symbol: &str,
+        group: Option<&str>,
+    ) -> Result<bool, String> {
+        let is_fav = self.is_favorited(symbol);
+        let pipeline = self.pipeline.lock().await;
+        if is_fav {
+            pipeline
+                .repo
+                .remove_from_watchlist(symbol, group)
+                .map_err(|e| e.to_string())?;
+            let still_in = pipeline
+                .repo
+                .is_in_watchlist(symbol, None)
+                .map_err(|e| e.to_string())?;
+            if !still_in && let Ok(mut set) = self.watchlist_symbols.write() {
+                set.remove(symbol);
+            }
+            Ok(false)
+        } else {
+            pipeline
+                .repo
+                .add_to_watchlist(symbol, group.unwrap_or("預設自選"))
+                .map_err(|e| e.to_string())?;
+            if let Ok(mut set) = self.watchlist_symbols.write() {
+                set.insert(symbol.to_string());
+            }
+            Ok(true)
+        }
+    }
+
+    /// 從資料庫重新載入自選股快取
+    pub async fn refresh_watchlist(&self) -> Result<(), String> {
+        let pipeline = self.pipeline.lock().await;
+        let list = pipeline
+            .repo
+            .get_watchlist(None)
+            .map_err(|e| e.to_string())?;
+        if let Ok(mut set) = self.watchlist_symbols.write() {
+            *set = list.into_iter().collect();
+        }
+        Ok(())
     }
 
     pub async fn clear_screener_cache(&self) -> Result<usize, String> {

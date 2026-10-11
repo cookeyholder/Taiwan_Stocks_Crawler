@@ -14,6 +14,7 @@ use gpui_kit::{
     PathBuilder, Pixels, Render, Styled as _, Window, canvas, div, hsla, point, px, rgb,
 };
 
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use crate::app::FontSizeLevel;
@@ -32,6 +33,8 @@ pub struct AnalysisSecuritiesDelegate {
     pub sort_col: Option<usize>,
     pub sort_order: ColumnSort,
     pub include_etf: bool,
+    pub show_watchlist_only: bool,
+    pub watchlist: HashSet<String>,
     pub search_query: String,
     pub font_size: FontSizeLevel,
 }
@@ -50,6 +53,8 @@ impl AnalysisSecuritiesDelegate {
             sort_col: None,
             sort_order: ColumnSort::Default,
             include_etf: false,
+            show_watchlist_only: false,
+            watchlist: HashSet::new(),
             search_query: String::new(),
             font_size: FontSizeLevel::Medium,
         }
@@ -61,6 +66,9 @@ impl AnalysisSecuritiesDelegate {
             .all_items
             .iter()
             .filter(|s| {
+                if self.show_watchlist_only && !self.watchlist.contains(&s.symbol) {
+                    return false;
+                }
                 let is_etf = s.symbol.starts_with("00") || s.symbol.len() > 4;
                 if !self.include_etf && is_etf {
                     return false;
@@ -152,15 +160,23 @@ impl TableDelegate for AnalysisSecuritiesDelegate {
         _: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         let item = &self.filtered_items[row];
+        let is_fav = self.watchlist.contains(&item.symbol);
         let text = match col {
-            0 => item.symbol.as_str(),
-            1 => item.market.as_str(),
-            _ => item.name.as_str(),
+            0 => {
+                if is_fav {
+                    format!("★ {}", item.symbol)
+                } else {
+                    item.symbol.clone()
+                }
+            }
+            1 => item.market.clone(),
+            _ => item.name.clone(),
         };
         div()
             .text_size(self.font_size.size_px())
             .cursor_pointer()
-            .child(text.to_string())
+            .when(col == 0 && is_fav, |this| this.text_color(rgb(0xeab308)))
+            .child(text)
     }
 }
 
@@ -178,6 +194,7 @@ pub struct AnalysisView {
     pub show_bollinger: bool,
     pub show_ma: bool,
     pub show_macd: bool,
+    pub show_watchlist_only: bool,
     pub is_dark: bool,
     pub hovered_candle_idx: Option<usize>,
     pub hover_pos: Option<gpui_kit::Point<Pixels>>,
@@ -254,6 +271,7 @@ impl AnalysisView {
             show_bollinger: true,
             show_ma: true,
             show_macd: true,
+            show_watchlist_only: false,
             is_dark: false,
             hovered_candle_idx: None,
             hover_pos: None,
@@ -283,11 +301,13 @@ impl AnalysisView {
         let core = self.core_state.clone();
         cx.spawn(async move |this, cx| {
             let res = core.get_securities().await;
+            let watchlist = core.get_watchlist_symbols();
             let _ = this.update(cx, |view, cx| {
                 if let Ok(items) = res {
                     view.table_state.update(cx, |table, cx| {
                         let d = table.delegate_mut();
                         d.all_items = items;
+                        d.watchlist = watchlist;
                         d.apply_filter();
                         table.refresh(cx);
                     });
@@ -376,6 +396,47 @@ impl Render for AnalysisView {
         };
 
         // 左側工具列
+        let total_fav_count = self.core_state.get_watchlist_symbols().len();
+        let total_all_count = self.table_state.read(cx).delegate().all_items.len();
+        let watchlist_tabs = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(
+                Button::new("tab-filter-all")
+                    .label(format!("全部 ({})", total_all_count))
+                    .when(!self.show_watchlist_only, |btn| btn.primary())
+                    .when(self.show_watchlist_only, |btn| btn.secondary())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.show_watchlist_only = false;
+                        this.table_state.update(cx, |table, cx| {
+                            let d = table.delegate_mut();
+                            d.show_watchlist_only = false;
+                            d.apply_filter();
+                            table.refresh(cx);
+                        });
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("tab-filter-watchlist")
+                    .label(format!("★ 自選股 ({})", total_fav_count))
+                    .when(self.show_watchlist_only, |btn| btn.primary())
+                    .when(!self.show_watchlist_only, |btn| btn.secondary())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.show_watchlist_only = true;
+                        let watchlist = this.core_state.get_watchlist_symbols();
+                        this.table_state.update(cx, |table, cx| {
+                            let d = table.delegate_mut();
+                            d.show_watchlist_only = true;
+                            d.watchlist = watchlist;
+                            d.apply_filter();
+                            table.refresh(cx);
+                        });
+                        cx.notify();
+                    })),
+            );
+
         let left_toolbar = div()
             .flex()
             .flex_col()
@@ -383,6 +444,7 @@ impl Render for AnalysisView {
             .p_2()
             .border_b_1()
             .border_color(border_col)
+            .child(watchlist_tabs)
             .child(
                 div()
                     .w_full()
@@ -1317,174 +1379,211 @@ impl Render for AnalysisView {
             };
 
             // 右側上方行情概況與技術指標即時 HUD 資訊列
-            let stock_header =
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .px_3()
-                    .py_2()
-                    .bg(header_bg)
-                    .border_b_1()
-                    .border_color(border_col)
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .child(
-                                        div()
-                                            .text_size(self.font_size.size_px() * 1.4)
-                                            .font_weight(gpui_kit::FontWeight::BOLD)
-                                            .text_color(text_title)
-                                            .child(data.symbol.clone()),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(self.font_size.size_px() * 1.1)
-                                            .font_weight(gpui_kit::FontWeight::BOLD)
-                                            .text_color(text_primary)
-                                            .child(data.name.clone().unwrap_or_default()),
-                                    )
-                                    .child(mode_badge)
-                                    .child(
-                                        div()
-                                            .text_size(self.font_size.size_px() * 0.9)
-                                            .text_color(text_secondary)
-                                            .child(active_date.to_string()),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_3()
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .items_center()
-                                            .gap_1()
-                                            .child(
-                                                div()
-                                                    .text_size(self.font_size.size_px() * 0.85)
-                                                    .text_color(text_secondary)
-                                                    .child("收盤:"),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(self.font_size.size_px() * 1.15)
-                                                    .font_weight(gpui_kit::FontWeight::BOLD)
-                                                    .text_color(price_color)
-                                                    .child(format!(
-                                                        "{:.2} ({}{:.2}, {}{:.2}%)",
-                                                        active_close,
-                                                        diff_sign,
-                                                        diff_val,
-                                                        diff_sign,
-                                                        diff_pct
-                                                    )),
-                                            ),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(self.font_size.size_px() * 0.85)
-                                            .text_color(text_secondary)
-                                            .child(format!(
-                                                "開: {:.2}  高: {:.2}  低: {:.2}  量: {} 張",
-                                                active_open,
-                                                active_high,
-                                                active_low,
-                                                active_vol / 1000
-                                            )),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_3()
-                            .text_xs()
-                            .text_color(text_secondary)
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .child(
-                                        div().text_color(hsla(0.12, 0.95, 0.55, 1.0)).child(
-                                            format!("MA5: {:.2}", active_ma5.unwrap_or(0.0)),
-                                        ),
-                                    )
-                                    .child(
-                                        div().text_color(hsla(0.58, 0.90, 0.55, 1.0)).child(
-                                            format!("MA10: {:.2}", active_ma10.unwrap_or(0.0)),
-                                        ),
-                                    )
-                                    .child(
-                                        div().text_color(hsla(0.85, 0.85, 0.60, 1.0)).child(
-                                            format!("MA20: {:.2}", active_ma20.unwrap_or(0.0)),
-                                        ),
-                                    ),
-                            )
-                            .when(self.show_bollinger, |this| {
-                                this.child(div().w(px(1.)).h(px(12.)).bg(border_col)).child(
+            let stock_header = div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .px_3()
+                .py_2()
+                .bg(header_bg)
+                .border_b_1()
+                .border_color(border_col)
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_size(self.font_size.size_px() * 1.4)
+                                        .font_weight(gpui_kit::FontWeight::BOLD)
+                                        .text_color(text_title)
+                                        .child(data.symbol.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(self.font_size.size_px() * 1.1)
+                                        .font_weight(gpui_kit::FontWeight::BOLD)
+                                        .text_color(text_primary)
+                                        .child(data.name.clone().unwrap_or_default()),
+                                )
+                                .child({
+                                    let is_fav = self.core_state.is_favorited(&data.symbol);
+                                    Button::new("btn-toggle-favorite")
+                                        .label(if is_fav {
+                                            "★ 已收藏"
+                                        } else {
+                                            "☆ 加入自選"
+                                        })
+                                        .when(is_fav, |btn| btn.primary())
+                                        .when(!is_fav, |btn| btn.secondary())
+                                        .on_click(cx.listener({
+                                            let sym = data.symbol.clone();
+                                            move |this, _, _, cx| {
+                                                let core = this.core_state.clone();
+                                                let sym_clone = sym.clone();
+                                                cx.spawn(async move |this, cx| {
+                                                    let _ = core
+                                                        .toggle_watchlist(&sym_clone, None)
+                                                        .await;
+                                                    let watchlist = core.get_watchlist_symbols();
+                                                    let _ = this.update(cx, |view, cx| {
+                                                        view.table_state.update(cx, |table, cx| {
+                                                            let d = table.delegate_mut();
+                                                            d.watchlist = watchlist;
+                                                            d.apply_filter();
+                                                            table.refresh(cx);
+                                                        });
+                                                        cx.notify();
+                                                    });
+                                                })
+                                                .detach();
+                                            }
+                                        }))
+                                })
+                                .child(mode_badge)
+                                .child(
+                                    div()
+                                        .text_size(self.font_size.size_px() * 0.9)
+                                        .text_color(text_secondary)
+                                        .child(active_date.to_string()),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_3()
+                                .child(
                                     div()
                                         .flex()
                                         .items_center()
-                                        .gap_2()
-                                        .child(div().text_color(hsla(0.80, 0.85, 0.60, 1.0)).child(
-                                            format!("布林上: {:.2}", active_bb_u.unwrap_or(0.0)),
-                                        ))
-                                        .child(div().text_color(hsla(0.10, 0.95, 0.50, 1.0)).child(
+                                        .gap_1()
+                                        .child(
+                                            div()
+                                                .text_size(self.font_size.size_px() * 0.85)
+                                                .text_color(text_secondary)
+                                                .child("收盤:"),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(self.font_size.size_px() * 1.15)
+                                                .font_weight(gpui_kit::FontWeight::BOLD)
+                                                .text_color(price_color)
+                                                .child(format!(
+                                                    "{:.2} ({}{:.2}, {}{:.2}%)",
+                                                    active_close,
+                                                    diff_sign,
+                                                    diff_val,
+                                                    diff_sign,
+                                                    diff_pct
+                                                )),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(self.font_size.size_px() * 0.85)
+                                        .text_color(text_secondary)
+                                        .child(format!(
+                                            "開: {:.2}  高: {:.2}  低: {:.2}  量: {} 張",
+                                            active_open,
+                                            active_high,
+                                            active_low,
+                                            active_vol / 1000
+                                        )),
+                                ),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .text_xs()
+                        .text_color(text_secondary)
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_color(hsla(0.12, 0.95, 0.55, 1.0))
+                                        .child(format!("MA5: {:.2}", active_ma5.unwrap_or(0.0))),
+                                )
+                                .child(
+                                    div()
+                                        .text_color(hsla(0.58, 0.90, 0.55, 1.0))
+                                        .child(format!("MA10: {:.2}", active_ma10.unwrap_or(0.0))),
+                                )
+                                .child(
+                                    div()
+                                        .text_color(hsla(0.85, 0.85, 0.60, 1.0))
+                                        .child(format!("MA20: {:.2}", active_ma20.unwrap_or(0.0))),
+                                ),
+                        )
+                        .when(self.show_bollinger, |this| {
+                            this.child(div().w(px(1.)).h(px(12.)).bg(border_col)).child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(div().text_color(hsla(0.80, 0.85, 0.60, 1.0)).child(
+                                        format!("布林上: {:.2}", active_bb_u.unwrap_or(0.0)),
+                                    ))
+                                    .child(
+                                        div().text_color(hsla(0.10, 0.95, 0.50, 1.0)).child(
                                             format!("中: {:.2}", active_bb_m.unwrap_or(0.0)),
-                                        ))
-                                        .child(div().text_color(hsla(0.55, 0.85, 0.45, 1.0)).child(
+                                        ),
+                                    )
+                                    .child(
+                                        div().text_color(hsla(0.55, 0.85, 0.45, 1.0)).child(
                                             format!("下: {:.2}", active_bb_l.unwrap_or(0.0)),
-                                        ))
-                                        .child(div().text_color(text_secondary).child(format!(
-                                            "帶寬: {:.1}%",
-                                            active_bb_bw.unwrap_or(0.0)
-                                        ))),
-                                )
-                            })
-                            .child(div().w(px(1.)).h(px(12.)).bg(border_col))
-                            .child(
-                                div()
-                                    .text_color(hsla(0.15, 0.9, 0.6, 1.0))
-                                    .child(format!("RSI(14): {:.1}", active_rsi.unwrap_or(0.0))),
+                                        ),
+                                    )
+                                    .child(div().text_color(text_secondary).child(format!(
+                                        "帶寬: {:.1}%",
+                                        active_bb_bw.unwrap_or(0.0)
+                                    ))),
                             )
-                            .when(self.show_macd, |this| {
-                                let osc_col = if active_macd_osc.unwrap_or(0.0) >= 0.0 {
-                                    rgb(0xdc2626)
-                                } else {
-                                    rgb(0x16a34a)
-                                };
-                                this.child(div().w(px(1.)).h(px(12.)).bg(border_col)).child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .child(div().child(format!(
-                                            "DIF: {:.2}",
-                                            active_macd_dif.unwrap_or(0.0)
-                                        )))
-                                        .child(div().child(format!(
-                                            "DEA: {:.2}",
-                                            active_macd_dea.unwrap_or(0.0)
-                                        )))
-                                        .child(div().text_color(osc_col).child(format!(
-                                            "OSC: {:+.2}",
-                                            active_macd_osc.unwrap_or(0.0)
-                                        ))),
-                                )
-                            }),
-                    );
+                        })
+                        .child(div().w(px(1.)).h(px(12.)).bg(border_col))
+                        .child(
+                            div()
+                                .text_color(hsla(0.15, 0.9, 0.6, 1.0))
+                                .child(format!("RSI(14): {:.1}", active_rsi.unwrap_or(0.0))),
+                        )
+                        .when(self.show_macd, |this| {
+                            let osc_col = if active_macd_osc.unwrap_or(0.0) >= 0.0 {
+                                rgb(0xdc2626)
+                            } else {
+                                rgb(0x16a34a)
+                            };
+                            this.child(div().w(px(1.)).h(px(12.)).bg(border_col)).child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(div().child(format!(
+                                        "DIF: {:.2}",
+                                        active_macd_dif.unwrap_or(0.0)
+                                    )))
+                                    .child(div().child(format!(
+                                        "DEA: {:.2}",
+                                        active_macd_dea.unwrap_or(0.0)
+                                    )))
+                                    .child(div().text_color(osc_col).child(format!(
+                                        "OSC: {:+.2}",
+                                        active_macd_osc.unwrap_or(0.0)
+                                    ))),
+                            )
+                        }),
+                );
 
             div()
                 .size_full()
