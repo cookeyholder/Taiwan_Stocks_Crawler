@@ -1571,7 +1571,7 @@ impl Render for AnalysisView {
                                         .cursor_pointer()
                                         .text_size(self.font_size.size_px() * 1.4)
                                         .font_weight(gpui_kit::FontWeight::BOLD)
-                                        .text_color(rgb(0x3b82f6))
+                                        .text_color(text_title)
                                         .hover(|s| s.underline())
                                         .child(format!("{} ↗", data.symbol))
                                         .on_click(cx.listener({
