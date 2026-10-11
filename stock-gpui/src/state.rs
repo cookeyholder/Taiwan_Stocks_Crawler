@@ -899,6 +899,52 @@ impl CoreState {
             total_days, inserted_days, total_records
         ))
     }
+
+    /// 取得資料庫中 TWSE 上市普通股總檔數（排除 ETF 與權證）
+    pub async fn get_twse_stock_count(&self) -> Result<usize, String> {
+        let pipeline = self.pipeline.lock().await;
+        let syms = pipeline
+            .get_twse_stock_symbols()
+            .map_err(|e| e.to_string())?;
+        Ok(syms.len())
+    }
+
+    /// 批次抓取指定交易日之集中市場券商日報表（分點成交明細）
+    pub async fn fetch_broker_trades<F>(
+        &self,
+        trade_date: &str,
+        target_symbols: Option<Vec<String>>,
+        on_progress: F,
+    ) -> Result<stock_core::pipeline::broker::BrokerFetchSummary, String>
+    where
+        F: Fn(stock_core::pipeline::broker::BrokerProgress) + Send + Sync + 'static,
+    {
+        self.cancel_flag.store(false, Ordering::SeqCst);
+        let date_str = trade_date.to_string();
+        let cancel_flag = self.cancel_flag.clone();
+
+        let path = default_db_path();
+        let repo = MarketRepository::open(path.to_str().unwrap_or("market_data.db"))
+            .map_err(|e| format!("開啟資料庫失敗: {}", e))?;
+
+        let client = stock_core::fetcher::bsr::client::BsrClient::new()
+            .map_err(|e| format!("建立集中市場 BSR 連線客戶端失敗: {}", e))?;
+
+        let broker_pipeline =
+            stock_core::pipeline::broker::BrokerFetchPipeline::new(client, repo)
+                .with_cancel_flag(cancel_flag);
+
+        let handle = TOKIO_RUNTIME.spawn(async move {
+            broker_pipeline
+                .fetch_date(&date_str, target_symbols, None, on_progress)
+                .await
+        });
+
+        handle
+            .await
+            .map_err(|e| format!("執行批次抓取任務異常: {}", e))?
+            .map_err(|e| format!("集中市場券商日報表抓取失敗: {}", e))
+    }
 }
 
 #[cfg(test)]

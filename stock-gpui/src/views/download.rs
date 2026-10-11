@@ -30,6 +30,12 @@ pub struct DownloadView {
     pub status_text: String,
     pub db_summary: String,
     pub gap_report: Option<GapReport>,
+
+    // 券商日報表相關狀態
+    pub broker_date_input: Entity<InputState>,
+    pub is_broker_downloading: bool,
+    pub broker_progress_ratio: f32,
+    pub broker_status_text: String,
 }
 
 impl DownloadView {
@@ -37,6 +43,7 @@ impl DownloadView {
         let today = get_today_str();
         let start_date_input = cx.new(|cx| InputState::new(window, cx).default_value("2026-07-01"));
         let end_date_input = cx.new(|cx| InputState::new(window, cx).default_value(&today));
+        let broker_date_input = cx.new(|cx| InputState::new(window, cx).default_value(&today));
 
         for input_field in [&start_date_input, &end_date_input] {
             cx.subscribe(
@@ -53,6 +60,19 @@ impl DownloadView {
             .detach();
         }
 
+        cx.subscribe(
+            &broker_date_input,
+            |this: &mut Self, _, event: &gpui_kit::component::input::InputEvent, cx| {
+                if matches!(
+                    event,
+                    gpui_kit::component::input::InputEvent::PressEnter { .. }
+                ) {
+                    this.start_broker_download(cx);
+                }
+            },
+        )
+        .detach();
+
         let mut view = Self {
             core_state,
             start_date_input,
@@ -63,6 +83,11 @@ impl DownloadView {
             status_text: "就緒".into(),
             db_summary: "讀取中...".into(),
             gap_report: None,
+
+            broker_date_input,
+            is_broker_downloading: false,
+            broker_progress_ratio: 0.0,
+            broker_status_text: "就緒（可下載 TWSE 上市普通股券商分點買賣明細）".into(),
         };
         view.refresh_db_summary(cx);
         view
@@ -395,6 +420,104 @@ impl DownloadView {
         })
         .detach();
     }
+
+    pub fn start_broker_download(&mut self, cx: &mut Context<Self>) {
+        if self.is_broker_downloading {
+            return;
+        }
+        let target_date = self.broker_date_input.read(cx).value().trim().to_string();
+        if target_date.is_empty() {
+            self.broker_status_text = "請輸入有效的交易日期（YYYY-MM-DD）".into();
+            cx.notify();
+            return;
+        }
+
+        self.is_broker_downloading = true;
+        self.broker_progress_ratio = 0.0;
+        self.broker_status_text = format!("開始下載 {} 券商日報表（TWSE 上市普通股）...", target_date);
+        cx.notify();
+
+        let core = self.core_state.clone();
+        let (tx, mut rx) =
+            tokio::sync::mpsc::unbounded_channel::<stock_core::pipeline::broker::BrokerProgress>();
+
+        cx.spawn(async move |this, cx| {
+            let mut dl_task = crate::state::TOKIO_RUNTIME.spawn(async move {
+                core.fetch_broker_trades(&target_date, None, move |prog| {
+                    let _ = tx.send(prog);
+                })
+                .await
+            });
+
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        if let Some(prog) = msg {
+                            let _ = this.update(cx, |view, cx| {
+                                view.broker_progress_ratio = if prog.total_stocks > 0 {
+                                    prog.current_index as f32 / prog.total_stocks as f32
+                                } else {
+                                    0.0
+                                };
+                                let pct = (view.broker_progress_ratio * 100.0) as u32;
+                                view.broker_status_text = format!(
+                                    "[{:>3}%] ({}/{}) 個股: {} | 成功: {} | 略過: {} | 失敗: {} | {}",
+                                    pct,
+                                    prog.current_index,
+                                    prog.total_stocks,
+                                    prog.current_symbol,
+                                    prog.success_count,
+                                    prog.skipped_count,
+                                    prog.failed_count,
+                                    prog.message
+                                );
+                                cx.notify();
+                            });
+                        }
+                    }
+                    res = &mut dl_task => {
+                        let final_res = match res {
+                            Ok(inner) => inner,
+                            Err(e) => Err(format!("背景任務異常：{}", e)),
+                        };
+                        let _ = this.update(cx, |view, cx| {
+                            view.is_broker_downloading = false;
+                            view.broker_progress_ratio = 1.0;
+                            match final_res {
+                                Ok(summary) => {
+                                    let status_str = if summary.cancelled {
+                                        "使用者手動中斷（已保留進度以利續傳）"
+                                    } else {
+                                        "全部下載完成"
+                                    };
+                                    view.broker_status_text = format!(
+                                        "執行結束：{}（總標的: {}，成功入庫: {}，斷點略過: {}，失敗: {}）",
+                                        status_str,
+                                        summary.total_stocks,
+                                        summary.success_count,
+                                        summary.skipped_count,
+                                        summary.failed_count
+                                    );
+                                }
+                                Err(e) => {
+                                    view.broker_status_text = format!("下載失敗：{}", e);
+                                }
+                            }
+                            cx.notify();
+                        });
+                        break;
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
+    pub fn cancel_broker_download(&mut self, cx: &mut Context<Self>) {
+        self.core_state.cancel();
+        self.broker_status_text = "已送出取消請求，正在儲存進度以利續傳...".into();
+        cx.notify();
+    }
 }
 
 impl Render for DownloadView {
@@ -587,6 +710,88 @@ impl Render for DownloadView {
                     .text_color(rgb(0xa6adc8))
                     .text_sm()
                     .child(self.status_text.clone()),
+            )
+            .child(
+                div()
+                    .p_3()
+                    .border_1()
+                    .border_color(rgb(0x45475a))
+                    .rounded_md()
+                    .bg(rgb(0x181825))
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .font_weight(gpui_kit::FontWeight::BOLD)
+                                    .text_color(rgb(0xcdd6f4))
+                                    .child("📊 集中市場券商買賣日報表（分點成交明細）"),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0xa6adc8))
+                                    .child("範圍：TWSE 上市普通股（自動排除 ETF 與權證）"),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("交易日:"))
+                                    .child(
+                                        div()
+                                            .w(px(130.))
+                                            .child(Input::new(&self.broker_date_input).id("broker-dl-date")),
+                                    ),
+                            )
+                            .child(
+                                Button::new("btn-start-broker-download")
+                                    .label(if self.is_broker_downloading {
+                                        "抓取中..."
+                                    } else {
+                                        "開始 / 繼續下載"
+                                    })
+                                    .primary()
+                                    .disabled(self.is_broker_downloading)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.start_broker_download(cx);
+                                    })),
+                            )
+                            .when(self.is_broker_downloading, |this| {
+                                this.child(
+                                    Button::new("btn-cancel-broker-download")
+                                        .label("中斷作業")
+                                        .danger()
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.cancel_broker_download(cx);
+                                        })),
+                                )
+                            }),
+                    )
+                    .child(
+                        div()
+                            .w_full()
+                            .child(Progress::new("broker-download-progress-bar").value(self.broker_progress_ratio)),
+                    )
+                    .child(
+                        div()
+                            .text_color(rgb(0xa6adc8))
+                            .text_xs()
+                            .child(self.broker_status_text.clone()),
+                    ),
             )
     }
 }
