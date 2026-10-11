@@ -22,6 +22,13 @@ use stock_core::fetcher::{HttpClient, HttpPolicy};
 use stock_core::models::*;
 use stock_core::pipeline::Pipeline;
 
+fn ingestion_has_source_error(outcome: &stock_core::pipeline::IngestionOutcome) -> bool {
+    (!outcome.ok && outcome.message != "no data (market closed or error)")
+        || ["TWSE:", "TPEX:", "T86:"]
+            .iter()
+            .any(|prefix| outcome.message.contains(prefix))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ScreenerMode {
     #[default]
@@ -171,8 +178,11 @@ impl CoreState {
         symbol: &str,
         group: Option<&str>,
     ) -> Result<bool, String> {
-        let is_fav = self.is_favorited(symbol);
         let pipeline = self.pipeline.lock().await;
+        let is_fav = pipeline
+            .repo
+            .is_in_watchlist(symbol, group)
+            .map_err(|e| e.to_string())?;
         if is_fav {
             pipeline
                 .repo
@@ -765,6 +775,8 @@ impl CoreState {
         let mut days_done = 0usize;
         let mut total_records = 0usize;
         let mut inserted_days = 0usize;
+        let mut failure_count = 0usize;
+        let mut failure_details = Vec::new();
 
         self.cancel_flag.store(false, Ordering::SeqCst);
 
@@ -782,11 +794,22 @@ impl CoreState {
                 p.fetch_date(&date_clone).await
             });
 
-            if let Ok(Ok(outcome)) = fetch_task.await
-                && outcome.records_inserted > 0
-            {
-                total_records += outcome.records_inserted;
-                inserted_days += 1;
+            let failure = match fetch_task.await {
+                Ok(Ok(outcome)) => {
+                    if outcome.records_inserted > 0 {
+                        total_records += outcome.records_inserted;
+                        inserted_days += 1;
+                    }
+                    ingestion_has_source_error(&outcome).then_some(outcome.message)
+                }
+                Ok(Err(error)) => Some(error.to_string()),
+                Err(error) => Some(error.to_string()),
+            };
+            if let Some(error) = failure {
+                failure_count += 1;
+                if failure_details.len() < 5 {
+                    failure_details.push(format!("{}：{}", date_str, error));
+                }
             }
 
             days_done += 1;
@@ -814,11 +837,62 @@ impl CoreState {
             ));
         }
 
+        if failure_count > 0 {
+            let extra = if failure_count > failure_details.len() {
+                format!(
+                    "；另有 {} 個日期未列出",
+                    failure_count - failure_details.len()
+                )
+            } else {
+                String::new()
+            };
+            return Err(format!(
+                "修補未完成：{} 個日期抓取失敗，已入庫 {} 個交易日共 {} 筆資料。{}{}",
+                failure_count,
+                inserted_days,
+                total_records,
+                failure_details.join("；"),
+                extra
+            ));
+        }
+
         on_progress(total_days, total_days, "完成".into());
 
         Ok(format!(
             "修補完成！共檢查 {} 個缺漏日，成功入庫 {} 個交易日共 {} 筆資料（其餘為休市或無行情）",
             total_days, inserted_days, total_records
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ingestion_has_source_error;
+    use stock_core::pipeline::{DayType, IngestionOutcome};
+
+    #[test]
+    fn gap_repair_distinguishes_closed_days_from_source_errors() {
+        let closed = IngestionOutcome {
+            day_type: DayType::MarketClosed,
+            ok: false,
+            message: "no data (market closed or error)".to_string(),
+            records_inserted: 0,
+        };
+        let failed = IngestionOutcome {
+            day_type: DayType::MarketClosed,
+            ok: false,
+            message: "TWSE: request timeout".to_string(),
+            records_inserted: 0,
+        };
+        let partial = IngestionOutcome {
+            day_type: DayType::Trading,
+            ok: true,
+            message: "OK: 10 records; T86: request timeout".to_string(),
+            records_inserted: 10,
+        };
+
+        assert!(!ingestion_has_source_error(&closed));
+        assert!(ingestion_has_source_error(&failed));
+        assert!(ingestion_has_source_error(&partial));
     }
 }

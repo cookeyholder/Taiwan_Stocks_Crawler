@@ -92,6 +92,14 @@ impl Pipeline {
                     &ingested_at,
                 );
                 total += self.repo.upsert_core_batch(&quotes)?;
+
+                match twse::fetch_institutional_twse(&self.http, date_str).await {
+                    Ok(records) if !records.is_empty() => {
+                        self.repo.upsert_institutional_batch(&records)?;
+                    }
+                    Ok(_) => {}
+                    Err(e) => append_ingestion_warning(&mut outcome.message, format!("T86: {}", e)),
+                }
             }
             Ok(_) => {}
             Err(e) => {
@@ -124,7 +132,12 @@ impl Pipeline {
         if total > 0 {
             outcome.day_type = DayType::Trading;
             outcome.ok = true;
-            outcome.message = format!("OK: {} records", total);
+            let warnings = std::mem::take(&mut outcome.message);
+            outcome.message = if warnings.is_empty() {
+                format!("OK: {} records", total)
+            } else {
+                format!("OK: {} records; {}", total, warnings)
+            };
         } else {
             outcome.day_type = DayType::MarketClosed;
             if outcome.message.is_empty() {
@@ -252,6 +265,13 @@ impl Pipeline {
         );
         Ok(output)
     }
+}
+
+fn append_ingestion_warning(warnings: &mut String, warning: String) {
+    if !warnings.is_empty() {
+        warnings.push_str("; ");
+    }
+    warnings.push_str(&warning);
 }
 
 fn classify_by_symbol(symbol: &str) -> &str {
@@ -665,5 +685,13 @@ mod tests {
         assert_ne!(v1, v2);
         assert!(v1.starts_with("v1|"));
         assert!(v2.starts_with("v2|"));
+    }
+
+    #[test]
+    fn ingestion_warnings_are_preserved_when_quotes_succeed() {
+        let mut warnings = String::new();
+        append_ingestion_warning(&mut warnings, "T86: timeout".to_string());
+        append_ingestion_warning(&mut warnings, "TPEX: unavailable".to_string());
+        assert_eq!(warnings, "T86: timeout; TPEX: unavailable");
     }
 }

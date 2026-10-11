@@ -69,6 +69,19 @@ fn test_not_breaking_high_returns_no_signal() {
 }
 
 #[test]
+fn test_matching_prior_high_returns_no_signal() {
+    let strategy = NewHighBreakoutStrategy {
+        lookback_period: 20,
+        use_high: true,
+        min_volume: 0,
+    };
+
+    let records = make_records(&[100.0; 21], 1000);
+    let signal = strategy.evaluate(&records, 20);
+    assert!(!signal.has_signal, "價格等於前期高點不應視為突破");
+}
+
+#[test]
 fn test_new_high_volume_filter() {
     let strategy = NewHighBreakoutStrategy {
         lookback_period: 20,

@@ -369,6 +369,7 @@ impl MarketRepository {
             recorded_dates_vec.into_iter().collect();
 
         let mut total_workdays = 0;
+        let mut recorded_workdays = 0;
         let mut missing_dates = Vec::new();
         let mut curr = start_date;
 
@@ -377,7 +378,9 @@ impl MarketRepository {
             if weekday != chrono::Weekday::Sat && weekday != chrono::Weekday::Sun {
                 total_workdays += 1;
                 let date_str = curr.format("%Y-%m-%d").to_string();
-                if !recorded_set.contains(&date_str) {
+                if recorded_set.contains(&date_str) {
+                    recorded_workdays += 1;
+                } else {
                     missing_dates.push(date_str);
                 }
             }
@@ -388,7 +391,7 @@ impl MarketRepository {
             start_date: start.to_string(),
             end_date: end.to_string(),
             total_workdays,
-            recorded_dates: recorded_set.len(),
+            recorded_dates: recorded_workdays,
             missing_dates,
         })
     }
@@ -591,6 +594,9 @@ impl MarketRepository {
         let mut groups = Vec::new();
         for g in rows {
             groups.push(g?);
+        }
+        if groups.is_empty() {
+            groups.push("預設自選".to_string());
         }
         Ok(groups)
     }
@@ -994,6 +1000,7 @@ mod tests {
     #[test]
     fn test_watchlist_groups() {
         let repo = MarketRepository::open_in_memory().unwrap();
+        assert_eq!(repo.get_watchlist_groups().unwrap(), vec!["預設自選"]);
         repo.add_to_watchlist("2330", "群組B").unwrap();
         repo.add_to_watchlist("2454", "群組A").unwrap();
         repo.add_to_watchlist("2317", "群組B").unwrap();
@@ -1045,6 +1052,7 @@ mod tests {
             make_quote("2330", "2026-07-07", 510.0),
             make_quote("2330", "2026-07-09", 515.0),
             make_quote("2330", "2026-07-10", 520.0),
+            make_quote("2330", "2026-07-11", 521.0),
         ];
         repo.upsert_core_batch(&quotes_rest).unwrap();
 

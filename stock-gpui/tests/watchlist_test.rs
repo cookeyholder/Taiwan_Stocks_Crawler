@@ -39,6 +39,58 @@ async fn test_core_state_watchlist_toggle_and_cache() {
     assert_eq!(state_reloaded.get_watchlist_symbols().len(), 1);
 }
 
+#[tokio::test]
+async fn test_concurrent_watchlist_toggles_are_serialized() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let db_path = temp_dir.path().join("test_watchlist_concurrent.db");
+    let state = CoreState::new_with_db_path(db_path.to_str().unwrap()).unwrap();
+
+    let lock = state.pipeline.lock().await;
+    let first_state = state.clone();
+    let second_state = state.clone();
+    let first = tokio::spawn(async move { first_state.toggle_watchlist("2330", None).await });
+    let second = tokio::spawn(async move { second_state.toggle_watchlist("2330", None).await });
+    tokio::task::yield_now().await;
+    drop(lock);
+
+    first.await.unwrap().unwrap();
+    second.await.unwrap().unwrap();
+    assert!(!state.is_favorited("2330"));
+}
+
+#[tokio::test]
+async fn test_watchlist_toggle_uses_requested_group() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let db_path = temp_dir.path().join("test_watchlist_groups.db");
+    let state = CoreState::new_with_db_path(db_path.to_str().unwrap()).unwrap();
+
+    assert!(
+        state
+            .toggle_watchlist("2330", Some("預設自選"))
+            .await
+            .unwrap()
+    );
+    assert!(
+        state
+            .toggle_watchlist("2330", Some("半導體"))
+            .await
+            .unwrap()
+    );
+    let pipeline = state.pipeline.lock().await;
+    assert!(
+        pipeline
+            .repo
+            .is_in_watchlist("2330", Some("預設自選"))
+            .unwrap()
+    );
+    assert!(
+        pipeline
+            .repo
+            .is_in_watchlist("2330", Some("半導體"))
+            .unwrap()
+    );
+}
+
 #[test]
 fn test_analysis_delegate_watchlist_filtering() {
     use stock_gpui::state::SecurityItem;
