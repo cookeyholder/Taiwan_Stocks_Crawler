@@ -78,6 +78,8 @@ pub struct ScreenResult {
     pub latest_bandwidth: f64,
     pub latest_upper_band: Option<f64>,
     pub break_upper: bool,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,6 +106,15 @@ pub struct SignalRecord {
 impl SignalRecord {
     pub fn to_screen_result(&self) -> ScreenResult {
         let get_f64 = |key: &str| self.metadata.get(key).copied().unwrap_or(0.0);
+        let mut tags = Vec::new();
+        if self.strategy == "bollinger_squeeze" {
+            tags.push("布林擠壓".to_string());
+        } else if self.strategy == "ma_alignment" {
+            tags.push("多頭排列".to_string());
+        } else if self.strategy == "new_high" {
+            let lookback = self.metadata.get("lookback").copied().unwrap_or(20.0) as usize;
+            tags.push(format!("創{}日新高", lookback));
+        }
         ScreenResult {
             symbol: self.symbol.clone(),
             name: self.name.clone(),
@@ -114,6 +125,7 @@ impl SignalRecord {
             latest_bandwidth: get_f64("bandwidth"),
             latest_upper_band: self.metadata.get("upper_band").copied(),
             break_upper: self.metadata.get("break_upper").copied().unwrap_or(0.0) > 0.5,
+            tags,
         }
     }
 }

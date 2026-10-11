@@ -1,6 +1,8 @@
 pub mod bollinger;
 pub mod engine;
+pub mod ma_alignment;
 pub mod ma_cross;
+pub mod new_high;
 pub mod performance;
 pub mod portfolio;
 pub mod rsi;

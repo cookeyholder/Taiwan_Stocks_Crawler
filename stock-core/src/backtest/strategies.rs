@@ -1,7 +1,9 @@
 use super::Signal;
 use super::Strategy;
 use crate::backtest::bollinger::BollingerSqueezeBreakout;
+use crate::backtest::ma_alignment::MaBullishAlignmentStrategy;
 use crate::backtest::ma_cross::MaCrossStrategy;
+use crate::backtest::new_high::NewHighBreakoutStrategy;
 use crate::backtest::rsi::RsiStrategy;
 use crate::models::{OhlcvRecord, ParamDef, StrategyInfo};
 
@@ -9,6 +11,8 @@ pub enum StrategyKind {
     BollingerSqueeze(BollingerSqueezeBreakout),
     MaCross(MaCrossStrategy),
     Rsi(RsiStrategy),
+    MaBullishAlignment(MaBullishAlignmentStrategy),
+    NewHighBreakout(NewHighBreakoutStrategy),
 }
 
 impl Strategy for StrategyKind {
@@ -17,6 +21,8 @@ impl Strategy for StrategyKind {
             StrategyKind::BollingerSqueeze(_) => "bollinger_squeeze",
             StrategyKind::MaCross(_) => "ma_cross",
             StrategyKind::Rsi(_) => "rsi",
+            StrategyKind::MaBullishAlignment(_) => "ma_alignment",
+            StrategyKind::NewHighBreakout(_) => "new_high",
         }
     }
 
@@ -25,6 +31,8 @@ impl Strategy for StrategyKind {
             StrategyKind::BollingerSqueeze(s) => s.min_history(),
             StrategyKind::MaCross(s) => s.min_history(),
             StrategyKind::Rsi(s) => s.min_history(),
+            StrategyKind::MaBullishAlignment(s) => s.min_history(),
+            StrategyKind::NewHighBreakout(s) => s.min_history(),
         }
     }
 
@@ -33,6 +41,8 @@ impl Strategy for StrategyKind {
             StrategyKind::BollingerSqueeze(s) => s.evaluate(ohlcv, date_index),
             StrategyKind::MaCross(s) => s.evaluate(ohlcv, date_index),
             StrategyKind::Rsi(s) => s.evaluate(ohlcv, date_index),
+            StrategyKind::MaBullishAlignment(s) => s.evaluate(ohlcv, date_index),
+            StrategyKind::NewHighBreakout(s) => s.evaluate(ohlcv, date_index),
         }
     }
 }
@@ -128,6 +138,67 @@ impl StrategyKind {
                     },
                 ],
             },
+            StrategyInfo {
+                id: "ma_alignment".into(),
+                name: "均線多頭排列".into(),
+                params: vec![
+                    ParamDef {
+                        name: "short_period".into(),
+                        param_type: "int".into(),
+                        default: 5.0,
+                        min: 2.0,
+                        max: 60.0,
+                    },
+                    ParamDef {
+                        name: "mid_period".into(),
+                        param_type: "int".into(),
+                        default: 10.0,
+                        min: 3.0,
+                        max: 120.0,
+                    },
+                    ParamDef {
+                        name: "long_period".into(),
+                        param_type: "int".into(),
+                        default: 20.0,
+                        min: 5.0,
+                        max: 240.0,
+                    },
+                    ParamDef {
+                        name: "min_volume".into(),
+                        param_type: "int".into(),
+                        default: 0.0,
+                        min: 0.0,
+                        max: 1e9,
+                    },
+                ],
+            },
+            StrategyInfo {
+                id: "new_high".into(),
+                name: "創波段新高".into(),
+                params: vec![
+                    ParamDef {
+                        name: "lookback_period".into(),
+                        param_type: "int".into(),
+                        default: 20.0,
+                        min: 5.0,
+                        max: 250.0,
+                    },
+                    ParamDef {
+                        name: "use_high".into(),
+                        param_type: "bool".into(),
+                        default: 1.0,
+                        min: 0.0,
+                        max: 1.0,
+                    },
+                    ParamDef {
+                        name: "min_volume".into(),
+                        param_type: "int".into(),
+                        default: 0.0,
+                        min: 0.0,
+                        max: 1e9,
+                    },
+                ],
+            },
         ]
     }
 
@@ -155,6 +226,19 @@ impl StrategyKind {
                 period: get("period", 14.0) as usize,
                 overbought: get("overbought", 70.0),
                 oversold: get("oversold", 30.0),
+                min_volume: get("min_volume", 0.0) as i64,
+            })),
+            "ma_alignment" => Ok(StrategyKind::MaBullishAlignment(
+                MaBullishAlignmentStrategy {
+                    short_period: get("short_period", 5.0) as usize,
+                    mid_period: get("mid_period", 10.0) as usize,
+                    long_period: get("long_period", 20.0) as usize,
+                    min_volume: get("min_volume", 0.0) as i64,
+                },
+            )),
+            "new_high" => Ok(StrategyKind::NewHighBreakout(NewHighBreakoutStrategy {
+                lookback_period: get("lookback_period", 20.0) as usize,
+                use_high: get("use_high", 1.0) > 0.5,
                 min_volume: get("min_volume", 0.0) as i64,
             })),
             _ => Err(format!("unknown strategy: {}", id)),

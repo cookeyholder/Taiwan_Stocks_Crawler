@@ -17,7 +17,7 @@ use gpui_kit::{
 use stock_core::models::ScreenResult;
 
 use crate::app::FontSizeLevel;
-use crate::state::{AnalysisData, CoreState, default_db_path};
+use crate::state::{AnalysisData, CoreState, ScreenerMode, ScreenerParams, default_db_path};
 use crate::views::chart_viewport::{ChartViewport, compute_price_scales, compute_volume_scales};
 use stock_core::db::MarketRepository;
 
@@ -61,12 +61,13 @@ impl ScreenerDelegate {
                         .unwrap_or(0)
                         .cmp(&b.latest_volume.unwrap_or(0))
                 }),
-                5 => self.results.sort_by(|a, b| {
+                5 => self.results.sort_by_key(|a| a.tags.join(",")),
+                6 => self.results.sort_by(|a, b| {
                     a.max_bandwidth
                         .partial_cmp(&b.max_bandwidth)
                         .unwrap_or(std::cmp::Ordering::Equal)
                 }),
-                6 => self.results.sort_by(|a, b| {
+                7 => self.results.sort_by(|a, b| {
                     a.latest_bandwidth
                         .partial_cmp(&b.latest_bandwidth)
                         .unwrap_or(std::cmp::Ordering::Equal)
@@ -88,12 +89,15 @@ impl ScreenerDelegate {
                         .unwrap_or(0)
                         .cmp(&a.latest_volume.unwrap_or(0))
                 }),
-                5 => self.results.sort_by(|a, b| {
+                5 => self
+                    .results
+                    .sort_by_key(|b| std::cmp::Reverse(b.tags.join(","))),
+                6 => self.results.sort_by(|a, b| {
                     b.max_bandwidth
                         .partial_cmp(&a.max_bandwidth)
                         .unwrap_or(std::cmp::Ordering::Equal)
                 }),
-                6 => self.results.sort_by(|a, b| {
+                7 => self.results.sort_by(|a, b| {
                     b.latest_bandwidth
                         .partial_cmp(&a.latest_bandwidth)
                         .unwrap_or(std::cmp::Ordering::Equal)
@@ -111,7 +115,7 @@ impl ScreenerDelegate {
 
 impl TableDelegate for ScreenerDelegate {
     fn columns_count(&self, _: &App) -> usize {
-        8
+        9
     }
 
     fn rows_count(&self, _: &App) -> usize {
@@ -125,8 +129,9 @@ impl TableDelegate for ScreenerDelegate {
             2 => Column::new("date", "訊號日期").width(px(95.)).sortable(),
             3 => Column::new("close", "收盤價").width(px(85.)).sortable(),
             4 => Column::new("volume", "成交量").width(px(90.)).sortable(),
-            5 => Column::new("max_bw", "最大頻寬").width(px(80.)).sortable(),
-            6 => Column::new("latest_bw", "觸發頻寬")
+            5 => Column::new("tags", "策略標籤").width(px(140.)).sortable(),
+            6 => Column::new("max_bw", "最大頻寬").width(px(80.)).sortable(),
+            7 => Column::new("latest_bw", "觸發頻寬")
                 .width(px(80.))
                 .sortable(),
             _ => Column::new("break_upper", "突破上軌")
@@ -196,10 +201,37 @@ impl TableDelegate for ScreenerDelegate {
             4 => div()
                 .child(format!("{}", r.latest_volume.unwrap_or(0)))
                 .into_any_element(),
-            5 => div()
+            5 => {
+                if r.tags.is_empty() {
+                    div()
+                        .text_color(rgb(0x94a3b8))
+                        .child("-")
+                        .into_any_element()
+                } else {
+                    let tag_elements = r.tags.iter().map(|tag| {
+                        div()
+                            .px_1p5()
+                            .py_0p5()
+                            .rounded_sm()
+                            .bg(rgb(0x1e293b))
+                            .border_1()
+                            .border_color(rgb(0x38bdf8))
+                            .text_color(rgb(0x38bdf8))
+                            .text_xs()
+                            .child(tag.clone())
+                    });
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .children(tag_elements)
+                        .into_any_element()
+                }
+            }
+            6 => div()
                 .child(format!("{:.4}", r.max_bandwidth))
                 .into_any_element(),
-            6 => div()
+            7 => div()
                 .child(format!("{:.4}", r.latest_bandwidth))
                 .into_any_element(),
             _ => {
@@ -226,11 +258,16 @@ impl TableDelegate for ScreenerDelegate {
 
 pub struct ScreenerView {
     pub core_state: CoreState,
+    pub mode: ScreenerMode,
     pub start_date_input: Entity<InputState>,
     pub end_date_input: Entity<InputState>,
     pub bandwidth_input: Entity<InputState>,
     pub min_days_input: Entity<InputState>,
     pub min_volume_input: Entity<InputState>,
+    pub short_ma_input: Entity<InputState>,
+    pub mid_ma_input: Entity<InputState>,
+    pub long_ma_input: Entity<InputState>,
+    pub lookback_input: Entity<InputState>,
     pub include_etf: bool,
     pub break_upper_only: bool,
     pub show_bollinger: bool,
@@ -255,6 +292,10 @@ impl ScreenerView {
         let bandwidth_input = cx.new(|cx| InputState::new(window, cx).default_value("0.10"));
         let min_days_input = cx.new(|cx| InputState::new(window, cx).default_value("3"));
         let min_volume_input = cx.new(|cx| InputState::new(window, cx).default_value("500"));
+        let short_ma_input = cx.new(|cx| InputState::new(window, cx).default_value("5"));
+        let mid_ma_input = cx.new(|cx| InputState::new(window, cx).default_value("10"));
+        let long_ma_input = cx.new(|cx| InputState::new(window, cx).default_value("20"));
+        let lookback_input = cx.new(|cx| InputState::new(window, cx).default_value("20"));
 
         let delegate = ScreenerDelegate {
             results: Vec::new(),
@@ -274,6 +315,10 @@ impl ScreenerView {
             &bandwidth_input,
             &min_days_input,
             &min_volume_input,
+            &short_ma_input,
+            &mid_ma_input,
+            &long_ma_input,
+            &lookback_input,
         ] {
             cx.subscribe(
                 input_field,
@@ -332,7 +377,7 @@ impl ScreenerView {
                             }
                         } else {
                             match *col {
-                                0 | 5 | 6 => ColumnSort::Ascending,
+                                0 | 5 | 6 | 7 => ColumnSort::Ascending,
                                 _ => ColumnSort::Descending,
                             }
                         };
@@ -348,11 +393,16 @@ impl ScreenerView {
 
         Self {
             core_state,
+            mode: ScreenerMode::Bollinger,
             start_date_input,
             end_date_input,
             bandwidth_input,
             min_days_input,
             min_volume_input,
+            short_ma_input,
+            mid_ma_input,
+            long_ma_input,
+            lookback_input,
             include_etf: false,
             break_upper_only: false,
             show_bollinger: true,
@@ -455,6 +505,35 @@ impl ScreenerView {
             .unwrap_or(500);
         let min_volume = min_vol_lots.max(0) * 1000;
 
+        let short_period: usize = self
+            .short_ma_input
+            .read(cx)
+            .value()
+            .trim()
+            .parse()
+            .unwrap_or(5);
+        let mid_period: usize = self
+            .mid_ma_input
+            .read(cx)
+            .value()
+            .trim()
+            .parse()
+            .unwrap_or(10);
+        let long_period: usize = self
+            .long_ma_input
+            .read(cx)
+            .value()
+            .trim()
+            .parse()
+            .unwrap_or(20);
+        let lookback_period: usize = self
+            .lookback_input
+            .read(cx)
+            .value()
+            .trim()
+            .parse()
+            .unwrap_or(20);
+
         let instrument_types = if self.include_etf {
             Some(vec!["stock".to_string(), "etf".to_string()])
         } else {
@@ -462,6 +541,20 @@ impl ScreenerView {
         };
 
         let break_upper_only = self.break_upper_only;
+
+        let params = ScreenerParams {
+            mode: self.mode,
+            max_bandwidth: max_bw,
+            min_days,
+            require_break_upper: break_upper_only,
+            short_period,
+            mid_period,
+            long_period,
+            lookback_period,
+            use_high: true,
+            min_volume,
+            instrument_types,
+        };
 
         // 開始新篩選時重設舊有選股與圖表結果
         self.selected_symbol = None;
@@ -482,14 +575,10 @@ impl ScreenerView {
 
         cx.spawn(async move |this, cx| {
             let mut screen_task = crate::state::TOKIO_RUNTIME.spawn(async move {
-                core.screen_bollinger_range(
+                core.screen_composite_range(
                     &start_date,
                     &end_date,
-                    max_bw,
-                    min_days,
-                    instrument_types,
-                    min_volume,
-                    break_upper_only,
+                    params,
                     move |curr, tot, date, _cached| {
                         let _ = tx.send((curr, tot, date));
                     },
@@ -582,130 +671,249 @@ impl Render for ScreenerView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_running = self.is_running;
 
+        let mode_buttons = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .font_weight(gpui_kit::FontWeight::BOLD)
+                    .text_color(rgb(0xcdd6f4))
+                    .child("策略模式:"),
+            )
+            .child(
+                Button::new("btn-mode-bollinger")
+                    .label("布林通道擠壓")
+                    .when(self.mode == ScreenerMode::Bollinger, |b| b.primary())
+                    .when(self.mode != ScreenerMode::Bollinger, |b| b.secondary())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.mode = ScreenerMode::Bollinger;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("btn-mode-ma")
+                    .label("均線多頭排列")
+                    .when(self.mode == ScreenerMode::MaAlignment, |b| b.primary())
+                    .when(self.mode != ScreenerMode::MaAlignment, |b| b.secondary())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.mode = ScreenerMode::MaAlignment;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("btn-mode-new-high")
+                    .label("創波段新高")
+                    .when(self.mode == ScreenerMode::NewHigh, |b| b.primary())
+                    .when(self.mode != ScreenerMode::NewHigh, |b| b.secondary())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.mode = ScreenerMode::NewHigh;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("btn-mode-composite")
+                    .label("複合選股 (多頭+創新高)")
+                    .when(self.mode == ScreenerMode::Composite, |b| b.primary())
+                    .when(self.mode != ScreenerMode::Composite, |b| b.secondary())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.mode = ScreenerMode::Composite;
+                        cx.notify();
+                    })),
+            );
+
         let toolbar = div()
             .flex()
-            .flex_wrap()
-            .items_center()
-            .gap_3()
+            .flex_col()
+            .gap_2()
             .p_3()
             .border_b_1()
             .border_color(rgb(0x313244))
+            .child(mode_buttons)
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
                     .items_center()
-                    .gap_1()
-                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("起始:"))
+                    .gap_3()
                     .child(
                         div()
-                            .w(px(120.))
-                            .child(Input::new(&self.start_date_input).id("screen-start-date")),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("結束:"))
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(div().text_sm().text_color(rgb(0xa6adc8)).child("起始:"))
+                            .child(
+                                div().w(px(120.)).child(
+                                    Input::new(&self.start_date_input).id("screen-start-date"),
+                                ),
+                            ),
+                    )
                     .child(
                         div()
-                            .w(px(120.))
-                            .child(Input::new(&self.end_date_input).id("screen-end-date")),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("頻寬:"))
-                    .child(
-                        div()
-                            .w(px(80.))
-                            .child(Input::new(&self.bandwidth_input).id("screen-bandwidth")),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("天數:"))
-                    .child(
-                        div()
-                            .w(px(60.))
-                            .child(Input::new(&self.min_days_input).id("screen-min-days")),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("量(張):"))
-                    .child(
-                        div()
-                            .w(px(70.))
-                            .child(Input::new(&self.min_volume_input).id("screen-min-volume")),
-                    ),
-            )
-            .child(
-                Checkbox::new("screener-include-etf")
-                    .label("包含 ETF")
-                    .checked(self.include_etf)
-                    .on_click(cx.listener(|this, checked, _, cx| {
-                        this.include_etf = *checked;
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Checkbox::new("screener-break-upper-only")
-                    .label("僅突破上軌")
-                    .checked(self.break_upper_only)
-                    .on_click(cx.listener(|this, checked, _, cx| {
-                        this.break_upper_only = *checked;
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Button::new("btn-start-screen")
-                    .label(if is_running {
-                        "篩選中..."
-                    } else {
-                        "開始選股"
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(div().text_sm().text_color(rgb(0xa6adc8)).child("結束:"))
+                            .child(
+                                div()
+                                    .w(px(120.))
+                                    .child(Input::new(&self.end_date_input).id("screen-end-date")),
+                            ),
+                    )
+                    .when(self.mode == ScreenerMode::Bollinger, |d| {
+                        d.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .child(div().text_sm().text_color(rgb(0xa6adc8)).child("頻寬:"))
+                                .child(div().w(px(80.)).child(
+                                    Input::new(&self.bandwidth_input).id("screen-bandwidth"),
+                                )),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .child(div().text_sm().text_color(rgb(0xa6adc8)).child("天數:"))
+                                .child(
+                                    div().w(px(60.)).child(
+                                        Input::new(&self.min_days_input).id("screen-min-days"),
+                                    ),
+                                ),
+                        )
                     })
-                    .primary()
-                    .disabled(is_running)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.start_screen(cx);
-                    })),
-            )
-            .when(is_running, |this| {
-                this.child(
-                    Button::new("btn-cancel-screen")
-                        .label("取消篩選")
-                        .danger()
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.cancel_screen(cx);
-                        })),
-                )
-            })
-            .when(!is_running, |this| {
-                this.child(
-                    Button::new("btn-clear-screen-cache")
-                        .label("清除快取")
-                        .secondary()
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.clear_cache(cx);
-                        })),
-                )
-            })
-            .child(
-                div()
-                    .text_color(rgb(0xa6adc8))
-                    .text_sm()
-                    .child(self.status_text.clone()),
+                    .when(
+                        self.mode == ScreenerMode::MaAlignment
+                            || self.mode == ScreenerMode::Composite,
+                        |d| {
+                            d.child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("短均:"))
+                                    .child(div().w(px(50.)).child(
+                                        Input::new(&self.short_ma_input).id("screen-short-ma"),
+                                    )),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("中均:"))
+                                    .child(
+                                        div().w(px(50.)).child(
+                                            Input::new(&self.mid_ma_input).id("screen-mid-ma"),
+                                        ),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("長均:"))
+                                    .child(div().w(px(50.)).child(
+                                        Input::new(&self.long_ma_input).id("screen-long-ma"),
+                                    )),
+                            )
+                        },
+                    )
+                    .when(
+                        self.mode == ScreenerMode::NewHigh || self.mode == ScreenerMode::Composite,
+                        |d| {
+                            d.child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(rgb(0xa6adc8))
+                                            .child("突破天數:"),
+                                    )
+                                    .child(div().w(px(60.)).child(
+                                        Input::new(&self.lookback_input).id("screen-lookback"),
+                                    )),
+                            )
+                        },
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(div().text_sm().text_color(rgb(0xa6adc8)).child("量(張):"))
+                            .child(
+                                div().w(px(70.)).child(
+                                    Input::new(&self.min_volume_input).id("screen-min-volume"),
+                                ),
+                            ),
+                    )
+                    .child(
+                        Checkbox::new("screener-include-etf")
+                            .label("包含 ETF")
+                            .checked(self.include_etf)
+                            .on_click(cx.listener(|this, checked, _, cx| {
+                                this.include_etf = *checked;
+                                cx.notify();
+                            })),
+                    )
+                    .when(self.mode == ScreenerMode::Bollinger, |d| {
+                        d.child(
+                            Checkbox::new("screener-break-upper-only")
+                                .label("僅突破上軌")
+                                .checked(self.break_upper_only)
+                                .on_click(cx.listener(|this, checked, _, cx| {
+                                    this.break_upper_only = *checked;
+                                    cx.notify();
+                                })),
+                        )
+                    })
+                    .child(
+                        Button::new("btn-start-screen")
+                            .label(if is_running {
+                                "篩選中..."
+                            } else {
+                                "開始選股"
+                            })
+                            .primary()
+                            .disabled(is_running)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.start_screen(cx);
+                            })),
+                    )
+                    .when(is_running, |this| {
+                        this.child(
+                            Button::new("btn-cancel-screen")
+                                .label("取消篩選")
+                                .danger()
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.cancel_screen(cx);
+                                })),
+                        )
+                    })
+                    .when(!is_running, |this| {
+                        this.child(
+                            Button::new("btn-clear-screen-cache")
+                                .label("清除快取")
+                                .secondary()
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.clear_cache(cx);
+                                })),
+                        )
+                    })
+                    .child(
+                        div()
+                            .text_color(rgb(0xa6adc8))
+                            .text_sm()
+                            .child(self.status_text.clone()),
+                    ),
             );
 
         let chart_section = if self.is_chart_loading {

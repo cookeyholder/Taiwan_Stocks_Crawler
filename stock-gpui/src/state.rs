@@ -12,6 +12,8 @@ pub static TOKIO_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
 
 use stock_core::backtest::bollinger::BollingerSqueezeBreakout;
 use stock_core::backtest::engine::BacktestEngine;
+use stock_core::backtest::ma_alignment::MaBullishAlignmentStrategy;
+use stock_core::backtest::new_high::NewHighBreakoutStrategy;
 use stock_core::backtest::performance::calculate_metrics;
 use stock_core::backtest::portfolio::PortfolioSimulator;
 use stock_core::backtest::strategies::StrategyKind;
@@ -19,6 +21,59 @@ use stock_core::db::MarketRepository;
 use stock_core::fetcher::{HttpClient, HttpPolicy};
 use stock_core::models::*;
 use stock_core::pipeline::Pipeline;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ScreenerMode {
+    #[default]
+    Bollinger,
+    MaAlignment,
+    NewHigh,
+    Composite,
+}
+
+impl ScreenerMode {
+    pub fn label(&self) -> &'static str {
+        match self {
+            ScreenerMode::Bollinger => "布林通道擠壓",
+            ScreenerMode::MaAlignment => "均線多頭排列",
+            ScreenerMode::NewHigh => "創波段新高",
+            ScreenerMode::Composite => "複合選股（多頭排列 + 創新高）",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ScreenerParams {
+    pub mode: ScreenerMode,
+    pub max_bandwidth: f64,
+    pub min_days: i32,
+    pub require_break_upper: bool,
+    pub short_period: usize,
+    pub mid_period: usize,
+    pub long_period: usize,
+    pub lookback_period: usize,
+    pub use_high: bool,
+    pub min_volume: i64,
+    pub instrument_types: Option<Vec<String>>,
+}
+
+impl Default for ScreenerParams {
+    fn default() -> Self {
+        Self {
+            mode: ScreenerMode::Bollinger,
+            max_bandwidth: 0.08,
+            min_days: 5,
+            require_break_upper: false,
+            short_period: 5,
+            mid_period: 10,
+            long_period: 20,
+            lookback_period: 20,
+            use_high: true,
+            min_volume: 0,
+            instrument_types: None,
+        }
+    }
+}
 
 pub fn default_db_path() -> PathBuf {
     if let Ok(dir) = std::env::var("STOCK_DATA_DIR") {
@@ -280,16 +335,11 @@ impl CoreState {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub async fn screen_bollinger_range<F>(
+    pub async fn screen_composite_range<F>(
         &self,
         start_date: &str,
         end_date: &str,
-        max_bandwidth: f64,
-        min_days: i32,
-        instrument_types: Option<Vec<String>>,
-        min_volume: i64,
-        require_break_upper: bool,
+        params: ScreenerParams,
         on_progress: F,
     ) -> Result<RangeScreenResult, String>
     where
@@ -337,20 +387,13 @@ impl CoreState {
 
         on_progress(1, 2, "正在批次載入歷史報價與計算技術指標...".into(), false);
 
-        let strategy = BollingerSqueezeBreakout {
-            bandwidth_limit: max_bandwidth,
-            consecutive_days: min_days as usize,
-            min_volume,
-            require_break_upper,
-        };
-
-        let types_ref = instrument_types.as_deref();
+        let types_ref = params.instrument_types.as_deref();
         let engine = BacktestEngine::new(&pipeline.repo);
 
         let chunk_size = 10;
         let chunks: Vec<_> = trade_dates.chunks(chunk_size).collect();
         let total_chunks = chunks.len();
-        let mut all_signals = Vec::new();
+        let mut all_results = Vec::new();
 
         for (idx, chunk) in chunks.iter().enumerate() {
             if self.cancel_flag.load(Ordering::SeqCst) {
@@ -365,10 +408,88 @@ impl CoreState {
                 false,
             );
 
-            let output = engine
-                .run_range(chunk_start, chunk_end, &strategy, types_ref)
-                .map_err(|e| e.to_string())?;
-            all_signals.extend(output.signals);
+            match params.mode {
+                ScreenerMode::Bollinger => {
+                    let strategy = BollingerSqueezeBreakout {
+                        bandwidth_limit: params.max_bandwidth,
+                        consecutive_days: params.min_days as usize,
+                        min_volume: params.min_volume,
+                        require_break_upper: params.require_break_upper,
+                    };
+                    let output = engine
+                        .run_range(chunk_start, chunk_end, &strategy, types_ref)
+                        .map_err(|e| e.to_string())?;
+                    for s in output.signals {
+                        all_results.push(s.to_screen_result());
+                    }
+                }
+                ScreenerMode::MaAlignment => {
+                    let strategy = MaBullishAlignmentStrategy {
+                        short_period: params.short_period,
+                        mid_period: params.mid_period,
+                        long_period: params.long_period,
+                        min_volume: params.min_volume,
+                    };
+                    let output = engine
+                        .run_range(chunk_start, chunk_end, &strategy, types_ref)
+                        .map_err(|e| e.to_string())?;
+                    for s in output.signals {
+                        all_results.push(s.to_screen_result());
+                    }
+                }
+                ScreenerMode::NewHigh => {
+                    let strategy = NewHighBreakoutStrategy {
+                        lookback_period: params.lookback_period,
+                        use_high: params.use_high,
+                        min_volume: params.min_volume,
+                    };
+                    let output = engine
+                        .run_range(chunk_start, chunk_end, &strategy, types_ref)
+                        .map_err(|e| e.to_string())?;
+                    for s in output.signals {
+                        all_results.push(s.to_screen_result());
+                    }
+                }
+                ScreenerMode::Composite => {
+                    let ma_strategy = MaBullishAlignmentStrategy {
+                        short_period: params.short_period,
+                        mid_period: params.mid_period,
+                        long_period: params.long_period,
+                        min_volume: params.min_volume,
+                    };
+                    let nh_strategy = NewHighBreakoutStrategy {
+                        lookback_period: params.lookback_period,
+                        use_high: params.use_high,
+                        min_volume: params.min_volume,
+                    };
+                    let ma_output = engine
+                        .run_range(chunk_start, chunk_end, &ma_strategy, types_ref)
+                        .map_err(|e| e.to_string())?;
+                    let nh_output = engine
+                        .run_range(chunk_start, chunk_end, &nh_strategy, types_ref)
+                        .map_err(|e| e.to_string())?;
+
+                    let mut nh_set: HashSet<(String, String)> = HashSet::new();
+                    for s in nh_output.signals {
+                        if s.direction > 0 {
+                            nh_set.insert((s.trade_date, s.symbol));
+                        }
+                    }
+
+                    for s in ma_output.signals {
+                        if s.direction > 0
+                            && nh_set.contains(&(s.trade_date.clone(), s.symbol.clone()))
+                        {
+                            let mut item = s.to_screen_result();
+                            item.tags = vec![
+                                "多頭排列".to_string(),
+                                format!("創{}日新高", params.lookback_period),
+                            ];
+                            all_results.push(item);
+                        }
+                    }
+                }
+            }
         }
 
         if self.cancel_flag.load(Ordering::SeqCst) {
@@ -376,9 +497,8 @@ impl CoreState {
         }
 
         let mut symbol_map: HashMap<String, (String, ScreenResult)> = HashMap::new();
-        for signal in all_signals {
-            let trade_date = signal.trade_date.clone();
-            let item = signal.to_screen_result();
+        for item in all_results {
+            let trade_date = item.trade_date.clone();
             match symbol_map.get_mut(&item.symbol) {
                 Some((existing_date, existing_item)) => {
                     if trade_date >= *existing_date {
@@ -394,11 +514,22 @@ impl CoreState {
 
         let mut results: Vec<ScreenResult> =
             symbol_map.into_values().map(|(_, item)| item).collect();
-        results.sort_by(|a, b| {
-            a.latest_bandwidth
-                .partial_cmp(&b.latest_bandwidth)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        match params.mode {
+            ScreenerMode::Bollinger => {
+                results.sort_by(|a, b| {
+                    a.latest_bandwidth
+                        .partial_cmp(&b.latest_bandwidth)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
+            _ => {
+                results.sort_by(|a, b| {
+                    b.latest_volume
+                        .unwrap_or(0)
+                        .cmp(&a.latest_volume.unwrap_or(0))
+                });
+            }
+        }
 
         on_progress(total_chunks + 1, total_chunks + 1, "完成".into(), false);
 
@@ -413,6 +544,34 @@ impl CoreState {
                 failed_days: vec![],
             },
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn screen_bollinger_range<F>(
+        &self,
+        start_date: &str,
+        end_date: &str,
+        max_bandwidth: f64,
+        min_days: i32,
+        instrument_types: Option<Vec<String>>,
+        min_volume: i64,
+        require_break_upper: bool,
+        on_progress: F,
+    ) -> Result<RangeScreenResult, String>
+    where
+        F: Fn(usize, usize, String, bool) + Send + Sync,
+    {
+        let params = ScreenerParams {
+            mode: ScreenerMode::Bollinger,
+            max_bandwidth,
+            min_days,
+            require_break_upper,
+            min_volume,
+            instrument_types,
+            ..Default::default()
+        };
+        self.screen_composite_range(start_date, end_date, params, on_progress)
+            .await
     }
 
     pub async fn run_backtest(
