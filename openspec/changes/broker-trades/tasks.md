@@ -18,9 +18,9 @@
 
 ## 3. 圖形驗證碼辨識模組 (stock-core::fetcher::bsr::captcha)
 
-- [ ] 3.1 於 `stock-core/src/fetcher/bsr/captcha.rs` 實作影像前處理模組（灰階轉換、亮度門檻二值化、去除雪花孤立雜訊與單條干擾線）
-- [ ] 3.2 實作 5 碼字符分割與特徵識別器（`CaptchaSolver`），支援解析大寫英數字元
-- [ ] 3.3 撰寫驗證碼辨識單元測試：針對多組真實下載之 BSR 驗證碼樣例圖片驗證去噪與字符提取準確度
+- [x] 3.1 於 `stock-core/src/fetcher/bsr/captcha.rs` 實作影像前處理模組（灰階轉換、亮度門檻二值化、去除雪花孤立雜訊與單條干擾線）
+- [x] 3.2 實作 5 碼字符分割與特徵識別器（`CaptchaSolver`），支援解析大寫英數字元
+- [x] 3.3 撰寫驗證碼辨識單元測試：針對多組真實下載之 BSR 驗證碼樣例圖片驗證去噪與字符提取準確度
 
 ## 4. BSR 網路客戶端與連線管理 (stock-core::fetcher::bsr::client)
 

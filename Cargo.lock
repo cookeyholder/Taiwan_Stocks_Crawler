@@ -6780,6 +6780,7 @@ dependencies = [
  "chrono",
  "csv",
  "encoding_rs",
+ "image",
  "log",
  "reqwest",
  "rusqlite",
