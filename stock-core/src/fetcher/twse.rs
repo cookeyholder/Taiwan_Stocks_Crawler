@@ -1,7 +1,7 @@
 use encoding_rs::BIG5;
 use scraper::{Html, Selector};
 
-use crate::models::ParsedRecord;
+use crate::models::{InstitutionalRecord, ParsedRecord};
 
 use super::{HttpClient, HttpError};
 
@@ -194,9 +194,180 @@ pub fn parse_twse_html(html: &str) -> Vec<ParsedRecord> {
     results
 }
 
+fn parse_shares(s: &str) -> i64 {
+    let clean = s.replace([',', '+'], "");
+    clean.trim().parse::<i64>().unwrap_or(0)
+}
+
+/// 解析 TWSE T86 三大法人買賣超日報 JSON 資料
+pub fn parse_twse_t86_json(
+    trade_date: &str,
+    json_str: &str,
+) -> Result<Vec<InstitutionalRecord>, String> {
+    let root: serde_json::Value =
+        serde_json::from_str(json_str).map_err(|e| format!("解析 T86 JSON 失敗: {}", e))?;
+
+    let stat = root.get("stat").and_then(|v| v.as_str()).unwrap_or("");
+    if stat != "OK" && stat != "ok" {
+        return Ok(Vec::new());
+    }
+
+    let rows = root.get("data").and_then(|v| v.as_array()).or_else(|| {
+        root.get("tables")
+            .and_then(|t| t.get(0))
+            .and_then(|t0| t0.get("data"))
+            .and_then(|d| d.as_array())
+    });
+
+    let Some(rows) = rows else {
+        return Ok(Vec::new());
+    };
+
+    let mut results = Vec::new();
+
+    for row_val in rows {
+        let Some(cols) = row_val.as_array() else {
+            continue;
+        };
+        if cols.len() < 12 {
+            continue;
+        }
+
+        let raw_symbol = cols[0].as_str().unwrap_or("").trim();
+        let symbol = raw_symbol
+            .trim_start_matches('=')
+            .trim_matches('"')
+            .trim()
+            .to_string();
+
+        if symbol.is_empty() || symbol == "0000" {
+            continue;
+        }
+
+        let foreign_buy;
+        let foreign_sell;
+        let foreign_net;
+        let trust_buy;
+        let trust_sell;
+        let trust_net;
+        let dealer_buy;
+        let dealer_sell;
+        let dealer_net;
+        let total_net;
+
+        if cols.len() >= 19 {
+            // 標準 19 欄格式（含外資自營商與自營商避險）
+            let f_buy_main = parse_shares(cols[2].as_str().unwrap_or("0"));
+            let f_sell_main = parse_shares(cols[3].as_str().unwrap_or("0"));
+            let f_net_main = parse_shares(cols[4].as_str().unwrap_or("0"));
+            let f_buy_dealer = parse_shares(cols[5].as_str().unwrap_or("0"));
+            let f_sell_dealer = parse_shares(cols[6].as_str().unwrap_or("0"));
+            let f_net_dealer = parse_shares(cols[7].as_str().unwrap_or("0"));
+
+            foreign_buy = f_buy_main + f_buy_dealer;
+            foreign_sell = f_sell_main + f_sell_dealer;
+            foreign_net = f_net_main + f_net_dealer;
+
+            trust_buy = parse_shares(cols[8].as_str().unwrap_or("0"));
+            trust_sell = parse_shares(cols[9].as_str().unwrap_or("0"));
+            trust_net = parse_shares(cols[10].as_str().unwrap_or("0"));
+
+            dealer_net = parse_shares(cols[11].as_str().unwrap_or("0"));
+            let d_buy_prop = parse_shares(cols[12].as_str().unwrap_or("0"));
+            let d_sell_prop = parse_shares(cols[13].as_str().unwrap_or("0"));
+            let d_buy_hedge = parse_shares(cols[15].as_str().unwrap_or("0"));
+            let d_sell_hedge = parse_shares(cols[16].as_str().unwrap_or("0"));
+
+            dealer_buy = d_buy_prop + d_buy_hedge;
+            dealer_sell = d_sell_prop + d_sell_hedge;
+
+            total_net = parse_shares(cols[18].as_str().unwrap_or("0"));
+        } else {
+            // 緊湊格式（外資、投信、自營商）
+            foreign_buy = parse_shares(cols[2].as_str().unwrap_or("0"));
+            foreign_sell = parse_shares(cols[3].as_str().unwrap_or("0"));
+            foreign_net = parse_shares(cols[4].as_str().unwrap_or("0"));
+
+            trust_buy = parse_shares(cols[5].as_str().unwrap_or("0"));
+            trust_sell = parse_shares(cols[6].as_str().unwrap_or("0"));
+            trust_net = parse_shares(cols[7].as_str().unwrap_or("0"));
+
+            dealer_buy = parse_shares(cols[8].as_str().unwrap_or("0"));
+            dealer_sell = parse_shares(cols[9].as_str().unwrap_or("0"));
+            dealer_net = parse_shares(cols[10].as_str().unwrap_or("0"));
+
+            total_net = foreign_net + trust_net + dealer_net;
+        }
+
+        results.push(InstitutionalRecord {
+            trade_date: trade_date.to_string(),
+            symbol,
+            foreign_buy,
+            foreign_sell,
+            foreign_net,
+            trust_buy,
+            trust_sell,
+            trust_net,
+            dealer_buy,
+            dealer_sell,
+            dealer_net,
+            total_net,
+        });
+    }
+
+    Ok(results)
+}
+
+/// 自 TWSE 抓取三大法人買賣超日報
+pub async fn fetch_institutional_twse(
+    http: &HttpClient,
+    date_str: &str,
+) -> Result<Vec<InstitutionalRecord>, HttpError> {
+    let date_compact = date_str.replace('-', "");
+    let url = format!(
+        "https://www.twse.com.tw/rwd/zh/fund/T86?response=json&date={}&selectType=ALLBUT0999",
+        date_compact
+    );
+    let text = http.get(&url).await?;
+    parse_twse_t86_json(date_str, &text)
+        .map_err(|e| HttpError::RequestFailed(format!("T86 解析失敗: {}", e)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_twse_t86_json() {
+        let json = r#"{
+            "stat": "OK",
+            "date": "20240102",
+            "title": "三大法人買賣超日報",
+            "fields": ["證券代號","證券名稱","外陸資買進股數","外陸資賣出股數","外陸資買賣超股數","外資自營商買進股數","外資自營商賣出股數","外資自營商買賣超股數","投信買進股數","投信賣出股數","投信買賣超股數","自營商買賣超股數","自營商買進股數(自行買賣)","自營商賣出股數(自行買賣)","自營商買賣超股數(自行買賣)","自營商買進股數(避險)","自營商賣出股數(避險)","自營商買賣超股數(避險)","三大法人買賣超股數"],
+            "data": [
+                ["=\"2330\"","台積電","15,000,000","5,000,000","10,000,000","0","0","0","2,000,000","500,000","1,500,000","800,000","500,000","200,000","300,000","600,000","100,000","500,000","12,300,000"],
+                ["2317","鴻海","3,000,000","4,000,000","-1,000,000","0","0","0","100,000","200,000","-100,000","-200,000","100,000","150,000","-50,000","50,000","200,000","-150,000","-1,300,000"]
+            ]
+        }"#;
+
+        let records = parse_twse_t86_json("2024-01-02", json).unwrap();
+        assert_eq!(records.len(), 2);
+
+        let tsmc = &records[0];
+        assert_eq!(tsmc.symbol, "2330");
+        assert_eq!(tsmc.trade_date, "2024-01-02");
+        assert_eq!(tsmc.foreign_net, 10_000_000);
+        assert_eq!(tsmc.trust_net, 1_500_000);
+        assert_eq!(tsmc.dealer_net, 800_000);
+        assert_eq!(tsmc.total_net, 12_300_000);
+
+        let foxconn = &records[1];
+        assert_eq!(foxconn.symbol, "2317");
+        assert_eq!(foxconn.foreign_net, -1_000_000);
+        assert_eq!(foxconn.trust_net, -100_000);
+        assert_eq!(foxconn.dealer_net, -200_000);
+        assert_eq!(foxconn.total_net, -1_300_000);
+    }
 
     #[test]
     fn test_parse_twse_csv_parses_quoted_fields() {

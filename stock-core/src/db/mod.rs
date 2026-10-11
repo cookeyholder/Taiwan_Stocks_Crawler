@@ -5,7 +5,9 @@ use rusqlite::{Connection, Result as SqlResult, params};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::models::{CacheParams, CanonicalQuote, GapReport, OhlcvRecord, ScreenResult};
+use crate::models::{
+    CacheParams, CanonicalQuote, GapReport, InstitutionalRecord, OhlcvRecord, ScreenResult,
+};
 
 pub struct MarketRepository {
     conn: Mutex<Connection>,
@@ -611,6 +613,92 @@ impl MarketRepository {
         };
         Ok(query)
     }
+
+    /// 批次寫入或更新三大法人買賣超資料
+    pub fn upsert_institutional_batch(&self, records: &[InstitutionalRecord]) -> SqlResult<usize> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let mut count = 0;
+        {
+            let mut stmt = tx.prepare_cached(
+                "INSERT INTO institutional_investors (
+                    trade_date, symbol_clean,
+                    foreign_buy, foreign_sell, foreign_net,
+                    trust_buy, trust_sell, trust_net,
+                    dealer_buy, dealer_sell, dealer_net,
+                    total_net
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                ON CONFLICT(trade_date, symbol_clean) DO UPDATE SET
+                    foreign_buy = excluded.foreign_buy,
+                    foreign_sell = excluded.foreign_sell,
+                    foreign_net = excluded.foreign_net,
+                    trust_buy = excluded.trust_buy,
+                    trust_sell = excluded.trust_sell,
+                    trust_net = excluded.trust_net,
+                    dealer_buy = excluded.dealer_buy,
+                    dealer_sell = excluded.dealer_sell,
+                    dealer_net = excluded.dealer_net,
+                    total_net = excluded.total_net
+                ",
+            )?;
+            for r in records {
+                stmt.execute(params![
+                    r.trade_date,
+                    r.symbol,
+                    r.foreign_buy,
+                    r.foreign_sell,
+                    r.foreign_net,
+                    r.trust_buy,
+                    r.trust_sell,
+                    r.trust_net,
+                    r.dealer_buy,
+                    r.dealer_sell,
+                    r.dealer_net,
+                    r.total_net,
+                ])?;
+                count += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(count)
+    }
+
+    /// 查詢指定個股在指定日期區間之三大法人買賣超資料（依日期遞增排序）
+    pub fn get_institutional_records(
+        &self,
+        symbol: &str,
+        start_date: &str,
+        end_date: &str,
+    ) -> SqlResult<Vec<InstitutionalRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT trade_date, symbol_clean,
+                    foreign_buy, foreign_sell, foreign_net,
+                    trust_buy, trust_sell, trust_net,
+                    dealer_buy, dealer_sell, dealer_net,
+                    total_net
+             FROM institutional_investors
+             WHERE symbol_clean = ?1 AND trade_date >= ?2 AND trade_date <= ?3
+             ORDER BY trade_date ASC",
+        )?;
+        let rows = stmt.query_map(params![symbol, start_date, end_date], |row| {
+            Ok(InstitutionalRecord {
+                trade_date: row.get(0)?,
+                symbol: row.get(1)?,
+                foreign_buy: row.get(2)?,
+                foreign_sell: row.get(3)?,
+                foreign_net: row.get(4)?,
+                trust_buy: row.get(5)?,
+                trust_sell: row.get(6)?,
+                trust_net: row.get(7)?,
+                dealer_buy: row.get(8)?,
+                dealer_sell: row.get(9)?,
+                dealer_net: row.get(10)?,
+                total_net: row.get(11)?,
+            })
+        })?;
+        rows.collect()
+    }
 }
 
 #[cfg(test)]
@@ -668,6 +756,53 @@ mod tests {
         assert_eq!(ohlcv.len(), 2);
         assert_eq!(ohlcv[0].close_price, Some(500.0));
         assert_eq!(ohlcv[1].close_price, Some(505.0));
+    }
+
+    #[test]
+    fn test_institutional_investors_upsert_and_query() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        let records = vec![
+            InstitutionalRecord {
+                trade_date: "2024-01-02".to_string(),
+                symbol: "2330".to_string(),
+                foreign_buy: 10_000,
+                foreign_sell: 5_000,
+                foreign_net: 5_000,
+                trust_buy: 2_000,
+                trust_sell: 1_000,
+                trust_net: 1_000,
+                dealer_buy: 500,
+                dealer_sell: 100,
+                dealer_net: 400,
+                total_net: 6_400,
+            },
+            InstitutionalRecord {
+                trade_date: "2024-01-03".to_string(),
+                symbol: "2330".to_string(),
+                foreign_buy: 8_000,
+                foreign_sell: 9_000,
+                foreign_net: -1_000,
+                trust_buy: 500,
+                trust_sell: 0,
+                trust_net: 500,
+                dealer_buy: 200,
+                dealer_sell: 300,
+                dealer_net: -100,
+                total_net: -600,
+            },
+        ];
+
+        let count = repo.upsert_institutional_batch(&records).unwrap();
+        assert_eq!(count, 2);
+
+        let queried = repo
+            .get_institutional_records("2330", "2024-01-01", "2024-01-03")
+            .unwrap();
+        assert_eq!(queried.len(), 2);
+        assert_eq!(queried[0].trade_date, "2024-01-02");
+        assert_eq!(queried[0].total_net, 6_400);
+        assert_eq!(queried[1].trade_date, "2024-01-03");
+        assert_eq!(queried[1].total_net, -600);
     }
 
     #[test]

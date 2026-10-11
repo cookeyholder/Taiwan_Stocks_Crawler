@@ -20,6 +20,7 @@ use std::sync::{Arc, Mutex};
 use crate::app::FontSizeLevel;
 use crate::state::{AnalysisData, CoreState, SecurityItem};
 use crate::views::chart_viewport::{ChartViewport, compute_price_scales, compute_volume_scales};
+use stock_core::models::InstitutionalRecord;
 
 #[derive(Clone, Debug)]
 pub struct IndicatorPoint {
@@ -194,6 +195,7 @@ pub struct AnalysisView {
     pub show_bollinger: bool,
     pub show_ma: bool,
     pub show_macd: bool,
+    pub show_institutional: bool,
     pub show_watchlist_only: bool,
     pub is_dark: bool,
     pub hovered_candle_idx: Option<usize>,
@@ -271,6 +273,7 @@ impl AnalysisView {
             show_bollinger: true,
             show_ma: true,
             show_macd: true,
+            show_institutional: true,
             show_watchlist_only: false,
             is_dark: false,
             hovered_candle_idx: None,
@@ -938,6 +941,91 @@ impl Render for AnalysisView {
             )
             .size_full();
 
+            // 三大法人買賣超柱狀圖畫布
+            let visible_inst: Vec<Option<InstitutionalRecord>> = (start_idx..end_idx)
+                .map(|i| data.institutional.get(i).cloned().flatten())
+                .collect();
+            let visible_ohlcv_inst = visible_ohlcv.clone();
+
+            let mut inst_all_vals: Vec<f64> = Vec::new();
+            for r in visible_inst.iter().flatten() {
+                inst_all_vals.push((r.total_net / 1000) as f64);
+            }
+            if inst_all_vals.is_empty() {
+                inst_all_vals.push(10.0);
+                inst_all_vals.push(-10.0);
+            } else {
+                inst_all_vals.push(0.0);
+            }
+
+            let institutional_canvas = canvas(
+                move |_, _, _| {},
+                move |bounds, _, window, _cx| {
+                    let height = bounds.size.height.as_f32() - 18.0;
+                    if height <= 0.0
+                        || bounds.size.width.as_f32() <= 0.0
+                        || visible_ohlcv_inst.is_empty()
+                    {
+                        return;
+                    }
+
+                    let x_scale = ScaleBand::new(
+                        visible_ohlcv_inst.iter().map(|d| d.trade_date.clone()),
+                        [0., bounds.size.width.as_f32()],
+                    )
+                    .max_band_width(max_band_w.as_f32())
+                    .padding_inner(0.4)
+                    .padding_outer(0.2);
+
+                    let y_scale = ScaleLinear::new(inst_all_vals.clone(), [height, 10.]);
+                    let half_band = x_scale.band_width() / 2.0;
+
+                    window.with_content_mask(Some(gpui_kit::ContentMask { bounds }), |window| {
+                        // 零軸
+                        if let Some(y_zero) = y_scale.tick(&0.0) {
+                            let mut zero_line = PathBuilder::stroke(px(1.0));
+                            zero_line.move_to(point(bounds.origin.x, bounds.origin.y + px(y_zero)));
+                            zero_line.line_to(point(
+                                bounds.origin.x + bounds.size.width,
+                                bounds.origin.y + px(y_zero),
+                            ));
+                            if let Ok(path) = zero_line.build() {
+                                window.paint_path(path, hsla(0.0, 0.0, 0.5, 0.4));
+                            }
+                        }
+
+                        // 柱狀圖（買超紅、賣超綠）
+                        let bar_w = (x_scale.band_width() * 0.7).max(1.0);
+                        for (d, inst_opt) in visible_ohlcv_inst.iter().zip(visible_inst.iter()) {
+                            if let Some(inst) = inst_opt
+                                && let Some(xt) = x_scale.tick(&d.trade_date)
+                            {
+                                let val = (inst.total_net / 1000) as f64;
+                                if let (Some(y_val), Some(y_zero)) =
+                                    (y_scale.tick(&val), y_scale.tick(&0.0))
+                                {
+                                    let top = y_val.min(y_zero);
+                                    let bar_h = (y_val - y_zero).abs().max(1.0);
+                                    let bar_x = bounds.origin.x + px(xt + half_band);
+                                    let mut bar = PathBuilder::stroke(px(bar_w));
+                                    bar.move_to(point(bar_x, bounds.origin.y + px(top)));
+                                    bar.line_to(point(bar_x, bounds.origin.y + px(top + bar_h)));
+                                    let col = if val >= 0.0 {
+                                        hsla(0.0, 0.8, 0.5, 0.8)
+                                    } else {
+                                        hsla(0.33, 0.8, 0.4, 0.8)
+                                    };
+                                    if let Ok(p) = bar.build() {
+                                        window.paint_path(p, col);
+                                    }
+                                }
+                            }
+                        }
+                    });
+                },
+            )
+            .size_full();
+
             // 縱軸價格刻度
             let price_axis = div()
                 .w(axis_w)
@@ -1256,6 +1344,54 @@ impl Render for AnalysisView {
                                                     .bg(hsla(0.0, 0.8, 0.5, 0.8)),
                                             )
                                             .child("OSC"),
+                                    ),
+                            )
+                        })
+                        .child(div().w(px(1.)).h(px(18.)).bg(divider_col))
+                        .child(
+                            Checkbox::new("analysis-show-institutional")
+                                .label("三大法人")
+                                .checked(self.show_institutional)
+                                .on_click(cx.listener(|this, checked, _, cx| {
+                                    this.show_institutional = *checked;
+                                    cx.notify();
+                                })),
+                        )
+                        .when(self.show_institutional, |this| {
+                            this.child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .text_xs()
+                                    .text_color(text_secondary)
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(8.))
+                                                    .rounded_sm()
+                                                    .bg(rgb(0xdc2626)),
+                                            )
+                                            .child("買超"),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(8.))
+                                                    .rounded_sm()
+                                                    .bg(rgb(0x16a34a)),
+                                            )
+                                            .child("賣超"),
                                     ),
                             )
                         }),
@@ -1582,6 +1718,81 @@ impl Render for AnalysisView {
                                         active_macd_osc.unwrap_or(0.0)
                                     ))),
                             )
+                        })
+                        .when(self.show_institutional, |this| {
+                            let inst_opt =
+                                data.institutional.get(active_abs_idx).cloned().flatten();
+                            let format_net_shares = |val: i64| -> (String, gpui_kit::Rgba) {
+                                let lots = val / 1000;
+                                if lots > 0 {
+                                    (format!("+{}張", lots), rgb(0xdc2626))
+                                } else if lots < 0 {
+                                    (format!("{}張", lots), rgb(0x16a34a))
+                                } else {
+                                    ("0張".to_string(), text_secondary)
+                                }
+                            };
+
+                            let (foreign_str, foreign_col) = inst_opt
+                                .as_ref()
+                                .map(|i| format_net_shares(i.foreign_net))
+                                .unwrap_or_else(|| ("-".to_string(), text_secondary));
+                            let (trust_str, trust_col) = inst_opt
+                                .as_ref()
+                                .map(|i| format_net_shares(i.trust_net))
+                                .unwrap_or_else(|| ("-".to_string(), text_secondary));
+                            let (dealer_str, dealer_col) = inst_opt
+                                .as_ref()
+                                .map(|i| format_net_shares(i.dealer_net))
+                                .unwrap_or_else(|| ("-".to_string(), text_secondary));
+                            let (total_str, total_col) = inst_opt
+                                .as_ref()
+                                .map(|i| format_net_shares(i.total_net))
+                                .unwrap_or_else(|| ("-".to_string(), text_secondary));
+
+                            this.child(div().w(px(1.)).h(px(12.)).bg(border_col)).child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(
+                                        div().flex().items_center().gap_1().child("外資:").child(
+                                            div()
+                                                .text_color(foreign_col)
+                                                .font_weight(gpui_kit::FontWeight::BOLD)
+                                                .child(foreign_str),
+                                        ),
+                                    )
+                                    .child(
+                                        div().flex().items_center().gap_1().child("投信:").child(
+                                            div()
+                                                .text_color(trust_col)
+                                                .font_weight(gpui_kit::FontWeight::BOLD)
+                                                .child(trust_str),
+                                        ),
+                                    )
+                                    .child(
+                                        div().flex().items_center().gap_1().child("自營:").child(
+                                            div()
+                                                .text_color(dealer_col)
+                                                .font_weight(gpui_kit::FontWeight::BOLD)
+                                                .child(dealer_str),
+                                        ),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child("法人合計:")
+                                            .child(
+                                                div()
+                                                    .text_color(total_col)
+                                                    .font_weight(gpui_kit::FontWeight::BOLD)
+                                                    .child(total_str),
+                                            ),
+                                    ),
+                            )
                         }),
                 );
 
@@ -1708,6 +1919,31 @@ impl Render for AnalysisView {
                                             .rounded_md()
                                             .p_2()
                                             .child(macd_canvas),
+                                    )
+                                })
+                                .when(self.show_institutional, |this| {
+                                    this.child(
+                                        div()
+                                            .flex_1()
+                                            .border_1()
+                                            .border_color(border_col)
+                                            .rounded_md()
+                                            .p_2()
+                                            .child(
+                                                div()
+                                                    .size_full()
+                                                    .relative()
+                                                    .child(
+                                                        div()
+                                                            .absolute()
+                                                            .top_0()
+                                                            .left_0()
+                                                            .text_xs()
+                                                            .text_color(text_secondary)
+                                                            .child("三大法人 (張)"),
+                                                    )
+                                                    .child(institutional_canvas),
+                                            ),
                                     )
                                 }),
                         ),
