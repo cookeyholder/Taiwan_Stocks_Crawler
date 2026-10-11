@@ -930,9 +930,8 @@ impl CoreState {
         let client = stock_core::fetcher::bsr::client::BsrClient::new()
             .map_err(|e| format!("建立集中市場 BSR 連線客戶端失敗: {}", e))?;
 
-        let broker_pipeline =
-            stock_core::pipeline::broker::BrokerFetchPipeline::new(client, repo)
-                .with_cancel_flag(cancel_flag);
+        let broker_pipeline = stock_core::pipeline::broker::BrokerFetchPipeline::new(client, repo)
+            .with_cancel_flag(cancel_flag);
 
         let handle = TOKIO_RUNTIME.spawn(async move {
             broker_pipeline

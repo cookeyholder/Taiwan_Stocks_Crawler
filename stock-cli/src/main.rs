@@ -299,9 +299,8 @@ async fn main() {
             delay_min,
             delay_max,
         } => {
-            let target_date = date.unwrap_or_else(|| {
-                chrono::Local::now().format("%Y-%m-%d").to_string()
-            });
+            let target_date =
+                date.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
 
             let client = stock_core::fetcher::bsr::client::BsrClient::new()
                 .expect("建立集中市場 BSR 連線客戶端失敗");
@@ -338,29 +337,24 @@ async fn main() {
             }
 
             let result = broker_pipeline
-                .fetch_date(
-                    &target_date,
-                    target_symbols,
-                    Some(options),
-                    |prog| {
-                        let pct = if prog.total_stocks > 0 {
-                            (prog.current_index as f64 / prog.total_stocks as f64) * 100.0
-                        } else {
-                            0.0
-                        };
-                        println!(
-                            "[{:>3.0}%] ({}/{}) 個股: {:<5} | 成功: {} | 略過: {} | 失敗: {} | {}",
-                            pct,
-                            prog.current_index,
-                            prog.total_stocks,
-                            prog.current_symbol,
-                            prog.success_count,
-                            prog.skipped_count,
-                            prog.failed_count,
-                            prog.message
-                        );
-                    },
-                )
+                .fetch_date(&target_date, target_symbols, Some(options), |prog| {
+                    let pct = if prog.total_stocks > 0 {
+                        (prog.current_index as f64 / prog.total_stocks as f64) * 100.0
+                    } else {
+                        0.0
+                    };
+                    println!(
+                        "[{:>3.0}%] ({}/{}) 個股: {:<5} | 成功: {} | 略過: {} | 失敗: {} | {}",
+                        pct,
+                        prog.current_index,
+                        prog.total_stocks,
+                        prog.current_symbol,
+                        prog.success_count,
+                        prog.skipped_count,
+                        prog.failed_count,
+                        prog.message
+                    );
+                })
                 .await;
 
             match result {

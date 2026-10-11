@@ -15,11 +15,7 @@ pub fn filter_twse_common_stock_symbols(symbols: &[String]) -> Vec<String> {
     let mut filtered: Vec<String> = symbols
         .iter()
         .map(|s| s.trim().to_string())
-        .filter(|s| {
-            s.len() == 4
-                && s.chars().all(|c| c.is_ascii_digit())
-                && !s.starts_with('0')
-        })
+        .filter(|s| s.len() == 4 && s.chars().all(|c| c.is_ascii_digit()) && !s.starts_with('0'))
         .collect();
     filtered.sort();
     filtered.dedup();

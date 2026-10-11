@@ -8,8 +8,7 @@ use reqwest::header::{HeaderMap, HeaderValue, ORIGIN, REFERER, USER_AGENT};
 use std::time::Duration;
 use thiserror::Error;
 
-const DEFAULT_USER_AGENT: &str =
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 #[derive(Debug, Error)]
 pub enum BsrClientError {
@@ -58,10 +57,7 @@ impl BsrClient {
     /// 使用自訂 base_url 建立客戶端（主要用於測試與 Mock 伺服器）
     pub fn with_base_url(base_url: &str) -> Result<Self, BsrClientError> {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            USER_AGENT,
-            HeaderValue::from_static(DEFAULT_USER_AGENT),
-        );
+        headers.insert(USER_AGENT, HeaderValue::from_static(DEFAULT_USER_AGENT));
 
         let client = reqwest::Client::builder()
             .cookie_store(true)
@@ -93,18 +89,19 @@ impl BsrClient {
 
         let viewstate = extract_attr("__VIEWSTATE")
             .ok_or_else(|| BsrClientError::HtmlParseError("__VIEWSTATE".to_string()))?;
-        let viewstate_generator = extract_attr("__VIEWSTATEGENERATOR")
-            .unwrap_or_default();
+        let viewstate_generator = extract_attr("__VIEWSTATEGENERATOR").unwrap_or_default();
         let event_validation = extract_attr("__EVENTVALIDATION")
             .ok_or_else(|| BsrClientError::HtmlParseError("__EVENTVALIDATION".to_string()))?;
 
         // 尋找 CaptchaImage.aspx?guid=...
         let captcha_url = if let Some(src_pos) = html.find("CaptchaImage.aspx?guid=") {
             let slice = &html[src_pos..];
-            let end_char = slice.find(|c| c == '\'' || c == '"' || c == ' ' || c == '>').unwrap_or(slice.len());
+            let end_char = slice.find(['\'', '"', ' ', '>']).unwrap_or(slice.len());
             slice[..end_char].to_string()
         } else {
-            return Err(BsrClientError::HtmlParseError("CaptchaImage.aspx".to_string()));
+            return Err(BsrClientError::HtmlParseError(
+                "CaptchaImage.aspx".to_string(),
+            ));
         };
 
         Ok(BsrFormState {
@@ -202,10 +199,10 @@ impl BsrClient {
         let raw_bytes = resp.bytes().await?;
 
         // 先檢查是否已為有效 UTF-8 且包含關鍵字
-        if let Ok(utf8_str) = std::str::from_utf8(&raw_bytes) {
-            if utf8_str.contains("券商") || utf8_str.contains("股票") {
-                return Ok(utf8_str.to_string());
-            }
+        if let Ok(utf8_str) = std::str::from_utf8(&raw_bytes)
+            && (utf8_str.contains("券商") || utf8_str.contains("股票"))
+        {
+            return Ok(utf8_str.to_string());
         }
 
         // 以 BIG-5 解碼
@@ -224,7 +221,12 @@ impl BsrClient {
         max_retries: u32,
     ) -> Result<Option<String>, BsrClientError> {
         for attempt in 1..=max_retries {
-            log::debug!("正在嘗試抓取個股 {} (第 {}/{} 次)", symbol, attempt, max_retries);
+            log::debug!(
+                "正在嘗試抓取個股 {} (第 {}/{} 次)",
+                symbol,
+                attempt,
+                max_retries
+            );
 
             // 1. 取得最新表單狀態
             let state = self.fetch_form_state().await?;
@@ -339,7 +341,8 @@ mod tests {
             .await;
 
         // Mock 4: GET /bsContent.aspx
-        let mock_csv = "券商買賣股票成交價量資訊\n股票代碼,=\"2330\"\n序號,券商,價格,買進股數,賣出股數";
+        let mock_csv =
+            "券商買賣股票成交價量資訊\n股票代碼,=\"2330\"\n序號,券商,價格,買進股數,賣出股數";
         Mock::given(method("GET"))
             .and(path("/bsContent.aspx"))
             .respond_with(ResponseTemplate::new(200).set_body_string(mock_csv))

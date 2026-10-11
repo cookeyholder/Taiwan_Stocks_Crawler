@@ -57,7 +57,7 @@
 
 ## 8. 驗證與品質檢核
 
-- [ ] 8.1 執行全工作區單元與整合測試（`cargo test --workspace`）確保所有測試通過
-- [ ] 8.2 執行靜態程式碼分析（`cargo clippy --workspace --all-targets -- -D warnings`）確保零警告
-- [ ] 8.3 執行排版檢查（`cargo fmt --all -- --check`）確保程式碼格式符合規範
-- [ ] 8.4 驗證 OpenSpec 規範檔案（`openspec validate broker-trades`）無誤
+- [x] 8.1 執行全工作區單元與整合測試（`cargo test --workspace`）確保所有測試通過
+- [x] 8.2 執行靜態程式碼分析（`cargo clippy --workspace --all-targets -- -D warnings`）確保零警告
+- [x] 8.3 執行排版檢查（`cargo fmt --all -- --check`）確保程式碼格式符合規範
+- [x] 8.4 驗證 OpenSpec 規範檔案（`openspec validate broker-trades`）無誤

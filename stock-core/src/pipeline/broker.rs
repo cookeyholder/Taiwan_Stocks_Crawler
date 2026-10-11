@@ -9,8 +9,8 @@ use crate::fetcher::bsr::parser::parse_bsr_csv;
 use crate::pipeline::filter_twse_common_stock_symbols;
 use rand::Rng;
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use thiserror::Error;
 
@@ -138,9 +138,7 @@ impl BrokerFetchPipeline {
         let total_stocks = symbols.len();
 
         // 2. 斷點續傳檢核：比對資料庫當日已入庫之代號清單
-        let completed_list = self
-            .repo
-            .get_broker_completed_symbols(trade_date)?;
+        let completed_list = self.repo.get_broker_completed_symbols(trade_date)?;
         let completed_set: HashSet<String> = completed_list.into_iter().collect();
 
         let mut success_count = 0;
@@ -150,12 +148,12 @@ impl BrokerFetchPipeline {
 
         for (idx, symbol) in symbols.iter().enumerate() {
             // 檢查是否收到取消訊號
-            if let Some(flag) = &self.cancel_flag {
-                if flag.load(Ordering::Relaxed) {
-                    cancelled = true;
-                    log::info!("接收到使用者取消訊號，批次下載提前中斷");
-                    break;
-                }
+            if let Some(flag) = &self.cancel_flag
+                && flag.load(Ordering::Relaxed)
+            {
+                cancelled = true;
+                log::info!("接收到使用者取消訊號，批次下載提前中斷");
+                break;
             }
 
             // 斷點續傳：已完成者直接略過
@@ -174,7 +172,11 @@ impl BrokerFetchPipeline {
             }
 
             // 執行網路抓取與辨識
-            match self.client.fetch_stock_report(symbol, opts.max_retries).await {
+            match self
+                .client
+                .fetch_stock_report(symbol, opts.max_retries)
+                .await
+            {
                 Ok(Some(csv_content)) => {
                     // 剖析雙欄 CSV
                     match parse_bsr_csv(&csv_content, symbol, trade_date) {
@@ -276,8 +278,8 @@ mod tests {
     use super::*;
     use crate::db::MarketRepository;
     use crate::models::BrokerTradeRecord;
-    use std::sync::atomic::AtomicBool;
     use std::sync::Mutex;
+    use std::sync::atomic::AtomicBool;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -343,8 +345,7 @@ mod tests {
         let client = BsrClient::with_base_url(&mock_server.uri()).unwrap();
         let cancel_flag = Arc::new(AtomicBool::new(false));
 
-        let pipeline = BrokerFetchPipeline::new(client, repo)
-            .with_cancel_flag(cancel_flag.clone());
+        let pipeline = BrokerFetchPipeline::new(client, repo).with_cancel_flag(cancel_flag.clone());
 
         let target_symbols = vec!["2330".to_string(), "2317".to_string()];
         let opts = BrokerPipelineOptions {
@@ -358,14 +359,9 @@ mod tests {
         let logs_clone = progress_logs.clone();
 
         let summary = pipeline
-            .fetch_date(
-                trade_date,
-                Some(target_symbols),
-                Some(opts),
-                move |p| {
-                    logs_clone.lock().unwrap().push(p);
-                },
-            )
+            .fetch_date(trade_date, Some(target_symbols), Some(opts), move |p| {
+                logs_clone.lock().unwrap().push(p);
+            })
             .await
             .unwrap();
 

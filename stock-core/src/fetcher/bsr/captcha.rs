@@ -140,7 +140,8 @@ impl BinaryImage {
                     for dx in -r..=r {
                         let nx = x as i32 + dx;
                         let ny = y as i32 + dy;
-                        if nx < 0 || nx >= w || ny < 0 || ny >= h || !self.get(nx as u32, ny as u32) {
+                        if nx < 0 || nx >= w || ny < 0 || ny >= h || !self.get(nx as u32, ny as u32)
+                        {
                             keep = false;
                             break 'check;
                         }
@@ -236,7 +237,11 @@ impl BinaryImage {
             for tx in 0..target_w {
                 let sx = (tx as f32 * self.width as f32 / target_w as f32) as u32;
                 let sy = (ty as f32 * self.height as f32 / target_h as f32) as u32;
-                resized.set(tx, ty, self.get(sx.min(self.width - 1), sy.min(self.height - 1)));
+                resized.set(
+                    tx,
+                    ty,
+                    self.get(sx.min(self.width - 1), sy.min(self.height - 1)),
+                );
             }
         }
         resized
@@ -302,7 +307,11 @@ impl CaptchaSolver {
             }
         }
         for v in q {
-            features.push(if total_pixels > 0.0 { v / total_pixels } else { 0.0 });
+            features.push(if total_pixels > 0.0 {
+                v / total_pixels
+            } else {
+                0.0
+            });
         }
 
         // 3. 水平方向穿越次數（掃描 y=5, y=10, y=15）

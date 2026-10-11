@@ -434,7 +434,8 @@ impl DownloadView {
 
         self.is_broker_downloading = true;
         self.broker_progress_ratio = 0.0;
-        self.broker_status_text = format!("開始下載 {} 券商日報表（TWSE 上市普通股）...", target_date);
+        self.broker_status_text =
+            format!("開始下載 {} 券商日報表（TWSE 上市普通股）...", target_date);
         cx.notify();
 
         let core = self.core_state.clone();

@@ -47,10 +47,7 @@ pub fn extract_symbol_from_header(first_few_lines: &str) -> Option<String> {
             let parts: Vec<&str> = line.split(',').collect();
             if parts.len() >= 2 {
                 let raw_val = parts[1].trim();
-                let clean = raw_val
-                    .trim_start_matches('=')
-                    .trim_matches('"')
-                    .trim();
+                let clean = raw_val.trim_start_matches('=').trim_matches('"').trim();
                 if !clean.is_empty() {
                     return Some(clean.to_string());
                 }
@@ -155,21 +152,21 @@ pub fn parse_bsr_csv(
         }
 
         // 解析左側（第 0 ~ 4 欄）
-        if fields.len() >= 5 {
-            if let Some(item) = parse_single_side(&fields[0..5], &resolved_symbol, trade_date)? {
-                total_buy_volume += item.buy_shares;
-                total_sell_volume += item.sell_shares;
-                records.push(item);
-            }
+        if fields.len() >= 5
+            && let Some(item) = parse_single_side(&fields[0..5], &resolved_symbol, trade_date)?
+        {
+            total_buy_volume += item.buy_shares;
+            total_sell_volume += item.sell_shares;
+            records.push(item);
         }
 
         // 解析右側（第 6 ~ 10 欄，若存在）
-        if fields.len() >= 11 {
-            if let Some(item) = parse_single_side(&fields[6..11], &resolved_symbol, trade_date)? {
-                total_buy_volume += item.buy_shares;
-                total_sell_volume += item.sell_shares;
-                records.push(item);
-            }
+        if fields.len() >= 11
+            && let Some(item) = parse_single_side(&fields[6..11], &resolved_symbol, trade_date)?
+        {
+            total_buy_volume += item.buy_shares;
+            total_sell_volume += item.sell_shares;
+            records.push(item);
         }
     }
 
@@ -210,7 +207,8 @@ mod tests {
 
     #[test]
     fn test_extract_symbol_from_header() {
-        let content = "券商買賣股票成交價量資訊\n股票代碼,=\"2330\"\n序號,券商,價格,買進股數,賣出股數\n";
+        let content =
+            "券商買賣股票成交價量資訊\n股票代碼,=\"2330\"\n序號,券商,價格,買進股數,賣出股數\n";
         let sym = extract_symbol_from_header(content);
         assert_eq!(sym, Some("2330".to_string()));
     }
@@ -246,7 +244,7 @@ mod tests {
         assert_eq!(report.records[2].sell_shares, 500);
 
         assert_eq!(report.total_buy_volume, 8000 + 5018 + 1000);
-        assert_eq!(report.total_sell_volume, 0 + 8 + 500);
+        assert_eq!(report.total_sell_volume, 8 + 500);
     }
 
     #[test]
@@ -255,8 +253,8 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../tests/fixtures/bsr_2330_sample.csv"
         );
-        let content = std::fs::read_to_string(sample_path)
-            .expect("應成功讀取測試用 2330 分點交易 CSV");
+        let content =
+            std::fs::read_to_string(sample_path).expect("應成功讀取測試用 2330 分點交易 CSV");
 
         let report = parse_bsr_csv(&content, "2330", "2026-10-08").unwrap();
         assert_eq!(report.symbol, "2330");
