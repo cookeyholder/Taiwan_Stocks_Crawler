@@ -554,7 +554,9 @@ impl CoreState {
             return Err("選股已被使用者取消".into());
         }
 
-        if params.latest_day_only && let Some(last_date) = trade_dates.last() {
+        if params.latest_day_only
+            && let Some(last_date) = trade_dates.last()
+        {
             all_results.retain(|item| &item.trade_date == last_date);
         }
 

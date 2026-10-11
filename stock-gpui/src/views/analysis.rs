@@ -11,8 +11,8 @@ use gpui_kit::component::table::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
-    PathBuilder, Pixels, Render, StatefulInteractiveElement as _, Styled as _, Window, canvas,
-    div, hsla, point, px, rgb,
+    PathBuilder, Pixels, Render, StatefulInteractiveElement as _, Styled as _, Window, canvas, div,
+    hsla, point, px, rgb,
 };
 
 use std::collections::HashSet;
@@ -181,11 +181,7 @@ impl TableDelegate for AnalysisSecuritiesDelegate {
                 div()
                     .text_size(self.font_size.size_px())
                     .cursor_pointer()
-                    .text_color(if is_fav {
-                        rgb(0xeab308)
-                    } else {
-                        rgb(0x3b82f6)
-                    })
+                    .text_color(if is_fav { rgb(0xeab308) } else { rgb(0x3b82f6) })
                     .hover(|s| s.underline())
                     .child(sym_text)
                     .into_any_element()
@@ -1577,7 +1573,10 @@ impl Render for AnalysisView {
                                         .on_click(cx.listener({
                                             let sym = data.symbol.clone();
                                             move |_, _, _, _| {
-                                                let url = crate::views::screener::get_yahoo_stock_url(&sym);
+                                                let url =
+                                                    crate::views::screener::get_yahoo_stock_url(
+                                                        &sym,
+                                                    );
                                                 if let Err(e) = open::that(&url) {
                                                     eprintln!("開啟 Yahoo 股市連結失敗: {}", e);
                                                 }
