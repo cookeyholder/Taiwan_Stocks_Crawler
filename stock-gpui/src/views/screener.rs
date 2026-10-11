@@ -270,6 +270,7 @@ pub struct ScreenerView {
     pub lookback_input: Entity<InputState>,
     pub include_etf: bool,
     pub break_upper_only: bool,
+    pub latest_day_only: bool,
     pub show_bollinger: bool,
     pub table_state: Entity<TableState<ScreenerDelegate>>,
     pub is_running: bool,
@@ -404,7 +405,8 @@ impl ScreenerView {
             long_ma_input,
             lookback_input,
             include_etf: false,
-            break_upper_only: false,
+            break_upper_only: true,
+            latest_day_only: true,
             show_bollinger: true,
             table_state,
             is_running: false,
@@ -547,6 +549,7 @@ impl ScreenerView {
             max_bandwidth: max_bw,
             min_days,
             require_break_upper: break_upper_only,
+            latest_day_only: self.latest_day_only,
             short_period,
             mid_period,
             long_period,
@@ -875,6 +878,15 @@ impl Render for ScreenerView {
                                 })),
                         )
                     })
+                    .child(
+                        Checkbox::new("screener-latest-day-only")
+                            .label("僅結束日觸發")
+                            .checked(self.latest_day_only)
+                            .on_click(cx.listener(|this, checked, _, cx| {
+                                this.latest_day_only = *checked;
+                                cx.notify();
+                            })),
+                    )
                     .child(
                         Button::new("btn-start-screen")
                             .label(if is_running {

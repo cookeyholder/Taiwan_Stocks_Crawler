@@ -55,6 +55,7 @@ pub struct ScreenerParams {
     pub max_bandwidth: f64,
     pub min_days: i32,
     pub require_break_upper: bool,
+    pub latest_day_only: bool,
     pub short_period: usize,
     pub mid_period: usize,
     pub long_period: usize,
@@ -70,7 +71,8 @@ impl Default for ScreenerParams {
             mode: ScreenerMode::Bollinger,
             max_bandwidth: 0.08,
             min_days: 5,
-            require_break_upper: false,
+            require_break_upper: true,
+            latest_day_only: true,
             short_period: 5,
             mid_period: 10,
             long_period: 20,
@@ -550,6 +552,10 @@ impl CoreState {
 
         if self.cancel_flag.load(Ordering::SeqCst) {
             return Err("選股已被使用者取消".into());
+        }
+
+        if params.latest_day_only && let Some(last_date) = trade_dates.last() {
+            all_results.retain(|item| &item.trade_date == last_date);
         }
 
         let mut symbol_map: HashMap<String, (String, ScreenResult)> = HashMap::new();

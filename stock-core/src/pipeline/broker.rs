@@ -35,6 +35,8 @@ pub struct BrokerPipelineOptions {
     pub max_retries: u32,
     /// 遭遇嚴重網路異常時冷卻等待秒數（預設 30 秒）
     pub cooldown_secs: u64,
+    /// 原始 CSV 檔案保存目錄（預設為 Some("data/broker_trades")，設為 None 則不保存實體檔）
+    pub save_csv_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for BrokerPipelineOptions {
@@ -44,6 +46,7 @@ impl Default for BrokerPipelineOptions {
             delay_max_ms: 3000,
             max_retries: 3,
             cooldown_secs: 30,
+            save_csv_dir: Some(std::path::PathBuf::from("data/broker_trades")),
         }
     }
 }
@@ -178,6 +181,19 @@ impl BrokerFetchPipeline {
                 .await
             {
                 Ok(Some(csv_content)) => {
+                    // 若指定保存目錄，同步儲存原始 CSV 檔
+                    if let Some(base_dir) = &opts.save_csv_dir {
+                        let day_dir = base_dir.join(trade_date);
+                        if let Err(e) = std::fs::create_dir_all(&day_dir) {
+                            log::warn!("建立券商日報表保存目錄失敗: {}", e);
+                        } else {
+                            let file_path = day_dir.join(format!("{}.csv", symbol));
+                            if let Err(e) = std::fs::write(&file_path, &csv_content) {
+                                log::warn!("寫入券商日報表 CSV 檔案失敗: {}", e);
+                            }
+                        }
+                    }
+
                     // 剖析雙欄 CSV
                     match parse_bsr_csv(&csv_content, symbol, trade_date) {
                         Ok(report) => {
@@ -348,11 +364,13 @@ mod tests {
         let pipeline = BrokerFetchPipeline::new(client, repo).with_cancel_flag(cancel_flag.clone());
 
         let target_symbols = vec!["2330".to_string(), "2317".to_string()];
+        let temp_csv_dir = tempfile::tempdir().unwrap();
         let opts = BrokerPipelineOptions {
             delay_min_ms: 1,
             delay_max_ms: 5,
             max_retries: 2,
             cooldown_secs: 0,
+            save_csv_dir: Some(temp_csv_dir.path().to_path_buf()),
         };
 
         let progress_logs = Arc::new(Mutex::new(Vec::new()));
@@ -374,5 +392,11 @@ mod tests {
         let res_2317 = pipeline.repo.get_broker_trades("2317", trade_date).unwrap();
         assert_eq!(res_2317.len(), 1);
         assert_eq!(res_2317[0].price, 200.0);
+
+        // 驗證 2317 CSV 檔案確實寫入保存
+        let expected_csv_file = temp_csv_dir.path().join(trade_date).join("2317.csv");
+        assert!(expected_csv_file.exists(), "CSV 檔案應成功寫入指定目錄");
+        let saved_content = std::fs::read_to_string(expected_csv_file).unwrap();
+        assert_eq!(saved_content, mock_csv);
     }
 }

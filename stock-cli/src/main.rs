@@ -326,6 +326,7 @@ async fn main() {
                 delay_max_ms: (delay_max * 1000.0) as u64,
                 max_retries: 3,
                 cooldown_secs: 30,
+                save_csv_dir: Some(std::path::PathBuf::from("data/broker_trades")),
             };
 
             println!("=== 啟動集中市場券商買賣日報表批次抓取 ===");
