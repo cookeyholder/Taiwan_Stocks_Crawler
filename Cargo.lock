@@ -6829,6 +6829,7 @@ dependencies = [
  "encoding_rs",
  "image",
  "log",
+ "rand 0.8.6",
  "reqwest",
  "rusqlite",
  "scraper",

@@ -33,13 +33,13 @@
 
 ## 5. 普通股範圍過濾與批次下載流水線 (stock-core::pipeline::broker)
 
-- [ ] 5.1 於 `stock-core/src/pipeline/mod.rs` 實作 `get_twse_stock_symbols`：僅提取 TWSE 上市普通股（4 碼純數字，嚴格排除 ETF 與權證）
-- [ ] 5.2 於 `stock-core/src/pipeline/broker.rs` 實作 `BrokerFetchPipeline`，整合 `BsrClient`、資料庫倉儲與取消旗標（`AtomicBool`）
-- [ ] 5.3 實作斷點續傳檢核：比對資料庫當日已完成股票名單，自動跳過已下載標的
-- [ ] 5.4 實作智慧節流：每檔股票抓取間隔加入 1.5 ~ 3.0 秒隨機延遲（Jitter）
-- [ ] 5.5 實作異常連線指數退避：遭遇網路逾時或伺服器異常時自動冷卻暫停 30 秒再重試
-- [ ] 5.6 實作進度通知回呼（包含已完成筆數、總檔數、目前股票代號、成功/失敗數）
-- [ ] 5.7 撰寫批次流水線整合測試（以 Mock 服務驗證斷點續傳、隨機延遲與安全取消機制）
+- [x] 5.1 於 `stock-core/src/pipeline/mod.rs` 實作 `get_twse_stock_symbols`：僅提取 TWSE 上市普通股（4 碼純數字，嚴格排除 ETF 與權證）
+- [x] 5.2 於 `stock-core/src/pipeline/broker.rs` 實作 `BrokerFetchPipeline`，整合 `BsrClient`、資料庫倉儲與取消旗標（`AtomicBool`）
+- [x] 5.3 實作斷點續傳檢核：比對資料庫當日已完成股票名單，自動跳過已下載標的
+- [x] 5.4 實作智慧節流：每檔股票抓取間隔加入 1.5 ~ 3.0 秒隨機延遲（Jitter）
+- [x] 5.5 實作異常連線指數退避：遭遇網路逾時或伺服器異常時自動冷卻暫停 30 秒再重試
+- [x] 5.6 實作進度通知回呼（包含已完成筆數、總檔數、目前股票代號、成功/失敗數）
+- [x] 5.7 撰寫批次流水線整合測試（以 Mock 服務驗證斷點續傳、隨機延遲與安全取消機制）
 
 ## 6. CLI 命令列工具子命令 (stock-cli)
 
