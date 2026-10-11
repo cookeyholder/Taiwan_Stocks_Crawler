@@ -154,6 +154,7 @@ impl AppView {
         Theme::change(mode, None, cx);
         let dark = self.is_dark;
         self.analysis_view.update(cx, |v, cx| v.set_dark(dark, cx));
+        self.download_view.update(cx, |v, cx| v.set_dark(dark, cx));
         cx.notify();
     }
 

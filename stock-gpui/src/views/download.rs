@@ -22,6 +22,7 @@ fn get_today_str() -> String {
 
 pub struct DownloadView {
     pub core_state: CoreState,
+    pub is_dark: bool,
     pub start_date_input: Entity<InputState>,
     pub end_date_input: Entity<InputState>,
     pub is_downloading: bool,
@@ -75,6 +76,7 @@ impl DownloadView {
 
         let mut view = Self {
             core_state,
+            is_dark: false,
             start_date_input,
             end_date_input,
             is_downloading: false,
@@ -91,6 +93,11 @@ impl DownloadView {
         };
         view.refresh_db_summary(cx);
         view
+    }
+
+    pub fn set_dark(&mut self, is_dark: bool, cx: &mut Context<Self>) {
+        self.is_dark = is_dark;
+        cx.notify();
     }
 
     pub fn refresh_db_summary(&mut self, cx: &mut Context<Self>) {
@@ -523,6 +530,7 @@ impl DownloadView {
 
 impl Render for DownloadView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_dark = self.is_dark;
         let is_dl = self.is_downloading;
         let is_diag = self.is_diagnosing;
         let missing_count = self
@@ -541,10 +549,22 @@ impl Render for DownloadView {
                 div()
                     .p_3()
                     .border_1()
-                    .border_color(rgb(0x313244))
+                    .border_color(if is_dark {
+                        rgb(0x313244)
+                    } else {
+                        rgb(0xe2e8f0)
+                    })
                     .rounded_md()
-                    .bg(rgb(0x181825))
-                    .text_color(rgb(0x89b4fa))
+                    .bg(if is_dark {
+                        rgb(0x181825)
+                    } else {
+                        rgb(0xf8fafc)
+                    })
+                    .text_color(if is_dark {
+                        rgb(0x89b4fa)
+                    } else {
+                        rgb(0x2563eb)
+                    })
                     .child(self.db_summary.clone()),
             )
             .child(
@@ -558,7 +578,16 @@ impl Render for DownloadView {
                             .flex()
                             .items_center()
                             .gap_1()
-                            .child(div().text_sm().text_color(rgb(0xa6adc8)).child("起始:"))
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(if is_dark {
+                                        rgb(0xa6adc8)
+                                    } else {
+                                        rgb(0x475569)
+                                    })
+                                    .child("起始:"),
+                            )
                             .child(
                                 div()
                                     .w(px(130.))
@@ -570,7 +599,16 @@ impl Render for DownloadView {
                             .flex()
                             .items_center()
                             .gap_1()
-                            .child(div().text_sm().text_color(rgb(0xa6adc8)).child("結束:"))
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(if is_dark {
+                                        rgb(0xa6adc8)
+                                    } else {
+                                        rgb(0x475569)
+                                    })
+                                    .child("結束:"),
+                            )
                             .child(
                                 div()
                                     .w(px(130.))
@@ -649,9 +687,21 @@ impl Render for DownloadView {
                             .p_2p5()
                             .rounded_md()
                             .border_1()
-                            .border_color(rgb(0x16a34a))
-                            .bg(rgb(0x0f291e))
-                            .text_color(rgb(0x4ade80))
+                            .border_color(if is_dark {
+                                rgb(0x16a34a)
+                            } else {
+                                rgb(0x86efac)
+                            })
+                            .bg(if is_dark {
+                                rgb(0x0f291e)
+                            } else {
+                                rgb(0xdcfce7)
+                            })
+                            .text_color(if is_dark {
+                                rgb(0x4ade80)
+                            } else {
+                                rgb(0x15803d)
+                            })
                             .text_sm()
                             .child(format!(
                                 "✅ 診斷完成：{} ~ {} 區間共 {} 個平日均已完整入庫，無缺漏交易日！",
@@ -676,11 +726,23 @@ impl Render for DownloadView {
                             .p_2p5()
                             .rounded_md()
                             .border_1()
-                            .border_color(rgb(0xd97706))
-                            .bg(rgb(0x2d1a0e))
+                            .border_color(if is_dark {
+                                rgb(0xd97706)
+                            } else {
+                                rgb(0xfcd34d)
+                            })
+                            .bg(if is_dark {
+                                rgb(0x2d1a0e)
+                            } else {
+                                rgb(0xfef3c7)
+                            })
                             .child(
                                 div()
-                                    .text_color(rgb(0xfbbf24))
+                                    .text_color(if is_dark {
+                                        rgb(0xfbbf24)
+                                    } else {
+                                        rgb(0xb45309)
+                                    })
                                     .font_weight(gpui_kit::FontWeight::BOLD)
                                     .text_sm()
                                     .child(format!(
@@ -695,7 +757,11 @@ impl Render for DownloadView {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0xfcd34d))
+                                    .text_color(if is_dark {
+                                        rgb(0xfcd34d)
+                                    } else {
+                                        rgb(0x92400e)
+                                    })
                                     .child(format!("缺漏日期清單：{}", preview_dates)),
                             ),
                     )
@@ -708,7 +774,11 @@ impl Render for DownloadView {
             )
             .child(
                 div()
-                    .text_color(rgb(0xa6adc8))
+                    .text_color(if is_dark {
+                        rgb(0xa6adc8)
+                    } else {
+                        rgb(0x64748b)
+                    })
                     .text_sm()
                     .child(self.status_text.clone()),
             )
@@ -716,9 +786,17 @@ impl Render for DownloadView {
                 div()
                     .p_3()
                     .border_1()
-                    .border_color(rgb(0x45475a))
+                    .border_color(if is_dark {
+                        rgb(0x45475a)
+                    } else {
+                        rgb(0xe2e8f0)
+                    })
                     .rounded_md()
-                    .bg(rgb(0x181825))
+                    .bg(if is_dark {
+                        rgb(0x181825)
+                    } else {
+                        rgb(0xf8fafc)
+                    })
                     .flex()
                     .flex_col()
                     .gap_3()
@@ -730,13 +808,21 @@ impl Render for DownloadView {
                             .child(
                                 div()
                                     .font_weight(gpui_kit::FontWeight::BOLD)
-                                    .text_color(rgb(0xcdd6f4))
+                                    .text_color(if is_dark {
+                                        rgb(0xcdd6f4)
+                                    } else {
+                                        rgb(0x0f172a)
+                                    })
                                     .child("📊 集中市場券商買賣日報表（分點成交明細）"),
                             )
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0xa6adc8))
+                                    .text_color(if is_dark {
+                                        rgb(0xa6adc8)
+                                    } else {
+                                        rgb(0x64748b)
+                                    })
                                     .child("範圍：TWSE 上市普通股（自動排除 ETF 與權證）"),
                             ),
                     )
@@ -751,7 +837,16 @@ impl Render for DownloadView {
                                     .flex()
                                     .items_center()
                                     .gap_1()
-                                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("交易日:"))
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(if is_dark {
+                                                rgb(0xa6adc8)
+                                            } else {
+                                                rgb(0x475569)
+                                            })
+                                            .child("交易日:"),
+                                    )
                                     .child(
                                         div()
                                             .w(px(130.))
@@ -789,7 +884,11 @@ impl Render for DownloadView {
                     )
                     .child(
                         div()
-                            .text_color(rgb(0xa6adc8))
+                            .text_color(if is_dark {
+                                rgb(0xa6adc8)
+                            } else {
+                                rgb(0x64748b)
+                            })
                             .text_xs()
                             .child(self.broker_status_text.clone()),
                     ),
