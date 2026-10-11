@@ -552,4 +552,91 @@ impl CoreState {
             total_records, total_days
         ))
     }
+
+    /// 診斷指定日期區間之缺漏平日交易日
+    pub async fn diagnose_gaps(
+        &self,
+        start_date: &str,
+        end_date: &str,
+    ) -> Result<GapReport, String> {
+        let pipeline = self.pipeline.lock().await;
+        pipeline
+            .repo
+            .diagnose_gaps(start_date, end_date)
+            .map_err(|e| e.to_string())
+    }
+
+    /// 定向修補缺漏之交易日清單
+    pub async fn repair_gaps<F>(
+        &self,
+        missing_dates: &[String],
+        on_progress: F,
+    ) -> Result<String, String>
+    where
+        F: Fn(usize, usize, String) + Send + Sync,
+    {
+        if missing_dates.is_empty() {
+            return Ok("目前沒有缺漏交易日需要修補".to_string());
+        }
+
+        let total_days = missing_dates.len();
+        let mut days_done = 0usize;
+        let mut total_records = 0usize;
+        let mut inserted_days = 0usize;
+
+        self.cancel_flag.store(false, Ordering::SeqCst);
+
+        for date_str in missing_dates {
+            if self.cancel_flag.load(Ordering::SeqCst) {
+                break;
+            }
+
+            on_progress(days_done, total_days, date_str.clone());
+
+            let pipeline = self.pipeline.clone();
+            let date_clone = date_str.clone();
+            let fetch_task = TOKIO_RUNTIME.spawn(async move {
+                let p = pipeline.lock().await;
+                p.fetch_date(&date_clone).await
+            });
+
+            if let Ok(Ok(outcome)) = fetch_task.await
+                && outcome.records_inserted > 0
+            {
+                total_records += outcome.records_inserted;
+                inserted_days += 1;
+            }
+
+            days_done += 1;
+        }
+
+        if total_records > 0 {
+            let pipeline = self.pipeline.clone();
+            let _ = TOKIO_RUNTIME
+                .spawn(async move {
+                    let p = pipeline.lock().await;
+                    p.repo.sync_securities()
+                })
+                .await;
+        }
+
+        if self.cancel_flag.load(Ordering::SeqCst) {
+            on_progress(
+                days_done,
+                total_days,
+                format!("已取消修補（處理至第 {} 日）", days_done),
+            );
+            return Err(format!(
+                "修補作業已被使用者取消（已完成 {}/{} 日，成功入庫 {} 日共 {} 筆資料）",
+                days_done, total_days, inserted_days, total_records
+            ));
+        }
+
+        on_progress(total_days, total_days, "完成".into());
+
+        Ok(format!(
+            "修補完成！共檢查 {} 個缺漏日，成功入庫 {} 個交易日共 {} 筆資料（其餘為休市或無行情）",
+            total_days, inserted_days, total_records
+        ))
+    }
 }
