@@ -101,9 +101,9 @@ fn test_candlestick_and_volume_chart_rendering(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn test_bollinger_canvas_overlay(cx: &mut TestAppContext) {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Arc;
     use gpui_kit::canvas;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     cx.update(gpui_kit::init);
 
@@ -130,13 +130,7 @@ fn test_bollinger_canvas_overlay(cx: &mut TestAppContext) {
             div()
                 .size_full()
                 .relative()
-                .child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .size_full()
-                        .child(c),
-                )
+                .child(div().absolute().inset_0().size_full().child(c))
         }
     }
 
@@ -150,7 +144,9 @@ fn test_bollinger_canvas_overlay(cx: &mut TestAppContext) {
         };
 
         gpui_kit::open_window(options, cx, |_, cx| {
-            cx.new(|_| OverlayTestView { flag: painted_clone })
+            cx.new(|_| OverlayTestView {
+                flag: painted_clone,
+            })
         })
         .unwrap()
     });

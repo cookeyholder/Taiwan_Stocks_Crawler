@@ -22,7 +22,9 @@ use stock_core::pipeline::Pipeline;
 
 pub fn default_db_path() -> PathBuf {
     if let Ok(dir) = std::env::var("STOCK_DATA_DIR") {
-        return PathBuf::from(dir).join("market_data.db");
+        let path = PathBuf::from(dir);
+        let _ = std::fs::create_dir_all(&path);
+        return path.join("market_data.db");
     }
     let base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
     let dir = base.join("stock-screener");
@@ -127,6 +129,13 @@ impl CoreState {
     }
 
     pub async fn delete_date_range(&self, start: &str, end: &str) -> Result<String, String> {
+        let start_date = chrono::NaiveDate::parse_from_str(start, "%Y-%m-%d")
+            .map_err(|_| format!("無效的起始日期格式：{}，請使用 YYYY-MM-DD", start))?;
+        let end_date = chrono::NaiveDate::parse_from_str(end, "%Y-%m-%d")
+            .map_err(|_| format!("無效的結束日期格式：{}，請使用 YYYY-MM-DD", end))?;
+        if start_date > end_date {
+            return Err("起始日期不可晚於結束日期".to_string());
+        }
         let pipeline = self.pipeline.lock().await;
         let count = pipeline
             .repo
@@ -268,16 +277,37 @@ impl CoreState {
 
         let types_ref = instrument_types.as_deref();
         let engine = BacktestEngine::new(&pipeline.repo);
-        let output = engine
-            .run_range(start_date, end_date, &strategy, types_ref)
-            .map_err(|e| e.to_string())?;
+
+        let chunk_size = 10;
+        let chunks: Vec<_> = trade_dates.chunks(chunk_size).collect();
+        let total_chunks = chunks.len();
+        let mut all_signals = Vec::new();
+
+        for (idx, chunk) in chunks.iter().enumerate() {
+            if self.cancel_flag.load(Ordering::SeqCst) {
+                return Err("選股已被使用者取消".into());
+            }
+            let chunk_start = chunk.first().unwrap();
+            let chunk_end = chunk.last().unwrap();
+            on_progress(
+                idx + 1,
+                total_chunks + 1,
+                format!("正在篩選區間 {} ~ {}...", chunk_start, chunk_end),
+                false,
+            );
+
+            let output = engine
+                .run_range(chunk_start, chunk_end, &strategy, types_ref)
+                .map_err(|e| e.to_string())?;
+            all_signals.extend(output.signals);
+        }
 
         if self.cancel_flag.load(Ordering::SeqCst) {
             return Err("選股已被使用者取消".into());
         }
 
         let mut symbol_map: HashMap<String, (String, ScreenResult)> = HashMap::new();
-        for signal in output.signals {
+        for signal in all_signals {
             let trade_date = signal.trade_date.clone();
             let item = signal.to_screen_result();
             match symbol_map.get_mut(&item.symbol) {
@@ -301,7 +331,7 @@ impl CoreState {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        on_progress(2, 2, "完成".into(), false);
+        on_progress(total_chunks + 1, total_chunks + 1, "完成".into(), false);
 
         Ok(RangeScreenResult {
             results,
@@ -325,44 +355,56 @@ impl CoreState {
         capital: f64,
         instrument_types: Option<Vec<String>>,
     ) -> Result<BacktestReport, String> {
-        let pipeline = self.pipeline.lock().await;
+        let pipeline = self.pipeline.clone();
+        let s_id = strategy_id.to_string();
+        let s_params = strategy_params.to_vec();
+        let start_d = start_date.to_string();
+        let end_d = end_date.to_string();
 
-        let strategy = StrategyKind::create(strategy_id, strategy_params)?;
+        let handle = TOKIO_RUNTIME.spawn(async move {
+            let pipeline = pipeline.lock().await;
 
-        let trade_dates = pipeline
-            .repo
-            .get_trade_dates_in_range(start_date, end_date)
-            .map_err(|e| e.to_string())?;
+            let strategy = StrategyKind::create(&s_id, &s_params)?;
 
-        let start = trade_dates.first().cloned().unwrap_or_default();
-        let end = trade_dates.last().cloned().unwrap_or_default();
+            let trade_dates = pipeline
+                .repo
+                .get_trade_dates_in_range(&start_d, &end_d)
+                .map_err(|e| e.to_string())?;
 
-        let types_ref = instrument_types.as_deref();
+            let start = trade_dates.first().cloned().unwrap_or_default();
+            let end = trade_dates.last().cloned().unwrap_or_default();
 
-        let output = BacktestEngine::new(&pipeline.repo)
-            .run_range(start_date, end_date, &strategy, types_ref)
-            .map_err(|e| e.to_string())?;
+            let types_ref = instrument_types.as_deref();
 
-        let rows = pipeline
-            .repo
-            .get_batch_ohlcv(&start, &end)
-            .map_err(|e| e.to_string())?;
-        let mut ohlcv_map: HashMap<String, Vec<OhlcvRecord>> = HashMap::new();
-        for (sym, record) in rows {
-            ohlcv_map.entry(sym).or_default().push(record);
-        }
+            let output = BacktestEngine::new(&pipeline.repo)
+                .run_range(&start_d, &end_d, &strategy, types_ref)
+                .map_err(|e| e.to_string())?;
 
-        let (trades, equity_curve) =
-            PortfolioSimulator::simulate(&output.signals, capital, &ohlcv_map, &trade_dates);
-        let metrics = calculate_metrics(&trades, capital, &equity_curve);
+            let rows = pipeline
+                .repo
+                .get_batch_ohlcv(&start, &end)
+                .map_err(|e| e.to_string())?;
+            let mut ohlcv_map: HashMap<String, Vec<OhlcvRecord>> = HashMap::new();
+            for (sym, record) in rows {
+                ohlcv_map.entry(sym).or_default().push(record);
+            }
 
-        Ok(BacktestReport {
-            signals: output.signals,
-            metrics,
-            trades,
-            equity_curve,
-            trade_dates,
-        })
+            let (trades, equity_curve) =
+                PortfolioSimulator::simulate(&output.signals, capital, &ohlcv_map, &trade_dates);
+            let metrics = calculate_metrics(&trades, capital, &equity_curve);
+
+            Ok(BacktestReport {
+                signals: output.signals,
+                metrics,
+                trades,
+                equity_curve,
+                trade_dates,
+            })
+        });
+
+        handle
+            .await
+            .map_err(|e| format!("執行回測工作失敗: {}", e))?
     }
 
     pub async fn batch_download<F>(
@@ -378,6 +420,10 @@ impl CoreState {
             .map_err(|e| format!("無效的起始日期：{}", e))?;
         let end = chrono::NaiveDate::parse_from_str(end_date, "%Y-%m-%d")
             .map_err(|e| format!("無效的結束日期：{}", e))?;
+
+        if start > end {
+            return Err("起始日期不可晚於結束日期".to_string());
+        }
 
         let mut current = start;
         let total_days = (end - start).num_days() as usize + 1;
@@ -416,6 +462,18 @@ impl CoreState {
                     p.repo.sync_securities()
                 })
                 .await;
+        }
+
+        if self.cancel_flag.load(Ordering::SeqCst) {
+            on_progress(
+                days_done,
+                total_days,
+                format!("已取消（處理至 {} 日）", days_done),
+            );
+            return Err(format!(
+                "下載作業已被使用者取消（已完成 {}/{} 日，共 {} 筆資料）",
+                days_done, total_days, total_records
+            ));
         }
 
         on_progress(total_days, total_days, "完成".into());

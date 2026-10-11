@@ -54,7 +54,7 @@ fn test_cjk_font_and_input(cx: &mut TestAppContext) {
         .expect("開啟視窗失敗")
     });
 
-    cx.update_window(window_handle.into(), |_, window, cx| {
+    cx.update_window(window_handle, |_, window, cx| {
         window.draw(cx).clear(cx);
 
         // 驗證 CJK 繁體中文字元渲染

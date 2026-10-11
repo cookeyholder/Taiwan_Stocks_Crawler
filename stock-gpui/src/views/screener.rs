@@ -1,14 +1,14 @@
+use gpui_kit::base::Disableable as _;
+use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::chart::{BarChart, CandlestickChart};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::plot::scale::{Scale, ScaleBand, ScaleLinear};
 use gpui_kit::component::resizable::{h_resizable, resizable_panel};
 use gpui_kit::component::table::{
     Column, ColumnSort, DataTable, TableDelegate, TableEvent, TableState,
 };
-use gpui_kit::base::Disableable as _;
-use gpui_kit::component::Sizable as _;
-use gpui_kit::component::plot::scale::{Scale, ScaleBand, ScaleLinear};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
@@ -17,7 +17,7 @@ use gpui_kit::{
 use stock_core::models::ScreenResult;
 
 use crate::app::FontSizeLevel;
-use crate::state::{default_db_path, AnalysisData, CoreState};
+use crate::state::{AnalysisData, CoreState, default_db_path};
 use crate::views::chart_viewport::{ChartViewport, compute_price_scales, compute_volume_scales};
 use stock_core::db::MarketRepository;
 
@@ -126,7 +126,9 @@ impl TableDelegate for ScreenerDelegate {
             3 => Column::new("close", "收盤價").width(px(85.)).sortable(),
             4 => Column::new("volume", "成交量").width(px(90.)).sortable(),
             5 => Column::new("max_bw", "最大頻寬").width(px(80.)).sortable(),
-            6 => Column::new("latest_bw", "觸發頻寬").width(px(80.)).sortable(),
+            6 => Column::new("latest_bw", "觸發頻寬")
+                .width(px(80.))
+                .sortable(),
             _ => Column::new("break_upper", "突破上軌")
                 .width(px(75.))
                 .sortable(),
@@ -184,7 +186,9 @@ impl TableDelegate for ScreenerDelegate {
         let r = &self.results[row];
         let content: gpui_kit::AnyElement = match col {
             0 => div().child(r.symbol.clone()).into_any_element(),
-            1 => div().child(r.name.clone().unwrap_or_default()).into_any_element(),
+            1 => div()
+                .child(r.name.clone().unwrap_or_default())
+                .into_any_element(),
             2 => div().child(r.trade_date.clone()).into_any_element(),
             3 => div()
                 .child(format!("{:.2}", r.latest_close.unwrap_or(0.0)))
@@ -198,18 +202,20 @@ impl TableDelegate for ScreenerDelegate {
             6 => div()
                 .child(format!("{:.4}", r.latest_bandwidth))
                 .into_any_element(),
-            _ => if r.break_upper {
-                div()
-                    .text_color(rgb(0x10b981))
-                    .font_weight(gpui_kit::FontWeight::BOLD)
-                    .child("✓ 是")
-                    .into_any_element()
-            } else {
-                div()
-                    .text_color(rgb(0x94a3b8))
-                    .child("-")
-                    .into_any_element()
-            },
+            _ => {
+                if r.break_upper {
+                    div()
+                        .text_color(rgb(0x10b981))
+                        .font_weight(gpui_kit::FontWeight::BOLD)
+                        .child("✓ 是")
+                        .into_any_element()
+                } else {
+                    div()
+                        .text_color(rgb(0x94a3b8))
+                        .child("-")
+                        .into_any_element()
+                }
+            }
         };
         div()
             .text_size(self.font_size.size_px())
@@ -224,6 +230,7 @@ pub struct ScreenerView {
     pub end_date_input: Entity<InputState>,
     pub bandwidth_input: Entity<InputState>,
     pub min_days_input: Entity<InputState>,
+    pub min_volume_input: Entity<InputState>,
     pub include_etf: bool,
     pub break_upper_only: bool,
     pub show_bollinger: bool,
@@ -247,6 +254,7 @@ impl ScreenerView {
         let end_date_input = cx.new(|cx| InputState::new(window, cx).default_value(&default_end));
         let bandwidth_input = cx.new(|cx| InputState::new(window, cx).default_value("0.10"));
         let min_days_input = cx.new(|cx| InputState::new(window, cx).default_value("3"));
+        let min_volume_input = cx.new(|cx| InputState::new(window, cx).default_value("500"));
 
         let delegate = ScreenerDelegate {
             results: Vec::new(),
@@ -265,6 +273,7 @@ impl ScreenerView {
             &end_date_input,
             &bandwidth_input,
             &min_days_input,
+            &min_volume_input,
         ] {
             cx.subscribe(
                 input_field,
@@ -282,59 +291,57 @@ impl ScreenerView {
 
         cx.subscribe(
             &table_state,
-            |this: &mut Self, table, event: &TableEvent, cx| {
-                match event {
-                    TableEvent::SelectRow(r) | TableEvent::DoubleClickedRow(r) => {
-                        let item_opt = {
-                            let d = table.read(cx).delegate();
-                            d.results.get(*r).cloned()
-                        };
-                        if let Some(item) = item_opt {
-                            this.select_and_load_chart(
-                                &item.symbol,
-                                item.name,
-                                Some(item.trade_date),
-                                cx,
-                            );
-                        }
+            |this: &mut Self, table, event: &TableEvent, cx| match event {
+                TableEvent::SelectRow(r) | TableEvent::DoubleClickedRow(r) => {
+                    let item_opt = {
+                        let d = table.read(cx).delegate();
+                        d.results.get(*r).cloned()
+                    };
+                    if let Some(item) = item_opt {
+                        this.select_and_load_chart(
+                            &item.symbol,
+                            item.name,
+                            Some(item.trade_date),
+                            cx,
+                        );
                     }
-                    TableEvent::SelectCell(r, _) | TableEvent::DoubleClickedCell(r, _) => {
-                        let item_opt = {
-                            let d = table.read(cx).delegate();
-                            d.results.get(*r).cloned()
-                        };
-                        if let Some(item) = item_opt {
-                            this.select_and_load_chart(
-                                &item.symbol,
-                                item.name,
-                                Some(item.trade_date),
-                                cx,
-                            );
-                        }
-                    }
-                    TableEvent::SelectColumn(col) => {
-                        table.update(cx, |t, cx| {
-                            let current_col = t.delegate().sort_col;
-                            let current_sort = t.delegate().sort_order;
-                            let next_sort = if current_col == Some(*col) {
-                                match current_sort {
-                                    ColumnSort::Ascending => ColumnSort::Descending,
-                                    ColumnSort::Descending => ColumnSort::Ascending,
-                                    ColumnSort::Default => ColumnSort::Ascending,
-                                }
-                            } else {
-                                match *col {
-                                    0 | 5 | 6 => ColumnSort::Ascending,
-                                    _ => ColumnSort::Descending,
-                                }
-                            };
-                            t.delegate_mut().sort_by_col(*col, next_sort);
-                            t.refresh(cx);
-                        });
-                        cx.notify();
-                    }
-                    _ => {}
                 }
+                TableEvent::SelectCell(r, _) | TableEvent::DoubleClickedCell(r, _) => {
+                    let item_opt = {
+                        let d = table.read(cx).delegate();
+                        d.results.get(*r).cloned()
+                    };
+                    if let Some(item) = item_opt {
+                        this.select_and_load_chart(
+                            &item.symbol,
+                            item.name,
+                            Some(item.trade_date),
+                            cx,
+                        );
+                    }
+                }
+                TableEvent::SelectColumn(col) => {
+                    table.update(cx, |t, cx| {
+                        let current_col = t.delegate().sort_col;
+                        let current_sort = t.delegate().sort_order;
+                        let next_sort = if current_col == Some(*col) {
+                            match current_sort {
+                                ColumnSort::Ascending => ColumnSort::Descending,
+                                ColumnSort::Descending => ColumnSort::Ascending,
+                                ColumnSort::Default => ColumnSort::Ascending,
+                            }
+                        } else {
+                            match *col {
+                                0 | 5 | 6 => ColumnSort::Ascending,
+                                _ => ColumnSort::Descending,
+                            }
+                        };
+                        t.delegate_mut().sort_by_col(*col, next_sort);
+                        t.refresh(cx);
+                    });
+                    cx.notify();
+                }
+                _ => {}
             },
         )
         .detach();
@@ -345,6 +352,7 @@ impl ScreenerView {
             end_date_input,
             bandwidth_input,
             min_days_input,
+            min_volume_input,
             include_etf: false,
             break_upper_only: false,
             show_bollinger: true,
@@ -429,13 +437,23 @@ impl ScreenerView {
             .trim()
             .parse()
             .unwrap_or(0.10);
-        let min_days: i32 = self
-            .min_days_input
+        let min_days: i32 = match self.min_days_input.read(cx).value().trim().parse() {
+            Ok(d) if d >= 1 => d,
+            _ => {
+                self.status_text = "連續天數必須為大於等於 1 的整數".into();
+                cx.notify();
+                return;
+            }
+        };
+
+        let min_vol_lots: i64 = self
+            .min_volume_input
             .read(cx)
             .value()
             .trim()
             .parse()
-            .unwrap_or(3);
+            .unwrap_or(500);
+        let min_volume = min_vol_lots.max(0) * 1000;
 
         let instrument_types = if self.include_etf {
             Some(vec!["stock".to_string(), "etf".to_string()])
@@ -444,6 +462,17 @@ impl ScreenerView {
         };
 
         let break_upper_only = self.break_upper_only;
+
+        // 開始新篩選時重設舊有選股與圖表結果
+        self.selected_symbol = None;
+        self.selected_name = None;
+        self.selected_signal_date = None;
+        self.chart_data = None;
+        self.table_state.update(cx, |table, cx| {
+            table.delegate_mut().results.clear();
+            table.refresh(cx);
+        });
+
         self.is_running = true;
         self.status_text = "開始執行篩選...".into();
         cx.notify();
@@ -459,7 +488,7 @@ impl ScreenerView {
                     max_bw,
                     min_days,
                     instrument_types,
-                    500_000,
+                    min_volume,
                     break_upper_only,
                     move |curr, tot, date, _cached| {
                         let _ = tx.send((curr, tot, date));
@@ -494,6 +523,9 @@ impl ScreenerView {
                                         let name = first.name.clone();
                                         let sig_date = Some(first.trade_date.clone());
                                         view.select_and_load_chart(&sym, name, sig_date, cx);
+                                    } else {
+                                        view.chart_data = None;
+                                        view.selected_symbol = None;
                                     }
                                     view.table_state.update(cx, |table, cx| {
                                         let d = table.delegate_mut();
@@ -506,6 +538,8 @@ impl ScreenerView {
                                 }
                                 Err(e) => {
                                     view.status_text = format!("篩選失敗：{}", e);
+                                    view.chart_data = None;
+                                    view.selected_symbol = None;
                                 }
                             }
                             cx.notify();
@@ -602,6 +636,18 @@ impl Render for ScreenerView {
                         div()
                             .w(px(60.))
                             .child(Input::new(&self.min_days_input).id("screen-min-days")),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("量(張):"))
+                    .child(
+                        div()
+                            .w(px(70.))
+                            .child(Input::new(&self.min_volume_input).id("screen-min-volume")),
                     ),
             )
             .child(
@@ -746,32 +792,29 @@ impl Render for ScreenerView {
                     let y_scale = ScaleLinear::new(all_values, [height, 10.]);
                     let half_band = x_scale.band_width() / 2.0;
 
-                    let build_band_path = |series: &[Option<f64>]| -> Option<gpui_kit::Path<Pixels>> {
-                        let mut builder = PathBuilder::stroke(px(2.0));
-                        let mut started = false;
-                        for (d, val_opt) in visible_ohlcv_bb.iter().zip(series.iter()) {
-                            if let Some(val) = val_opt
-                                && let (Some(xt), Some(yt)) =
-                                    (x_scale.tick(&d.trade_date), y_scale.tick(val))
-                            {
-                                let pt = point(
-                                    bounds.origin.x + px(xt + half_band),
-                                    bounds.origin.y + px(yt),
-                                );
-                                if !started {
-                                    builder.move_to(pt);
-                                    started = true;
-                                } else {
-                                    builder.line_to(pt);
+                    let build_band_path =
+                        |series: &[Option<f64>]| -> Option<gpui_kit::Path<Pixels>> {
+                            let mut builder = PathBuilder::stroke(px(2.0));
+                            let mut started = false;
+                            for (d, val_opt) in visible_ohlcv_bb.iter().zip(series.iter()) {
+                                if let Some(val) = val_opt
+                                    && let (Some(xt), Some(yt)) =
+                                        (x_scale.tick(&d.trade_date), y_scale.tick(val))
+                                {
+                                    let pt = point(
+                                        bounds.origin.x + px(xt + half_band),
+                                        bounds.origin.y + px(yt),
+                                    );
+                                    if !started {
+                                        builder.move_to(pt);
+                                        started = true;
+                                    } else {
+                                        builder.line_to(pt);
+                                    }
                                 }
                             }
-                        }
-                        if started {
-                            builder.build().ok()
-                        } else {
-                            None
-                        }
-                    };
+                            if started { builder.build().ok() } else { None }
+                        };
 
                     window.with_content_mask(Some(gpui_kit::ContentMask { bounds }), |window| {
                         // 上軌：紫色 (Violet)
@@ -883,7 +926,12 @@ impl Render for ScreenerView {
                         )
                     }
                 } else if let Some(sig_date) = &self.selected_signal_date {
-                    format!("顯示 {} / {} 根 | ⚡ 訊號日: {}", visible_ohlcv.len(), total_candles, sig_date)
+                    format!(
+                        "顯示 {} / {} 根 | ⚡ 訊號日: {}",
+                        visible_ohlcv.len(),
+                        total_candles,
+                        sig_date
+                    )
                 } else {
                     format!("顯示 {} / {} 根", visible_ohlcv.len(), total_candles)
                 };
@@ -1023,22 +1071,18 @@ impl Render for ScreenerView {
                 .size_full()
                 .flex()
                 .flex_row()
-                .child(
-                    div()
-                        .relative()
-                        .flex_1()
-                        .h_full()
-                        .child(kline)
-                        .when(self.show_bollinger, |this| {
-                            this.child(
-                                div()
-                                    .absolute()
-                                    .inset_0()
-                                    .size_full()
-                                    .child(bollinger_canvas),
-                            )
-                        }),
-                )
+                .child(div().relative().flex_1().h_full().child(kline).when(
+                    self.show_bollinger,
+                    |this| {
+                        this.child(
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .size_full()
+                                .child(bollinger_canvas),
+                        )
+                    },
+                ))
                 .child(price_axis);
 
             let vol_with_axis = div()
@@ -1127,24 +1171,17 @@ impl Render for ScreenerView {
                 .child("點擊左側股票列以即時檢視 K 線與走勢圖")
         };
 
-        let content = h_resizable("screener-resizable-layout")
-            .child(
-                resizable_panel().child(
-                    div()
-                        .size_full()
-                        .p_3()
-                        .child(
-                            DataTable::new(&self.table_state)
-                                .with_size(self.font_size.table_size()),
-                        ),
-                ),
-            )
-            .child(
-                resizable_panel()
-                    .size(px(520.))
-                    .size_range(px(320.)..px(1200.))
-                    .child(div().size_full().p_3().child(chart_section)),
-            );
+        let content =
+            h_resizable("screener-resizable-layout")
+                .child(resizable_panel().child(div().size_full().p_3().child(
+                    DataTable::new(&self.table_state).with_size(self.font_size.table_size()),
+                )))
+                .child(
+                    resizable_panel()
+                        .size(px(520.))
+                        .size_range(px(320.)..px(1200.))
+                        .child(div().size_full().p_3().child(chart_section)),
+                );
 
         div()
             .size_full()

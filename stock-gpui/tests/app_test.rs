@@ -40,7 +40,7 @@ fn test_window_open_and_render(cx: &mut TestAppContext) {
         gpui_kit::open_window(options, cx, |_, cx| cx.new(|_| DummyView)).expect("開啟視窗失敗")
     });
 
-    cx.update_window(window_handle.into(), |_, window, cx| {
+    cx.update_window(window_handle, |_, window, cx| {
         window.draw(cx).clear(cx);
         let title_elem = window.find("app-title");
         assert!(title_elem.visible());

@@ -47,9 +47,10 @@ echo "--> 正在檢驗 Linux 動態鏈結相依性..."
 if command -v ldd &> /dev/null; then
     MISSING_LIBS=$(ldd "${BINARY_PATH}" | grep "not found" || true)
     if [ -n "${MISSING_LIBS}" ]; then
-        echo "警告：偵測到缺失的共享函式庫：" >&2
+        echo "錯誤：偵測到缺失的共享函式庫：" >&2
         echo "${MISSING_LIBS}" >&2
         echo "請確保已安裝相應的系統套件（如 libxkbcommon-x11-0, libvulkan1 等）。" >&2
+        exit 1
     else
         echo "相依性驗證通過：無缺失的共享函式庫。"
     fi

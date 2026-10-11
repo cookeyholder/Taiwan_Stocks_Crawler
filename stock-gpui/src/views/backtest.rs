@@ -1,16 +1,18 @@
 use gpui_kit::base::Disableable as _;
+use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::chart::{BarChart, CandlestickChart};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::plot::scale::{Scale, ScaleBand, ScaleLinear};
 use gpui_kit::component::resizable::{h_resizable, resizable_panel};
-use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableEvent, TableState};
-use gpui_kit::component::Sizable as _;
+use gpui_kit::component::table::{
+    Column, ColumnSort, DataTable, TableDelegate, TableEvent, TableState,
+};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    canvas, div, hsla, point, px, rgb, App, AppContext, Context, Entity, InteractiveElement as _,
-    IntoElement, ParentElement as _, PathBuilder, Pixels, Render, Styled as _, Window,
+    App, AppContext, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
+    PathBuilder, Pixels, Render, Styled as _, Window, canvas, div, hsla, point, px, rgb,
 };
 use stock_core::models::{BacktestReport, TradeRecord};
 
@@ -169,20 +171,38 @@ impl TableDelegate for TradesDelegate {
 
         let fs = self.font_size.size_px();
         let content: gpui_kit::AnyElement = match col {
-            0 => div().text_size(fs).child(t.buy_date.clone()).into_any_element(),
+            0 => div()
+                .text_size(fs)
+                .child(t.buy_date.clone())
+                .into_any_element(),
             1 => div()
                 .text_size(fs)
                 .child(t.sell_date.clone().unwrap_or_else(|| "持有中".into()))
                 .into_any_element(),
-            2 => div().text_size(fs).child(t.symbol.clone()).into_any_element(),
-            3 => div().text_size(fs).child(t.name.clone().unwrap_or_default()).into_any_element(),
-            4 => div().text_size(fs).child(format!("{}", t.shares)).into_any_element(),
-            5 => div().text_size(fs).child(format!("{:.2}", t.buy_price)).into_any_element(),
-            6 => div().text_size(fs).child(
-                t.sell_price
-                    .map(|p| format!("{:.2}", p))
-                    .unwrap_or_else(|| "-".into()),
-            ).into_any_element(),
+            2 => div()
+                .text_size(fs)
+                .child(t.symbol.clone())
+                .into_any_element(),
+            3 => div()
+                .text_size(fs)
+                .child(t.name.clone().unwrap_or_default())
+                .into_any_element(),
+            4 => div()
+                .text_size(fs)
+                .child(format!("{}", t.shares))
+                .into_any_element(),
+            5 => div()
+                .text_size(fs)
+                .child(format!("{:.2}", t.buy_price))
+                .into_any_element(),
+            6 => div()
+                .text_size(fs)
+                .child(
+                    t.sell_price
+                        .map(|p| format!("{:.2}", p))
+                        .unwrap_or_else(|| "-".into()),
+                )
+                .into_any_element(),
             7 => div()
                 .text_size(fs)
                 .text_color(pnl_color)
@@ -212,6 +232,13 @@ pub struct BacktestView {
     pub start_date_input: Entity<InputState>,
     pub end_date_input: Entity<InputState>,
     pub capital_input: Entity<InputState>,
+    pub strategy_idx: usize,
+    pub bollinger_bandwidth_input: Entity<InputState>,
+    pub bollinger_days_input: Entity<InputState>,
+    pub ma_fast_input: Entity<InputState>,
+    pub ma_slow_input: Entity<InputState>,
+    pub rsi_overbought_input: Entity<InputState>,
+    pub rsi_oversold_input: Entity<InputState>,
     pub include_etf: bool,
     pub table_state: Entity<TableState<TradesDelegate>>,
     pub report: Option<BacktestReport>,
@@ -232,7 +259,27 @@ impl BacktestView {
         let end_date_input = cx.new(|cx| InputState::new(window, cx).default_value(&today));
         let capital_input = cx.new(|cx| InputState::new(window, cx).default_value("1000000"));
 
-        for input_field in [&start_date_input, &end_date_input, &capital_input] {
+        let bollinger_bandwidth_input =
+            cx.new(|cx| InputState::new(window, cx).default_value("0.08"));
+        let bollinger_days_input = cx.new(|cx| InputState::new(window, cx).default_value("5"));
+
+        let ma_fast_input = cx.new(|cx| InputState::new(window, cx).default_value("5"));
+        let ma_slow_input = cx.new(|cx| InputState::new(window, cx).default_value("20"));
+
+        let rsi_overbought_input = cx.new(|cx| InputState::new(window, cx).default_value("70"));
+        let rsi_oversold_input = cx.new(|cx| InputState::new(window, cx).default_value("30"));
+
+        for input_field in [
+            &start_date_input,
+            &end_date_input,
+            &capital_input,
+            &bollinger_bandwidth_input,
+            &bollinger_days_input,
+            &ma_fast_input,
+            &ma_slow_input,
+            &rsi_overbought_input,
+            &rsi_oversold_input,
+        ] {
             cx.subscribe(
                 input_field,
                 |this: &mut Self, _, event: &gpui_kit::component::input::InputEvent, cx| {
@@ -261,46 +308,44 @@ impl BacktestView {
 
         cx.subscribe(
             &table_state,
-            |this: &mut Self, table, event: &TableEvent, cx| {
-                match event {
-                    TableEvent::SelectRow(r) | TableEvent::DoubleClickedRow(r) => {
-                        let trade_opt = {
-                            let d = table.read(cx).delegate();
-                            d.trades.get(*r).cloned()
-                        };
-                        if let Some(trade) = trade_opt {
-                            this.select_trade(trade, cx);
-                        }
+            |this: &mut Self, table, event: &TableEvent, cx| match event {
+                TableEvent::SelectRow(r) | TableEvent::DoubleClickedRow(r) => {
+                    let trade_opt = {
+                        let d = table.read(cx).delegate();
+                        d.trades.get(*r).cloned()
+                    };
+                    if let Some(trade) = trade_opt {
+                        this.select_trade(trade, cx);
                     }
-                    TableEvent::SelectCell(r, _) | TableEvent::DoubleClickedCell(r, _) => {
-                        let trade_opt = {
-                            let d = table.read(cx).delegate();
-                            d.trades.get(*r).cloned()
-                        };
-                        if let Some(trade) = trade_opt {
-                            this.select_trade(trade, cx);
-                        }
-                    }
-                    TableEvent::SelectColumn(col) => {
-                        table.update(cx, |t, cx| {
-                            let current_col = t.delegate().sort_col;
-                            let current_sort = t.delegate().sort_order;
-                            let next_sort = if current_col == Some(*col) {
-                                match current_sort {
-                                    ColumnSort::Ascending => ColumnSort::Descending,
-                                    ColumnSort::Descending => ColumnSort::Ascending,
-                                    ColumnSort::Default => ColumnSort::Ascending,
-                                }
-                            } else {
-                                ColumnSort::Descending
-                            };
-                            t.delegate_mut().sort_by_col(*col, next_sort);
-                            t.refresh(cx);
-                        });
-                        cx.notify();
-                    }
-                    _ => {}
                 }
+                TableEvent::SelectCell(r, _) | TableEvent::DoubleClickedCell(r, _) => {
+                    let trade_opt = {
+                        let d = table.read(cx).delegate();
+                        d.trades.get(*r).cloned()
+                    };
+                    if let Some(trade) = trade_opt {
+                        this.select_trade(trade, cx);
+                    }
+                }
+                TableEvent::SelectColumn(col) => {
+                    table.update(cx, |t, cx| {
+                        let current_col = t.delegate().sort_col;
+                        let current_sort = t.delegate().sort_order;
+                        let next_sort = if current_col == Some(*col) {
+                            match current_sort {
+                                ColumnSort::Ascending => ColumnSort::Descending,
+                                ColumnSort::Descending => ColumnSort::Ascending,
+                                ColumnSort::Default => ColumnSort::Ascending,
+                            }
+                        } else {
+                            ColumnSort::Descending
+                        };
+                        t.delegate_mut().sort_by_col(*col, next_sort);
+                        t.refresh(cx);
+                    });
+                    cx.notify();
+                }
+                _ => {}
             },
         )
         .detach();
@@ -310,6 +355,13 @@ impl BacktestView {
             start_date_input,
             end_date_input,
             capital_input,
+            strategy_idx: 0,
+            bollinger_bandwidth_input,
+            bollinger_days_input,
+            ma_fast_input,
+            ma_slow_input,
+            rsi_overbought_input,
+            rsi_oversold_input,
             include_etf: false,
             table_state,
             report: None,
@@ -334,7 +386,10 @@ impl BacktestView {
     }
 
     pub fn select_trade(&mut self, trade: TradeRecord, cx: &mut Context<Self>) {
-        if self.selected_trade.as_ref().map(|t| (&t.symbol, &t.buy_date))
+        if self
+            .selected_trade
+            .as_ref()
+            .map(|t| (&t.symbol, &t.buy_date))
             == Some((&trade.symbol, &trade.buy_date))
             && self.chart_data.is_some()
         {
@@ -360,7 +415,8 @@ impl BacktestView {
                 match res {
                     Ok(data) => {
                         let total = data.ohlcv.len();
-                        if let Some(pos) = data.ohlcv.iter().position(|r| r.trade_date == buy_date) {
+                        if let Some(pos) = data.ohlcv.iter().position(|r| r.trade_date == buy_date)
+                        {
                             let vis = 40.min(total).max(15);
                             view.chart_viewport.visible_count = vis;
                             let target_end = (pos + vis / 2).min(total);
@@ -391,19 +447,102 @@ impl BacktestView {
             return;
         }
 
-        let capital: f64 = self
-            .capital_input
-            .read(cx)
-            .value()
-            .trim()
-            .parse()
-            .unwrap_or(1_000_000.0);
+        let capital: f64 = match self.capital_input.read(cx).value().trim().parse() {
+            Ok(c) if c > 0.0 => c,
+            _ => {
+                self.status_text = "請輸入大於 0 的有效初始資金".into();
+                cx.notify();
+                return;
+            }
+        };
+
+        let (strat_id, strat_params) = match self.strategy_idx {
+            0 => {
+                let p1 = self
+                    .bollinger_bandwidth_input
+                    .read(cx)
+                    .value()
+                    .trim()
+                    .parse()
+                    .unwrap_or(0.08);
+                let p2 = self
+                    .bollinger_days_input
+                    .read(cx)
+                    .value()
+                    .trim()
+                    .parse()
+                    .unwrap_or(5.0);
+                (
+                    "bollinger_squeeze",
+                    vec![
+                        ("bandwidth_limit".to_string(), p1),
+                        ("consecutive_days".to_string(), p2),
+                    ],
+                )
+            }
+            1 => {
+                let p1 = self
+                    .ma_fast_input
+                    .read(cx)
+                    .value()
+                    .trim()
+                    .parse()
+                    .unwrap_or(5.0);
+                let p2 = self
+                    .ma_slow_input
+                    .read(cx)
+                    .value()
+                    .trim()
+                    .parse()
+                    .unwrap_or(20.0);
+                (
+                    "ma_cross",
+                    vec![
+                        ("fast_period".to_string(), p1),
+                        ("slow_period".to_string(), p2),
+                    ],
+                )
+            }
+            _ => {
+                let p1 = self
+                    .rsi_overbought_input
+                    .read(cx)
+                    .value()
+                    .trim()
+                    .parse()
+                    .unwrap_or(70.0);
+                let p2 = self
+                    .rsi_oversold_input
+                    .read(cx)
+                    .value()
+                    .trim()
+                    .parse()
+                    .unwrap_or(30.0);
+                (
+                    "rsi",
+                    vec![
+                        ("overbought".to_string(), p1),
+                        ("oversold".to_string(), p2),
+                        ("period".to_string(), 14.0),
+                    ],
+                )
+            }
+        };
 
         let instrument_types = if self.include_etf {
             Some(vec!["stock".to_string(), "etf".to_string()])
         } else {
             Some(vec!["stock".to_string()])
         };
+
+        // 清除舊有回測結果與圖表
+        self.report = None;
+        self.selected_trade = None;
+        self.chart_data = None;
+        self.table_state.update(cx, |table, cx| {
+            table.delegate_mut().trades.clear();
+            table.refresh(cx);
+        });
 
         self.is_running = true;
         self.status_text = "回測執行中...".into();
@@ -413,11 +552,8 @@ impl BacktestView {
         cx.spawn(async move |this, cx| {
             let res = core
                 .run_backtest(
-                    "bollinger_squeeze",
-                    &[
-                        ("bandwidth_limit".to_string(), 0.08),
-                        ("consecutive_days".to_string(), 5.0),
-                    ],
+                    strat_id,
+                    &strat_params,
                     &start_date,
                     &end_date,
                     capital,
@@ -433,16 +569,23 @@ impl BacktestView {
                             "回測完成：總報酬率 {:.2}%，交易次數 {}",
                             report.metrics.total_return_pct, report.metrics.total_trades
                         );
-                        view.table_state.update(cx, |table, _| {
+                        view.table_state.update(cx, |table, cx| {
                             table.delegate_mut().trades = report.trades.clone();
+                            table.refresh(cx);
                         });
                         if let Some(first_trade) = report.trades.first().cloned() {
                             view.select_trade(first_trade, cx);
+                        } else {
+                            view.chart_data = None;
+                            view.selected_trade = None;
                         }
                         view.report = Some(report);
                     }
                     Err(e) => {
                         view.status_text = format!("回測失敗：{}", e);
+                        view.report = None;
+                        view.selected_trade = None;
+                        view.chart_data = None;
                     }
                 }
                 cx.notify();
@@ -500,6 +643,121 @@ impl Render for BacktestView {
                             .child(Input::new(&self.capital_input).id("bt-capital")),
                     ),
             )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(div().text_sm().text_color(rgb(0xa6adc8)).child("策略:"))
+                    .child(
+                        Button::new("btn-strat-bollinger")
+                            .label("布林")
+                            .when(self.strategy_idx == 0, |b| b.primary())
+                            .when(self.strategy_idx != 0, |b| b.secondary())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.strategy_idx = 0;
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Button::new("btn-strat-ma")
+                            .label("均線")
+                            .when(self.strategy_idx == 1, |b| b.primary())
+                            .when(self.strategy_idx != 1, |b| b.secondary())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.strategy_idx = 1;
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Button::new("btn-strat-rsi")
+                            .label("RSI")
+                            .when(self.strategy_idx == 2, |b| b.primary())
+                            .when(self.strategy_idx != 2, |b| b.secondary())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.strategy_idx = 2;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .when(self.strategy_idx == 0, |this| {
+                this.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(div().text_sm().text_color(rgb(0xa6adc8)).child("頻寬:"))
+                        .child(
+                            div()
+                                .w(px(70.))
+                                .child(Input::new(&self.bollinger_bandwidth_input).id("bt-bw")),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(div().text_sm().text_color(rgb(0xa6adc8)).child("天數:"))
+                        .child(
+                            div()
+                                .w(px(60.))
+                                .child(Input::new(&self.bollinger_days_input).id("bt-days")),
+                        ),
+                )
+            })
+            .when(self.strategy_idx == 1, |this| {
+                this.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(div().text_sm().text_color(rgb(0xa6adc8)).child("快線:"))
+                        .child(
+                            div()
+                                .w(px(60.))
+                                .child(Input::new(&self.ma_fast_input).id("bt-ma-fast")),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(div().text_sm().text_color(rgb(0xa6adc8)).child("慢線:"))
+                        .child(
+                            div()
+                                .w(px(60.))
+                                .child(Input::new(&self.ma_slow_input).id("bt-ma-slow")),
+                        ),
+                )
+            })
+            .when(self.strategy_idx == 2, |this| {
+                this.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(div().text_sm().text_color(rgb(0xa6adc8)).child("超買:"))
+                        .child(
+                            div()
+                                .w(px(60.))
+                                .child(Input::new(&self.rsi_overbought_input).id("bt-rsi-ob")),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(div().text_sm().text_color(rgb(0xa6adc8)).child("超賣:"))
+                        .child(
+                            div()
+                                .w(px(60.))
+                                .child(Input::new(&self.rsi_oversold_input).id("bt-rsi-os")),
+                        ),
+                )
+            })
             .child(
                 Checkbox::new("backtest-include-etf")
                     .label("包含 ETF")
@@ -663,32 +921,29 @@ impl Render for BacktestView {
                     let y_scale = ScaleLinear::new(all_values, [height, 10.]);
                     let half_band = x_scale.band_width() / 2.0;
 
-                    let build_band_path = |series: &[Option<f64>]| -> Option<gpui_kit::Path<Pixels>> {
-                        let mut builder = PathBuilder::stroke(px(2.0));
-                        let mut started = false;
-                        for (d, val_opt) in visible_ohlcv_bb.iter().zip(series.iter()) {
-                            if let Some(val) = val_opt
-                                && let (Some(xt), Some(yt)) =
-                                    (x_scale.tick(&d.trade_date), y_scale.tick(val))
-                            {
-                                let pt = point(
-                                    bounds.origin.x + px(xt + half_band),
-                                    bounds.origin.y + px(yt),
-                                );
-                                if !started {
-                                    builder.move_to(pt);
-                                    started = true;
-                                } else {
-                                    builder.line_to(pt);
+                    let build_band_path =
+                        |series: &[Option<f64>]| -> Option<gpui_kit::Path<Pixels>> {
+                            let mut builder = PathBuilder::stroke(px(2.0));
+                            let mut started = false;
+                            for (d, val_opt) in visible_ohlcv_bb.iter().zip(series.iter()) {
+                                if let Some(val) = val_opt
+                                    && let (Some(xt), Some(yt)) =
+                                        (x_scale.tick(&d.trade_date), y_scale.tick(val))
+                                {
+                                    let pt = point(
+                                        bounds.origin.x + px(xt + half_band),
+                                        bounds.origin.y + px(yt),
+                                    );
+                                    if !started {
+                                        builder.move_to(pt);
+                                        started = true;
+                                    } else {
+                                        builder.line_to(pt);
+                                    }
                                 }
                             }
-                        }
-                        if started {
-                            builder.build().ok()
-                        } else {
-                            None
-                        }
-                    };
+                            if started { builder.build().ok() } else { None }
+                        };
 
                     window.with_content_mask(Some(gpui_kit::ContentMask { bounds }), |window| {
                         // 上軌：紫色 (Violet)
@@ -760,7 +1015,8 @@ impl Render for BacktestView {
                         // 1. 買進標記 (紅色向上箭頭 ▲ 與引線)
                         for d in &visible_ohlcv_trade {
                             if d.trade_date == trade.buy_date {
-                                if let (Some(xt), Some(low)) = (x_scale.tick(&d.trade_date), d.low_price)
+                                if let (Some(xt), Some(low)) =
+                                    (x_scale.tick(&d.trade_date), d.low_price)
                                     && let Some(yt) = y_scale.tick(&low)
                                 {
                                     let center_x = bounds.origin.x + px(xt + half_band);
@@ -804,7 +1060,8 @@ impl Render for BacktestView {
                         if let Some(sell_date) = &trade.sell_date {
                             for d in &visible_ohlcv_trade {
                                 if &d.trade_date == sell_date {
-                                    if let (Some(xt), Some(high)) = (x_scale.tick(&d.trade_date), d.high_price)
+                                    if let (Some(xt), Some(high)) =
+                                        (x_scale.tick(&d.trade_date), d.high_price)
                                         && let Some(yt) = y_scale.tick(&high)
                                     {
                                         let center_x = bounds.origin.x + px(xt + half_band);
@@ -1189,15 +1446,10 @@ impl Render for BacktestView {
                                         trade.name.clone().unwrap_or_default()
                                     )),
                             )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(rgb(0xf38ba8))
-                                    .child(format!(
-                                        "▲ 買進: {} (${:.2})",
-                                        trade.buy_date, trade.buy_price
-                                    )),
-                            )
+                            .child(div().text_xs().text_color(rgb(0xf38ba8)).child(format!(
+                                "▲ 買進: {} (${:.2})",
+                                trade.buy_date, trade.buy_price
+                            )))
                             .child(div().text_xs().text_color(rgb(0xa6e3a1)).child(sell_info))
                             .child(
                                 div()
@@ -1212,10 +1464,7 @@ impl Render for BacktestView {
                                 .text_xs()
                                 .font_weight(gpui_kit::FontWeight::BOLD)
                                 .text_color(pnl_color)
-                                .child(format!(
-                                    "損益: {:+.0} ({:+.2}%)",
-                                    trade.pnl, trade.pnl_pct
-                                )),
+                                .child(format!("損益: {:+.0} ({:+.2}%)", trade.pnl, trade.pnl_pct)),
                         ),
                     )
             } else {
@@ -1307,13 +1556,10 @@ impl Render for BacktestView {
                                         )),
                                 )
                                 .child(
-                                    div()
-                                        .flex_1()
-                                        .size_full()
-                                        .child(
-                                            DataTable::new(&self.table_state)
-                                                .with_size(self.font_size.table_size()),
-                                        ),
+                                    div().flex_1().size_full().child(
+                                        DataTable::new(&self.table_state)
+                                            .with_size(self.font_size.table_size()),
+                                    ),
                                 ),
                         ),
                     )

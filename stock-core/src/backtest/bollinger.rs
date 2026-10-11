@@ -324,7 +324,9 @@ mod tests {
             quotes.push(make_quote("SQUEEZE_BREAK", &date_str, 100.0));
         }
         // 第 40 天：SQUEEZE_FLAT 續平盤；SQUEEZE_BREAK 突破上軌
-        let date_40 = (start + chrono::Duration::days(39)).format("%Y-%m-%d").to_string();
+        let date_40 = (start + chrono::Duration::days(39))
+            .format("%Y-%m-%d")
+            .to_string();
         quotes.push(make_quote("SQUEEZE_FLAT", &date_40, 100.0));
         let mut break_quote = make_quote("SQUEEZE_BREAK", &date_40, 115.0);
         break_quote.open_price = Some(101.0);
@@ -340,7 +342,9 @@ mod tests {
             min_volume: 0,
             require_break_upper: true,
         };
-        let output = engine.run_date(&date_40, &strategy_with_break, None).unwrap();
+        let output = engine
+            .run_date(&date_40, &strategy_with_break, None)
+            .unwrap();
         let symbols: Vec<&str> = output.signals.iter().map(|s| s.symbol.as_str()).collect();
         assert!(!symbols.contains(&"SQUEEZE_FLAT"), "未突破上軌不應入選");
         assert!(symbols.contains(&"SQUEEZE_BREAK"), "突破上軌應入選");

@@ -1,3 +1,4 @@
+use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::chart::{BarChart, CandlestickChart, LineChart};
 use gpui_kit::component::checkbox::Checkbox;
@@ -7,7 +8,6 @@ use gpui_kit::component::resizable::{h_resizable, resizable_panel};
 use gpui_kit::component::table::{
     Column, ColumnSort, DataTable, TableDelegate, TableEvent, TableState,
 };
-use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
@@ -174,6 +174,9 @@ pub struct AnalysisView {
     pub chart_viewport: ChartViewport,
     pub font_size: FontSizeLevel,
     pub show_bollinger: bool,
+    pub show_ma: bool,
+    pub show_macd: bool,
+    pub is_dark: bool,
 }
 
 impl AnalysisView {
@@ -244,11 +247,19 @@ impl AnalysisView {
             chart_viewport: ChartViewport::default(),
             font_size: FontSizeLevel::Medium,
             show_bollinger: true,
+            show_ma: true,
+            show_macd: true,
+            is_dark: false,
         };
 
         view.load_securities(cx);
         view.fetch_symbol("2330".into(), cx);
         view
+    }
+
+    pub fn set_dark(&mut self, is_dark: bool, cx: &mut Context<Self>) {
+        self.is_dark = is_dark;
+        cx.notify();
     }
 
     pub fn set_font_size(&mut self, font_size: FontSizeLevel, cx: &mut Context<Self>) {
@@ -318,6 +329,42 @@ impl Render for AnalysisView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let count = self.table_state.read(cx).delegate().filtered_items.len();
 
+        let (
+            panel_bg,
+            border_col,
+            toolbar_bg,
+            header_bg,
+            text_primary,
+            text_secondary,
+            text_title,
+            price_text,
+            divider_col,
+        ) = if self.is_dark {
+            (
+                rgb(0x181825),
+                rgb(0x313244),
+                rgb(0x1e1e2e),
+                rgb(0x181825),
+                rgb(0xcdd6f4),
+                rgb(0xa6adc8),
+                rgb(0x89b4fa),
+                rgb(0xcdd6f4),
+                rgb(0x45475a),
+            )
+        } else {
+            (
+                rgb(0xf8fafc),
+                rgb(0xe2e8f0),
+                rgb(0xf1f5f9),
+                rgb(0xf8fafc),
+                rgb(0x1e293b),
+                rgb(0x64748b),
+                rgb(0x1d4ed8),
+                rgb(0x0f172a),
+                rgb(0xcbd5e1),
+            )
+        };
+
         // 左側工具列
         let left_toolbar = div()
             .flex()
@@ -325,7 +372,7 @@ impl Render for AnalysisView {
             .gap_2()
             .p_2()
             .border_b_1()
-            .border_color(rgb(0xe2e8f0))
+            .border_color(border_col)
             .child(
                 div()
                     .w_full()
@@ -355,30 +402,24 @@ impl Render for AnalysisView {
                         div()
                             .text_xs()
                             .font_weight(gpui_kit::FontWeight::MEDIUM)
-                            .text_color(rgb(0x64748b))
+                            .text_color(text_secondary)
                             .child(format!("共 {} 檔", count)),
                     ),
             );
 
         // 左側證券清單面板
-        let left_panel = div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .bg(rgb(0xf8fafc))
-            .border_r_1()
-            .border_color(rgb(0xe2e8f0))
-            .child(left_toolbar)
-            .child(
-                div()
-                    .flex_1()
-                    .size_full()
-                    .p_1()
-                    .child(
-                        DataTable::new(&self.table_state)
-                            .with_size(self.font_size.table_size()),
-                    ),
-            );
+        let left_panel =
+            div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .bg(panel_bg)
+                .border_r_1()
+                .border_color(border_col)
+                .child(left_toolbar)
+                .child(div().flex_1().size_full().p_1().child(
+                    DataTable::new(&self.table_state).with_size(self.font_size.table_size()),
+                ));
 
         // 右側圖表與指標內容
         let right_content = if self.is_loading {
@@ -498,32 +539,29 @@ impl Render for AnalysisView {
                     let y_scale = ScaleLinear::new(all_values, [height, 10.]);
                     let half_band = x_scale.band_width() / 2.0;
 
-                    let build_band_path = |series: &[Option<f64>]| -> Option<gpui_kit::Path<Pixels>> {
-                        let mut builder = PathBuilder::stroke(px(2.0));
-                        let mut started = false;
-                        for (d, val_opt) in visible_ohlcv_bb.iter().zip(series.iter()) {
-                            if let Some(val) = val_opt
-                                && let (Some(xt), Some(yt)) =
-                                    (x_scale.tick(&d.trade_date), y_scale.tick(val))
-                            {
-                                let pt = point(
-                                    bounds.origin.x + px(xt + half_band),
-                                    bounds.origin.y + px(yt),
-                                );
-                                if !started {
-                                    builder.move_to(pt);
-                                    started = true;
-                                } else {
-                                    builder.line_to(pt);
+                    let build_band_path =
+                        |series: &[Option<f64>]| -> Option<gpui_kit::Path<Pixels>> {
+                            let mut builder = PathBuilder::stroke(px(2.0));
+                            let mut started = false;
+                            for (d, val_opt) in visible_ohlcv_bb.iter().zip(series.iter()) {
+                                if let Some(val) = val_opt
+                                    && let (Some(xt), Some(yt)) =
+                                        (x_scale.tick(&d.trade_date), y_scale.tick(val))
+                                {
+                                    let pt = point(
+                                        bounds.origin.x + px(xt + half_band),
+                                        bounds.origin.y + px(yt),
+                                    );
+                                    if !started {
+                                        builder.move_to(pt);
+                                        started = true;
+                                    } else {
+                                        builder.line_to(pt);
+                                    }
                                 }
                             }
-                        }
-                        if started {
-                            builder.build().ok()
-                        } else {
-                            None
-                        }
-                    };
+                            if started { builder.build().ok() } else { None }
+                        };
 
                     window.with_content_mask(Some(gpui_kit::ContentMask { bounds }), |window| {
                         // 上軌：紫色 (Violet)
@@ -543,6 +581,213 @@ impl Render for AnalysisView {
             )
             .size_full();
 
+            // 均線 (MA5, MA10, MA20) 畫布
+            let visible_ma5 = safe_slice(&data.ma5);
+            let visible_ma10 = safe_slice(&data.ma10);
+            let visible_ma20 = safe_slice(&data.ma20);
+            let visible_ohlcv_ma = visible_ohlcv.clone();
+
+            let ma_canvas = canvas(
+                move |_, _, _| {},
+                move |bounds, _, window, _cx| {
+                    let height = bounds.size.height.as_f32() - 18.0;
+                    if height <= 0.0
+                        || bounds.size.width.as_f32() <= 0.0
+                        || visible_ohlcv_ma.is_empty()
+                    {
+                        return;
+                    }
+
+                    let x_scale = ScaleBand::new(
+                        visible_ohlcv_ma.iter().map(|d| d.trade_date.clone()),
+                        [0., bounds.size.width.as_f32()],
+                    )
+                    .max_band_width(max_band_w.as_f32())
+                    .padding_inner(0.4)
+                    .padding_outer(0.2);
+
+                    let all_values: Vec<f64> = visible_ohlcv_ma
+                        .iter()
+                        .flat_map(|d| {
+                            vec![
+                                d.high_price.unwrap_or(0.0),
+                                d.low_price.unwrap_or(0.0),
+                                d.open_price.unwrap_or(0.0),
+                                d.close_price.unwrap_or(0.0),
+                            ]
+                        })
+                        .collect();
+
+                    if all_values.is_empty() {
+                        return;
+                    }
+
+                    let y_scale = ScaleLinear::new(all_values, [height, 10.]);
+                    let half_band = x_scale.band_width() / 2.0;
+
+                    let build_line_path =
+                        |series: &[Option<f64>]| -> Option<gpui_kit::Path<Pixels>> {
+                            let mut builder = PathBuilder::stroke(px(1.5));
+                            let mut started = false;
+                            for (d, val_opt) in visible_ohlcv_ma.iter().zip(series.iter()) {
+                                if let Some(val) = val_opt
+                                    && let (Some(xt), Some(yt)) =
+                                        (x_scale.tick(&d.trade_date), y_scale.tick(val))
+                                {
+                                    let pt = point(
+                                        bounds.origin.x + px(xt + half_band),
+                                        bounds.origin.y + px(yt),
+                                    );
+                                    if !started {
+                                        builder.move_to(pt);
+                                        started = true;
+                                    } else {
+                                        builder.line_to(pt);
+                                    }
+                                }
+                            }
+                            if started { builder.build().ok() } else { None }
+                        };
+
+                    window.with_content_mask(Some(gpui_kit::ContentMask { bounds }), |window| {
+                        // MA5: 橙黃色
+                        if let Some(p) = build_line_path(&visible_ma5) {
+                            window.paint_path(p, hsla(0.12, 0.95, 0.55, 1.0));
+                        }
+                        // MA10: 天藍色
+                        if let Some(p) = build_line_path(&visible_ma10) {
+                            window.paint_path(p, hsla(0.58, 0.90, 0.55, 1.0));
+                        }
+                        // MA20: 洋紅色
+                        if let Some(p) = build_line_path(&visible_ma20) {
+                            window.paint_path(p, hsla(0.85, 0.85, 0.60, 1.0));
+                        }
+                    });
+                },
+            )
+            .size_full();
+
+            // MACD 畫布
+            let visible_macd_line = safe_slice(&data.macd_line);
+            let visible_macd_signal = safe_slice(&data.macd_signal);
+            let visible_macd_hist = safe_slice(&data.macd_histogram);
+            let visible_ohlcv_macd = visible_ohlcv.clone();
+
+            let mut macd_all_vals: Vec<f64> = Vec::new();
+            for v in visible_macd_line
+                .iter()
+                .flatten()
+                .chain(visible_macd_signal.iter().flatten())
+                .chain(visible_macd_hist.iter().flatten())
+            {
+                macd_all_vals.push(*v);
+            }
+            macd_all_vals.push(0.0);
+
+            let macd_canvas = canvas(
+                move |_, _, _| {},
+                move |bounds, _, window, _cx| {
+                    let height = bounds.size.height.as_f32() - 18.0;
+                    if height <= 0.0
+                        || bounds.size.width.as_f32() <= 0.0
+                        || visible_ohlcv_macd.is_empty()
+                    {
+                        return;
+                    }
+
+                    let x_scale = ScaleBand::new(
+                        visible_ohlcv_macd.iter().map(|d| d.trade_date.clone()),
+                        [0., bounds.size.width.as_f32()],
+                    )
+                    .max_band_width(max_band_w.as_f32())
+                    .padding_inner(0.4)
+                    .padding_outer(0.2);
+
+                    if macd_all_vals.is_empty() {
+                        return;
+                    }
+
+                    let y_scale = ScaleLinear::new(macd_all_vals.clone(), [height, 10.]);
+                    let half_band = x_scale.band_width() / 2.0;
+
+                    window.with_content_mask(Some(gpui_kit::ContentMask { bounds }), |window| {
+                        // 零軸
+                        if let Some(y_zero) = y_scale.tick(&0.0) {
+                            let mut zero_line = PathBuilder::stroke(px(1.0));
+                            zero_line.move_to(point(bounds.origin.x, bounds.origin.y + px(y_zero)));
+                            zero_line.line_to(point(
+                                bounds.origin.x + bounds.size.width,
+                                bounds.origin.y + px(y_zero),
+                            ));
+                            if let Ok(path) = zero_line.build() {
+                                window.paint_path(path, hsla(0.0, 0.0, 0.5, 0.4));
+                            }
+                        }
+
+                        // 柱狀圖 (OSC)
+                        let bar_w = (x_scale.band_width() * 0.7).max(1.0);
+                        for (d, hist_opt) in visible_ohlcv_macd.iter().zip(visible_macd_hist.iter())
+                        {
+                            if let Some(hist) = hist_opt
+                                && let Some(xt) = x_scale.tick(&d.trade_date)
+                                && let (Some(y_val), Some(y_zero)) =
+                                    (y_scale.tick(hist), y_scale.tick(&0.0))
+                            {
+                                let top = y_val.min(y_zero);
+                                let bar_h = (y_val - y_zero).abs().max(1.0);
+                                let bar_x = bounds.origin.x + px(xt + half_band);
+                                let mut bar = PathBuilder::stroke(px(bar_w));
+                                bar.move_to(point(bar_x, bounds.origin.y + px(top)));
+                                bar.line_to(point(bar_x, bounds.origin.y + px(top + bar_h)));
+                                let col = if *hist >= 0.0 {
+                                    hsla(0.0, 0.8, 0.5, 0.8)
+                                } else {
+                                    hsla(0.33, 0.8, 0.4, 0.8)
+                                };
+                                if let Ok(p) = bar.build() {
+                                    window.paint_path(p, col);
+                                }
+                            }
+                        }
+
+                        // DIF & Signal 折線
+                        let build_line =
+                            |series: &[Option<f64>]| -> Option<gpui_kit::Path<Pixels>> {
+                                let mut builder = PathBuilder::stroke(px(1.5));
+                                let mut started = false;
+                                for (d, val_opt) in visible_ohlcv_macd.iter().zip(series.iter()) {
+                                    if let Some(val) = val_opt
+                                        && let (Some(xt), Some(yt)) =
+                                            (x_scale.tick(&d.trade_date), y_scale.tick(val))
+                                    {
+                                        let pt = point(
+                                            bounds.origin.x + px(xt + half_band),
+                                            bounds.origin.y + px(yt),
+                                        );
+                                        if !started {
+                                            builder.move_to(pt);
+                                            started = true;
+                                        } else {
+                                            builder.line_to(pt);
+                                        }
+                                    }
+                                }
+                                if started { builder.build().ok() } else { None }
+                            };
+
+                        // DIF (快線): 橙黃色
+                        if let Some(p) = build_line(&visible_macd_line) {
+                            window.paint_path(p, hsla(0.12, 0.95, 0.55, 1.0));
+                        }
+                        // Signal (慢線): 紫色
+                        if let Some(p) = build_line(&visible_macd_signal) {
+                            window.paint_path(p, hsla(0.75, 0.85, 0.60, 1.0));
+                        }
+                    });
+                },
+            )
+            .size_full();
+
             // 縱軸價格刻度
             let price_axis = div()
                 .w(axis_w)
@@ -554,7 +799,7 @@ impl Render for AnalysisView {
                 .py_2()
                 .pr_1()
                 .border_l_1()
-                .border_color(rgb(0xe2e8f0))
+                .border_color(border_col)
                 .children(
                     price_scales
                         .map(|scales| {
@@ -564,7 +809,7 @@ impl Render for AnalysisView {
                                     div()
                                         .text_size(axis_font_size)
                                         .font_weight(gpui_kit::FontWeight::BOLD)
-                                        .text_color(rgb(0x475569))
+                                        .text_color(text_secondary)
                                         .child(format!("{:.2}", p))
                                 })
                                 .collect::<Vec<_>>()
@@ -583,22 +828,22 @@ impl Render for AnalysisView {
                 .py_1()
                 .pr_1()
                 .border_l_1()
-                .border_color(rgb(0xe2e8f0))
+                .border_color(border_col)
                 .children(
                     vol_scales
                         .map(|(max_v, half_v, _)| {
                             vec![
                                 div()
                                     .text_size(axis_font_size)
-                                    .text_color(rgb(0x475569))
+                                    .text_color(text_secondary)
                                     .child(format!("{}張", max_v / 1000)),
                                 div()
                                     .text_size(axis_font_size)
-                                    .text_color(rgb(0x475569))
+                                    .text_color(text_secondary)
                                     .child(format!("{}張", half_v / 1000)),
                                 div()
                                     .text_size(axis_font_size)
-                                    .text_color(rgb(0x475569))
+                                    .text_color(text_secondary)
                                     .child("0張".to_string()),
                             ]
                         })
@@ -624,10 +869,10 @@ impl Render for AnalysisView {
                 .justify_between()
                 .px_2()
                 .py_1()
-                .bg(rgb(0xf1f5f9))
+                .bg(toolbar_bg)
                 .rounded_md()
                 .border_1()
-                .border_color(rgb(0xe2e8f0))
+                .border_color(border_col)
                 .child(
                     div()
                         .flex()
@@ -678,7 +923,7 @@ impl Render for AnalysisView {
                                     cx.notify();
                                 })),
                         )
-                        .child(div().w(px(1.)).h(px(18.)).bg(rgb(0xcbd5e1)))
+                        .child(div().w(px(1.)).h(px(18.)).bg(divider_col))
                         .child(
                             Checkbox::new("analysis-show-bollinger")
                                 .label("布林通道")
@@ -695,7 +940,7 @@ impl Render for AnalysisView {
                                     .items_center()
                                     .gap_2()
                                     .text_xs()
-                                    .text_color(rgb(0x64748b))
+                                    .text_color(text_secondary)
                                     .child(
                                         div()
                                             .flex()
@@ -739,13 +984,137 @@ impl Render for AnalysisView {
                                             .child("下軌"),
                                     ),
                             )
+                        })
+                        .child(div().w(px(1.)).h(px(18.)).bg(divider_col))
+                        .child(
+                            Checkbox::new("analysis-show-ma")
+                                .label("均線")
+                                .checked(self.show_ma)
+                                .on_click(cx.listener(|this, checked, _, cx| {
+                                    this.show_ma = *checked;
+                                    cx.notify();
+                                })),
+                        )
+                        .when(self.show_ma, |this| {
+                            this.child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .text_xs()
+                                    .text_color(text_secondary)
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(3.))
+                                                    .rounded_sm()
+                                                    .bg(hsla(0.12, 0.95, 0.55, 1.0)),
+                                            )
+                                            .child("MA5"),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(3.))
+                                                    .rounded_sm()
+                                                    .bg(hsla(0.58, 0.90, 0.55, 1.0)),
+                                            )
+                                            .child("MA10"),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(3.))
+                                                    .rounded_sm()
+                                                    .bg(hsla(0.85, 0.85, 0.60, 1.0)),
+                                            )
+                                            .child("MA20"),
+                                    ),
+                            )
+                        })
+                        .child(div().w(px(1.)).h(px(18.)).bg(divider_col))
+                        .child(
+                            Checkbox::new("analysis-show-macd")
+                                .label("MACD")
+                                .checked(self.show_macd)
+                                .on_click(cx.listener(|this, checked, _, cx| {
+                                    this.show_macd = *checked;
+                                    cx.notify();
+                                })),
+                        )
+                        .when(self.show_macd, |this| {
+                            this.child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .text_xs()
+                                    .text_color(text_secondary)
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(3.))
+                                                    .rounded_sm()
+                                                    .bg(hsla(0.12, 0.95, 0.55, 1.0)),
+                                            )
+                                            .child("DIF"),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(3.))
+                                                    .rounded_sm()
+                                                    .bg(hsla(0.75, 0.85, 0.60, 1.0)),
+                                            )
+                                            .child("MACD"),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .w(px(8.))
+                                                    .h(px(3.))
+                                                    .rounded_sm()
+                                                    .bg(hsla(0.0, 0.8, 0.5, 0.8)),
+                                            )
+                                            .child("OSC"),
+                                    ),
+                            )
                         }),
                 )
                 .child(
                     div()
                         .text_size(self.font_size.size_px())
                         .font_weight(gpui_kit::FontWeight::BOLD)
-                        .text_color(rgb(0x334155))
+                        .text_color(text_primary)
                         .child(date_range_label),
                 );
 
@@ -767,6 +1136,9 @@ impl Render for AnalysisView {
                                     .size_full()
                                     .child(bollinger_canvas),
                             )
+                        })
+                        .when(self.show_ma, |this| {
+                            this.child(div().absolute().inset_0().size_full().child(ma_canvas))
                         }),
                 )
                 .child(price_axis);
@@ -789,9 +1161,9 @@ impl Render for AnalysisView {
                 .justify_between()
                 .px_3()
                 .py_2()
-                .bg(rgb(0xf8fafc))
+                .bg(header_bg)
                 .border_b_1()
-                .border_color(rgb(0xe2e8f0))
+                .border_color(border_col)
                 .child(
                     div()
                         .flex()
@@ -801,14 +1173,14 @@ impl Render for AnalysisView {
                             div()
                                 .text_size(self.font_size.size_px() * 1.5)
                                 .font_weight(gpui_kit::FontWeight::BOLD)
-                                .text_color(rgb(0x1d4ed8))
+                                .text_color(text_title)
                                 .child(data.symbol.clone()),
                         )
                         .child(
                             div()
                                 .text_size(self.font_size.size_px() * 1.15)
                                 .font_weight(gpui_kit::FontWeight::BOLD)
-                                .text_color(rgb(0x1e293b))
+                                .text_color(text_primary)
                                 .child(data.name.clone().unwrap_or_default()),
                         ),
                 )
@@ -825,14 +1197,14 @@ impl Render for AnalysisView {
                                 .child(
                                     div()
                                         .text_size(self.font_size.size_px() * 0.85)
-                                        .text_color(rgb(0x64748b))
+                                        .text_color(text_secondary)
                                         .child("收盤價:"),
                                 )
                                 .child(
                                     div()
                                         .text_size(self.font_size.size_px() * 1.15)
                                         .font_weight(gpui_kit::FontWeight::BOLD)
-                                        .text_color(rgb(0x0f172a))
+                                        .text_color(price_text)
                                         .child(format!("{:.2}", latest_close)),
                                 ),
                         )
@@ -844,14 +1216,14 @@ impl Render for AnalysisView {
                                 .child(
                                     div()
                                         .text_size(self.font_size.size_px() * 0.85)
-                                        .text_color(rgb(0x64748b))
+                                        .text_color(text_secondary)
                                         .child("成交量:"),
                                 )
                                 .child(
                                     div()
                                         .text_size(self.font_size.size_px() * 1.15)
                                         .font_weight(gpui_kit::FontWeight::BOLD)
-                                        .text_color(rgb(0x0f172a))
+                                        .text_color(price_text)
                                         .child(format!("{} 張", latest_vol / 1000)),
                                 ),
                         ),
@@ -874,7 +1246,7 @@ impl Render for AnalysisView {
                             div()
                                 .flex_1()
                                 .border_1()
-                                .border_color(rgb(0xe2e8f0))
+                                .border_color(border_col)
                                 .rounded_md()
                                 .p_2()
                                 .on_scroll_wheel(cx.listener(
@@ -923,7 +1295,7 @@ impl Render for AnalysisView {
                                     div()
                                         .flex_1()
                                         .border_1()
-                                        .border_color(rgb(0xe2e8f0))
+                                        .border_color(border_col)
                                         .rounded_md()
                                         .p_2()
                                         .child(vol_with_axis),
@@ -932,11 +1304,22 @@ impl Render for AnalysisView {
                                     div()
                                         .flex_1()
                                         .border_1()
-                                        .border_color(rgb(0xe2e8f0))
+                                        .border_color(border_col)
                                         .rounded_md()
                                         .p_2()
                                         .child(rsi_chart),
-                                ),
+                                )
+                                .when(self.show_macd, |this| {
+                                    this.child(
+                                        div()
+                                            .flex_1()
+                                            .border_1()
+                                            .border_color(border_col)
+                                            .rounded_md()
+                                            .p_2()
+                                            .child(macd_canvas),
+                                    )
+                                }),
                         ),
                 )
         } else {
@@ -945,7 +1328,7 @@ impl Render for AnalysisView {
                 .flex()
                 .items_center()
                 .justify_center()
-                .text_color(rgb(0x64748b))
+                .text_color(text_secondary)
                 .child("請點擊左側證券清單以檢視 K 線圖與走勢分析")
         };
 

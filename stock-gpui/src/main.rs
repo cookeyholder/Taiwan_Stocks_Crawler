@@ -21,6 +21,14 @@ fn main() {
             ..Default::default()
         };
 
+        let core_state_for_quit = core_state.clone();
+        let _ = cx.on_app_quit(move |_cx| {
+            let core = core_state_for_quit.clone();
+            async move {
+                core.shutdown();
+            }
+        });
+
         gpui_kit::open_window(options, cx, |window, cx| {
             cx.new(|cx| AppView::new(core_state, window, cx))
         })

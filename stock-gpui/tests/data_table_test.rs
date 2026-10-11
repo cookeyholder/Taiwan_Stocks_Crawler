@@ -137,7 +137,7 @@ fn test_datatable_virtual_scrolling_and_sorting(cx: &mut TestAppContext) {
         .expect("開啟視窗失敗")
     });
 
-    cx.update_window(window_handle.into(), |_, window, cx| {
+    cx.update_window(window_handle, |_, window, cx| {
         window.draw(cx).clear(cx);
     })
     .unwrap();

@@ -1,7 +1,7 @@
+use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::table::{Column, ColumnSort, DataTable, TableDelegate, TableState};
-use gpui_kit::component::Sizable as _;
 use gpui_kit::{
     App, AppContext, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window,
     div, px, rgb,
@@ -236,10 +236,7 @@ impl Render for SecuritiesView {
             .flex_1()
             .size_full()
             .p_3()
-            .child(
-                DataTable::new(&self.table_state)
-                    .with_size(self.font_size.table_size()),
-            );
+            .child(DataTable::new(&self.table_state).with_size(self.font_size.table_size()));
 
         div()
             .size_full()

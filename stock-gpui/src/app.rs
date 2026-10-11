@@ -152,16 +152,22 @@ impl AppView {
             ThemeMode::Light
         };
         Theme::change(mode, None, cx);
+        let dark = self.is_dark;
+        self.analysis_view.update(cx, |v, cx| v.set_dark(dark, cx));
         cx.notify();
     }
 
     pub fn cycle_font_size(&mut self, cx: &mut Context<Self>) {
         self.font_size = self.font_size.next();
         let fs = self.font_size;
-        self.analysis_view.update(cx, |v, cx| v.set_font_size(fs, cx));
-        self.screener_view.update(cx, |v, cx| v.set_font_size(fs, cx));
-        self.backtest_view.update(cx, |v, cx| v.set_font_size(fs, cx));
-        self.securities_view.update(cx, |v, cx| v.set_font_size(fs, cx));
+        self.analysis_view
+            .update(cx, |v, cx| v.set_font_size(fs, cx));
+        self.screener_view
+            .update(cx, |v, cx| v.set_font_size(fs, cx));
+        self.backtest_view
+            .update(cx, |v, cx| v.set_font_size(fs, cx));
+        self.securities_view
+            .update(cx, |v, cx| v.set_font_size(fs, cx));
         cx.notify();
     }
 
