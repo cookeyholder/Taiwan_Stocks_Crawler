@@ -87,7 +87,7 @@ impl Strategy for NewHighBreakoutStrategy {
             return no_signal;
         }
 
-        if curr_val >= prior_max {
+        if curr_val > prior_max {
             let mut metadata = HashMap::new();
             metadata.insert("lookback".to_string(), self.lookback_period as f64);
             metadata.insert("prior_high".to_string(), prior_max);

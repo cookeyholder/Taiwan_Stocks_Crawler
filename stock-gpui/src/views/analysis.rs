@@ -22,6 +22,14 @@ use crate::state::{AnalysisData, CoreState, SecurityItem};
 use crate::views::chart_viewport::{ChartViewport, compute_price_scales, compute_volume_scales};
 use stock_core::models::InstitutionalRecord;
 
+fn format_shares_as_lots(shares: i64) -> String {
+    if shares == 0 {
+        "0張".to_string()
+    } else {
+        format!("{:+.3}張", shares as f64 / 1000.0)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct IndicatorPoint {
     pub date: String,
@@ -949,7 +957,7 @@ impl Render for AnalysisView {
 
             let mut inst_all_vals: Vec<f64> = Vec::new();
             for r in visible_inst.iter().flatten() {
-                inst_all_vals.push((r.total_net / 1000) as f64);
+                inst_all_vals.push(r.total_net as f64 / 1000.0);
             }
             if inst_all_vals.is_empty() {
                 inst_all_vals.push(10.0);
@@ -1000,7 +1008,7 @@ impl Render for AnalysisView {
                             if let Some(inst) = inst_opt
                                 && let Some(xt) = x_scale.tick(&d.trade_date)
                             {
-                                let val = (inst.total_net / 1000) as f64;
+                                let val = inst.total_net as f64 / 1000.0;
                                 if let (Some(y_val), Some(y_zero)) =
                                     (y_scale.tick(&val), y_scale.tick(&0.0))
                                 {
@@ -1723,13 +1731,12 @@ impl Render for AnalysisView {
                             let inst_opt =
                                 data.institutional.get(active_abs_idx).cloned().flatten();
                             let format_net_shares = |val: i64| -> (String, gpui_kit::Rgba) {
-                                let lots = val / 1000;
-                                if lots > 0 {
-                                    (format!("+{}張", lots), rgb(0xdc2626))
-                                } else if lots < 0 {
-                                    (format!("{}張", lots), rgb(0x16a34a))
+                                if val > 0 {
+                                    (format_shares_as_lots(val), rgb(0xdc2626))
+                                } else if val < 0 {
+                                    (format_shares_as_lots(val), rgb(0x16a34a))
                                 } else {
-                                    ("0張".to_string(), text_secondary)
+                                    (format_shares_as_lots(val), text_secondary)
                                 }
                             };
 
@@ -1864,7 +1871,6 @@ impl Render for AnalysisView {
                                                 if let Some((_col, abs_idx)) = this
                                                     .chart_viewport
                                                     .candle_index_at_x(rel_x, w, total_candles)
-                                                    && this.hovered_candle_idx != Some(abs_idx)
                                                 {
                                                     this.hovered_candle_idx = Some(abs_idx);
                                                     cx.notify();
@@ -1879,6 +1885,14 @@ impl Render for AnalysisView {
                                         }
                                     },
                                 ))
+                                .on_mouse_exit(cx.listener(|this, _, _, cx| {
+                                    let had_hover_idx = this.hovered_candle_idx.take().is_some();
+                                    let had_hover_pos = this.hover_pos.take().is_some();
+                                    let had_hover = had_hover_idx || had_hover_pos;
+                                    if had_hover {
+                                        cx.notify();
+                                    }
+                                }))
                                 .on_mouse_up(
                                     gpui_kit::MouseButton::Left,
                                     cx.listener(|this, _, _, _| {
@@ -1967,5 +1981,17 @@ impl Render for AnalysisView {
                     .child(left_panel),
             )
             .child(resizable_panel().child(div().size_full().child(right_content)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_shares_as_lots;
+
+    #[test]
+    fn institutional_lots_preserve_sub_lot_values_and_direction() {
+        assert_eq!(format_shares_as_lots(999), "+0.999張");
+        assert_eq!(format_shares_as_lots(-999), "-0.999張");
+        assert_eq!(format_shares_as_lots(0), "0張");
     }
 }

@@ -334,8 +334,9 @@ impl DownloadView {
 
         cx.spawn(async move |this, cx| {
             let missing_clone = missing_dates.clone();
+            let task_missing = missing_clone.clone();
             let mut repair_task = crate::state::TOKIO_RUNTIME.spawn(async move {
-                core.repair_gaps(&missing_clone, move |done, total, date| {
+                core.repair_gaps(&task_missing, move |done, total, date| {
                     let _ = tx.send((done, total, date));
                 })
                 .await
@@ -356,7 +357,12 @@ impl DownloadView {
                     res = &mut repair_task => {
                         let final_res = match res {
                             Ok(inner) => inner,
-                            Err(e) => Err(format!("背景修補任務異常：{}", e)),
+                            Err(e) => Err(crate::state::RepairError {
+                                message: format!("背景修補任務異常：{}", e),
+                                remaining_dates: missing_clone.clone(),
+                                inserted_days: 0,
+                                total_records: 0,
+                            }),
                         };
                         let _ = this.update(cx, |view, cx| {
                             view.is_downloading = false;
@@ -367,8 +373,17 @@ impl DownloadView {
                                     view.gap_report = None;
                                     view.refresh_db_summary(cx);
                                 }
-                                Err(e) => {
-                                    view.status_text = format!("修補失敗：{}", e);
+                                Err(err) => {
+                                    view.status_text = format!("修補失敗：{}", err.message);
+                                    if let Some(ref mut report) = view.gap_report {
+                                        if err.remaining_dates.is_empty() {
+                                            view.gap_report = None;
+                                        } else {
+                                            report.missing_dates = err.remaining_dates;
+                                            report.recorded_dates += err.inserted_days;
+                                        }
+                                    }
+                                    view.refresh_db_summary(cx);
                                 }
                             }
                             cx.notify();
