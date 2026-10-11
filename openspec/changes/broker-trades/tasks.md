@@ -24,12 +24,12 @@
 
 ## 4. BSR 網路客戶端與連線管理 (stock-core::fetcher::bsr::client)
 
-- [ ] 4.1 於 `stock-core/src/fetcher/bsr/client.rs` 實作 `BsrClient`，維護連線 Session、Cookie（`ASP.NET_SessionId`）與自訂標頭（User-Agent, Referer）
-- [ ] 4.2 實作初次 GET `bsMenu.aspx` 取得表單狀態參數（`__VIEWSTATE`, `__EVENTVALIDATION` 等）與最新 Captcha GUID
-- [ ] 4.3 實作下載驗證碼圖片並調用 `CaptchaSolver` 自動辨識
-- [ ] 4.4 實作 POST `bsMenu.aspx` 提交股票代號與驗證碼，並判斷回傳內容是否成功產生報表
-- [ ] 4.5 實作 GET `bsContent.aspx` 串流下載雙欄 CSV 內容
-- [ ] 4.6 實作驗證碼失敗自動換碼重試邏輯（上限 3 次重試，超過記錄失敗）
+- [x] 4.1 於 `stock-core/src/fetcher/bsr/client.rs` 實作 `BsrClient`，維護連線 Session、Cookie（`ASP.NET_SessionId`）與自訂標頭（User-Agent, Referer）
+- [x] 4.2 實作初次 GET `bsMenu.aspx` 取得表單狀態參數（`__VIEWSTATE`, `__EVENTVALIDATION` 等）與最新 Captcha GUID
+- [x] 4.3 實作下載驗證碼圖片並調用 `CaptchaSolver` 自動辨識
+- [x] 4.4 實作 POST `bsMenu.aspx` 提交股票代號與驗證碼，並判斷回傳內容是否成功產生報表
+- [x] 4.5 實作 GET `bsContent.aspx` 串流下載雙欄 CSV 內容
+- [x] 4.6 實作驗證碼失敗自動換碼重試邏輯（上限 3 次重試，超過記錄失敗）
 
 ## 5. 普通股範圍過濾與批次下載流水線 (stock-core::pipeline::broker)
 

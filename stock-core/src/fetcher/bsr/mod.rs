@@ -3,4 +3,5 @@
 //! 提供 TWSE `bsr.twse.com.tw` 之買賣日報表剖析、驗證碼辨識與連線抓取功能。
 
 pub mod captcha;
+pub mod client;
 pub mod parser;
