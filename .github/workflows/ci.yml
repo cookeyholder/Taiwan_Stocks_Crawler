@@ -30,8 +30,11 @@ jobs:
             pkg-config \
             libfontconfig1-dev \
             libfreetype6-dev \
-            libxkbcommon-x11-0 \
             libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libxcb1-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
             libvulkan1 \
             libvulkan-dev \
             libasound2-dev \
