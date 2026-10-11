@@ -23,7 +23,7 @@ impl NavTab {
     pub fn label(&self) -> &'static str {
         match self {
             NavTab::Analysis => "個股分析",
-            NavTab::Screener => "布林選股",
+            NavTab::Screener => "選股中心",
             NavTab::Backtest => "回測系統",
             NavTab::Download => "下載管理",
             NavTab::Securities => "證券清單",

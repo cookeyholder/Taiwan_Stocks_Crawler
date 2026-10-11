@@ -1860,8 +1860,8 @@ impl Render for BacktestView {
                     )
                     .child(
                         resizable_panel()
-                            .size(px(560.))
-                            .size_range(px(320.)..px(1200.))
+                            .size(px(700.))
+                            .size_range(px(360.)..px(1400.))
                             .child(div().size_full().p_3().child(chart_section)),
                     ),
             )

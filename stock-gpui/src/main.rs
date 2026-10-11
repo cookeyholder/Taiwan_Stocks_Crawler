@@ -11,7 +11,7 @@ fn main() {
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
                 origin: Point::default(),
-                size: size(px(1280.0), px(800.0)),
+                size: size(px(1440.0), px(880.0)),
             })),
             titlebar: Some(TitlebarOptions {
                 title: Some("台股布林通道擠壓選股系統".into()),

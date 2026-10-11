@@ -1976,8 +1976,8 @@ impl Render for AnalysisView {
         h_resizable("analysis-resizable-layout")
             .child(
                 resizable_panel()
-                    .size(px(320.))
-                    .size_range(px(240.)..px(600.))
+                    .size(px(260.))
+                    .size_range(px(200.)..px(500.))
                     .child(left_panel),
             )
             .child(resizable_panel().child(div().size_full().child(right_content)))
