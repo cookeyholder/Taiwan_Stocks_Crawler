@@ -1303,6 +1303,16 @@ impl Render for BacktestView {
                                     cx.notify();
                                 })),
                         )
+                        .child(
+                            Button::new("btn-backtest-equity-curve")
+                                .label("📈 整體權益")
+                                .secondary()
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.selected_trade = None;
+                                    this.chart_data = None;
+                                    cx.notify();
+                                })),
+                        )
                         .child(div().w(px(1.)).h(px(18.)).bg(rgb(0xcbd5e1)))
                         .child(
                             Checkbox::new("backtest-show-bollinger")
@@ -1521,6 +1531,291 @@ impl Render for BacktestView {
                         .child(kline_with_axis),
                 )
                 .child(div().h(px(130.)).child(vol_with_axis))
+        } else if let Some(rep) = &self.report
+            && !rep.equity_curve.is_empty()
+        {
+            let equity_curve = rep.equity_curve.clone();
+            let n = equity_curve.len();
+            let initial_capital = equity_curve.first().copied().unwrap_or(1_000_000.0);
+            let final_equity = equity_curve.last().copied().unwrap_or(initial_capital);
+            let total_ret = if initial_capital > 0.0 {
+                (final_equity - initial_capital) / initial_capital * 100.0
+            } else {
+                0.0
+            };
+
+            let mut peak = initial_capital;
+            let mut drawdowns = Vec::with_capacity(n);
+            let mut max_dd = 0.0_f64;
+            for &eq in &equity_curve {
+                if eq > peak {
+                    peak = eq;
+                }
+                let dd = if peak > 0.0 {
+                    (eq - peak) / peak * 100.0
+                } else {
+                    0.0
+                };
+                if dd < max_dd {
+                    max_dd = dd;
+                }
+                drawdowns.push(dd);
+            }
+
+            let min_eq = equity_curve.iter().copied().fold(f64::INFINITY, f64::min);
+            let max_eq = equity_curve
+                .iter()
+                .copied()
+                .fold(f64::NEG_INFINITY, f64::max);
+            let y_min = (min_eq.min(initial_capital) * 0.98).min(initial_capital * 0.95);
+            let y_max = (max_eq.max(initial_capital) * 1.02).max(initial_capital * 1.05);
+
+            let equity_curve_clone = equity_curve.clone();
+            let equity_canvas = canvas(
+                move |_, _, _| {},
+                move |bounds, _, window, _cx| {
+                    let height = bounds.size.height.as_f32() - 16.0;
+                    let width = bounds.size.width.as_f32();
+                    if height <= 0.0 || width <= 0.0 || equity_curve_clone.is_empty() {
+                        return;
+                    }
+
+                    let y_scale = ScaleLinear::new(vec![y_min, y_max], [height, 10.0]);
+                    let x_step = width / (n.max(2) - 1) as f32;
+
+                    window.with_content_mask(Some(gpui_kit::ContentMask { bounds }), |window| {
+                        // 初始資金基準線 (灰色線)
+                        if let Some(y_base) = y_scale.tick(&initial_capital) {
+                            let mut base_line = PathBuilder::stroke(px(1.0));
+                            base_line.move_to(point(bounds.origin.x, bounds.origin.y + px(y_base)));
+                            base_line.line_to(point(
+                                bounds.origin.x + bounds.size.width,
+                                bounds.origin.y + px(y_base),
+                            ));
+                            if let Ok(p) = base_line.build() {
+                                window.paint_path(p, hsla(0.0, 0.0, 0.6, 0.4));
+                            }
+                        }
+
+                        // 權益折線
+                        let mut eq_line = PathBuilder::stroke(px(2.0));
+                        let mut started = false;
+                        for (i, &val) in equity_curve_clone.iter().enumerate() {
+                            if let Some(y) = y_scale.tick(&val) {
+                                let pt = point(
+                                    bounds.origin.x + px(i as f32 * x_step),
+                                    bounds.origin.y + px(y),
+                                );
+                                if !started {
+                                    eq_line.move_to(pt);
+                                    started = true;
+                                } else {
+                                    eq_line.line_to(pt);
+                                }
+                            }
+                        }
+                        if let Ok(p) = eq_line.build() {
+                            let line_col = if final_equity >= initial_capital {
+                                hsla(0.55, 0.90, 0.55, 1.0)
+                            } else {
+                                hsla(0.0, 0.85, 0.60, 1.0)
+                            };
+                            window.paint_path(p, line_col);
+                        }
+                    });
+                },
+            )
+            .size_full();
+
+            let drawdowns_clone = drawdowns.clone();
+            let dd_min = max_dd.min(-1.0);
+            let drawdown_canvas = canvas(
+                move |_, _, _| {},
+                move |bounds, _, window, _cx| {
+                    let height = bounds.size.height.as_f32() - 16.0;
+                    let width = bounds.size.width.as_f32();
+                    if height <= 0.0 || width <= 0.0 || drawdowns_clone.is_empty() {
+                        return;
+                    }
+
+                    let y_scale = ScaleLinear::new(vec![dd_min, 0.0], [height, 5.0]);
+                    let x_step = width / (n.max(2) - 1) as f32;
+
+                    window.with_content_mask(Some(gpui_kit::ContentMask { bounds }), |window| {
+                        // 零軸
+                        if let Some(y_zero) = y_scale.tick(&0.0) {
+                            let mut zero_line = PathBuilder::stroke(px(1.0));
+                            zero_line.move_to(point(bounds.origin.x, bounds.origin.y + px(y_zero)));
+                            zero_line.line_to(point(
+                                bounds.origin.x + bounds.size.width,
+                                bounds.origin.y + px(y_zero),
+                            ));
+                            if let Ok(p) = zero_line.build() {
+                                window.paint_path(p, hsla(0.0, 0.0, 0.6, 0.4));
+                            }
+                        }
+
+                        // 回撤折線
+                        let mut dd_line = PathBuilder::stroke(px(1.5));
+                        let mut started = false;
+                        for (i, &dd) in drawdowns_clone.iter().enumerate() {
+                            if let Some(y) = y_scale.tick(&dd) {
+                                let pt = point(
+                                    bounds.origin.x + px(i as f32 * x_step),
+                                    bounds.origin.y + px(y),
+                                );
+                                if !started {
+                                    dd_line.move_to(pt);
+                                    started = true;
+                                } else {
+                                    dd_line.line_to(pt);
+                                }
+                            }
+                        }
+                        if let Ok(p) = dd_line.build() {
+                            window.paint_path(p, hsla(0.0, 0.85, 0.60, 0.9));
+                        }
+                    });
+                },
+            )
+            .size_full();
+
+            let ret_col = if total_ret >= 0.0 {
+                rgb(0xf38ba8)
+            } else {
+                rgb(0xa6e3a1)
+            };
+
+            let header = div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .px_3()
+                .py_2()
+                .bg(rgb(0x181825))
+                .border_1()
+                .border_color(rgb(0x313244))
+                .rounded_md()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_base()
+                                .font_weight(gpui_kit::FontWeight::BOLD)
+                                .text_color(rgb(0x89b4fa))
+                                .child("📈 策略總體權益走勢與回撤分析"),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(rgb(0xa6adc8))
+                                .child(format!("(共 {} 個交易日，點選下方交易可切換個股走勢)", n)),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(rgb(0xcdd6f4))
+                                .child(format!("初始: ${:.0}", initial_capital)),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(gpui_kit::FontWeight::BOLD)
+                                .text_color(ret_col)
+                                .child(format!("最終: ${:.0} ({:+.2}%)", final_equity, total_ret)),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(rgb(0xf38ba8))
+                                .child(format!("最大回撤: {:.2}%", max_dd)),
+                        ),
+                );
+
+            let equity_axis = div()
+                .w(px(80.))
+                .h_full()
+                .flex()
+                .flex_col()
+                .justify_between()
+                .items_end()
+                .py_2()
+                .pr_1()
+                .border_l_1()
+                .border_color(rgb(0x313244))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(rgb(0xa6adc8))
+                        .child(format!("${:.0}", y_max)),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(rgb(0xa6adc8))
+                        .child(format!("${:.0}", initial_capital)),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(rgb(0xa6adc8))
+                        .child(format!("${:.0}", y_min)),
+                );
+
+            let dd_axis = div()
+                .w(px(80.))
+                .h_full()
+                .flex()
+                .flex_col()
+                .justify_between()
+                .items_end()
+                .py_1()
+                .pr_1()
+                .border_l_1()
+                .border_color(rgb(0x313244))
+                .child(div().text_xs().text_color(rgb(0xa6adc8)).child("0.0%"))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(rgb(0xf38ba8))
+                        .child(format!("{:.1}%", max_dd)),
+                );
+
+            div()
+                .size_full()
+                .border_1()
+                .border_color(rgb(0x313244))
+                .rounded_md()
+                .p_3()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(header)
+                .child(
+                    div()
+                        .flex_1()
+                        .flex()
+                        .flex_row()
+                        .child(div().flex_1().h_full().child(equity_canvas))
+                        .child(equity_axis),
+                )
+                .child(
+                    div()
+                        .h(px(120.))
+                        .flex()
+                        .flex_row()
+                        .child(div().flex_1().h_full().child(drawdown_canvas))
+                        .child(dd_axis),
+                )
         } else {
             div()
                 .size_full()
@@ -1531,7 +1826,7 @@ impl Render for BacktestView {
                 .items_center()
                 .justify_center()
                 .text_color(rgb(0x6c7086))
-                .child("點擊左側交易紀錄以檢視 K 線與買賣點標記")
+                .child("請點擊「執行回測」以計算績效，或點擊下方交易紀錄檢視 K 線與買賣標記")
         };
 
         let content = if trades_count > 0 {
