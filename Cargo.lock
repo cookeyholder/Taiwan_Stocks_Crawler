@@ -6815,6 +6815,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "stock-cli"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "clap",
  "stock-core",
  "tokio",
@@ -7360,6 +7361,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",

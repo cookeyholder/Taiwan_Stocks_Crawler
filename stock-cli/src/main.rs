@@ -64,6 +64,21 @@ enum Commands {
         #[arg(long, value_delimiter = ',')]
         types: Option<Vec<String>>,
     },
+    /// 抓取集中市場券商買賣日報表（分點成交明細）
+    FetchBroker {
+        /// 指定交易日期（格式：YYYY-MM-DD，若未指定則預設為今日）
+        #[arg(long)]
+        date: Option<String>,
+        /// 指定單一或特定股票代碼（若未指定則抓取全市場上市普通股）
+        #[arg(long)]
+        symbol: Option<String>,
+        /// 最小隨機延遲秒數（預設 1.5）
+        #[arg(long, default_value = "1.5")]
+        delay_min: f64,
+        /// 最大隨機延遲秒數（預設 3.0）
+        #[arg(long, default_value = "3.0")]
+        delay_max: f64,
+    },
 }
 
 #[tokio::main]
@@ -276,6 +291,95 @@ async fn main() {
             if let Some(sym) = symbol {
                 println!("Syncing yfinance data for {}...", sym);
                 println!("Sync complete (yfinance not yet implemented in Rust backend)");
+            }
+        }
+        Commands::FetchBroker {
+            date,
+            symbol,
+            delay_min,
+            delay_max,
+        } => {
+            let target_date = date.unwrap_or_else(|| {
+                chrono::Local::now().format("%Y-%m-%d").to_string()
+            });
+
+            let client = stock_core::fetcher::bsr::client::BsrClient::new()
+                .expect("建立集中市場 BSR 連線客戶端失敗");
+
+            let cancel_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let cancel_clone = cancel_flag.clone();
+
+            // 支援 Ctrl+C 優雅中斷並保存當前進度以利續傳
+            tokio::spawn(async move {
+                if let Ok(()) = tokio::signal::ctrl_c().await {
+                    println!("\n[提示] 收到中斷訊號，正在安全停止並保留已下載之進度...");
+                    cancel_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            });
+
+            let broker_pipeline =
+                stock_core::pipeline::broker::BrokerFetchPipeline::new(client, pipeline.repo)
+                    .with_cancel_flag(cancel_flag);
+
+            let target_symbols = symbol.map(|s| vec![s]);
+            let options = stock_core::pipeline::broker::BrokerPipelineOptions {
+                delay_min_ms: (delay_min * 1000.0) as u64,
+                delay_max_ms: (delay_max * 1000.0) as u64,
+                max_retries: 3,
+                cooldown_secs: 30,
+            };
+
+            println!("=== 啟動集中市場券商買賣日報表批次抓取 ===");
+            println!("交易日期: {}", target_date);
+            if let Some(ref syms) = target_symbols {
+                println!("指定個股: {:?}", syms);
+            } else {
+                println!("抓取範圍: TWSE 全體上市普通股 (4 碼數字，排除 ETF 與權證)");
+            }
+
+            let result = broker_pipeline
+                .fetch_date(
+                    &target_date,
+                    target_symbols,
+                    Some(options),
+                    |prog| {
+                        let pct = if prog.total_stocks > 0 {
+                            (prog.current_index as f64 / prog.total_stocks as f64) * 100.0
+                        } else {
+                            0.0
+                        };
+                        println!(
+                            "[{:>3.0}%] ({}/{}) 個股: {:<5} | 成功: {} | 略過: {} | 失敗: {} | {}",
+                            pct,
+                            prog.current_index,
+                            prog.total_stocks,
+                            prog.current_symbol,
+                            prog.success_count,
+                            prog.skipped_count,
+                            prog.failed_count,
+                            prog.message
+                        );
+                    },
+                )
+                .await;
+
+            match result {
+                Ok(summary) => {
+                    println!("\n=== 批次下載成果摘要 ===");
+                    println!("交易日期: {}", summary.trade_date);
+                    println!("標的總數: {}", summary.total_stocks);
+                    println!("成功入庫: {}", summary.success_count);
+                    println!("斷點略過: {}", summary.skipped_count);
+                    println!("抓取失敗: {}", summary.failed_count);
+                    if summary.cancelled {
+                        println!("執行狀態: 已由使用者手動中斷（下次執行將自中斷點續傳）");
+                    } else {
+                        println!("執行狀態: 全部作業順利完成");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("批次下載失敗: {}", e);
+                }
             }
         }
     }

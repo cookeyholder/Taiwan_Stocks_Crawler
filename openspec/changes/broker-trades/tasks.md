@@ -43,9 +43,9 @@
 
 ## 6. CLI 命令列工具子命令 (stock-cli)
 
-- [ ] 6.1 於 `stock-cli/src/main.rs` 新增 `fetch-broker` 子指令與參數定義（`--date <YYYY-MM-DD>`, `--symbol <SYMBOL>`, `--delay-min <SECS>`, `--delay-max <SECS>`）
-- [ ] 6.2 於 CLI 實作即時進度條（Progress Bar）、當前處理狀態與批次完成摘要輸出
-- [ ] 6.3 支援 Ctrl+C 優雅中斷並保存當前進度狀態以利續傳
+- [x] 6.1 於 `stock-cli/src/main.rs` 新增 `fetch-broker` 子指令與參數定義（`--date <YYYY-MM-DD>`, `--symbol <SYMBOL>`, `--delay-min <SECS>`, `--delay-max <SECS>`）
+- [x] 6.2 於 CLI 實作即時進度條（Progress Bar）、當前處理狀態與批次完成摘要輸出
+- [x] 6.3 支援 Ctrl+C 優雅中斷並保存當前進度狀態以利續傳
 
 ## 7. 桌面端介面整合 (stock-gpui)
 
