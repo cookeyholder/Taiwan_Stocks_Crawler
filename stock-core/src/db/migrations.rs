@@ -110,6 +110,12 @@ const MIGRATIONS: &[&str] = &[
      ON broker_trades(symbol_clean, trade_date);
     CREATE INDEX IF NOT EXISTS idx_broker_trades_broker_date
      ON broker_trades(broker_id, trade_date);",
+    // V9：記錄成功查詢的券商日報表，包含無成交明細的股票。
+    "CREATE TABLE IF NOT EXISTS broker_fetch_status (
+        trade_date   TEXT NOT NULL,
+        symbol_clean TEXT NOT NULL,
+        PRIMARY KEY (trade_date, symbol_clean)
+    );",
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -150,6 +156,8 @@ mod tests {
         conn.execute("SELECT 1 FROM institutional_investors LIMIT 1", [])
             .unwrap();
         conn.execute("SELECT 1 FROM broker_trades LIMIT 1", [])
+            .unwrap();
+        conn.execute("SELECT 1 FROM broker_fetch_status LIMIT 1", [])
             .unwrap();
     }
 

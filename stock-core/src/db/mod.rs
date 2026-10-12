@@ -200,6 +200,16 @@ impl MarketRepository {
         rows.collect()
     }
 
+    pub fn get_twse_symbols(&self) -> SqlResult<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT DISTINCT symbol_clean FROM market_quote_core
+             WHERE market_code = 'TWSE' ORDER BY symbol_clean",
+        )?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        rows.collect()
+    }
+
     pub fn get_latest_trade_date(&self) -> SqlResult<Option<String>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare_cached("SELECT MAX(trade_date) FROM market_quote_core")?;
@@ -773,7 +783,8 @@ impl MarketRepository {
     pub fn get_broker_completed_symbols(&self, trade_date: &str) -> SqlResult<HashSet<String>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare_cached(
-            "SELECT DISTINCT symbol_clean FROM broker_trades WHERE trade_date = ?1",
+            "SELECT symbol_clean FROM broker_trades WHERE trade_date = ?1
+             UNION SELECT symbol_clean FROM broker_fetch_status WHERE trade_date = ?1",
         )?;
         let rows = stmt.query_map(params![trade_date], |row| row.get(0))?;
         let mut set = HashSet::new();
@@ -781,6 +792,16 @@ impl MarketRepository {
             set.insert(r?);
         }
         Ok(set)
+    }
+
+    /// 記錄當日查詢成功，即使報表沒有成交明細也可供續傳略過。
+    pub fn mark_broker_fetch_completed(&self, trade_date: &str, symbol: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO broker_fetch_status (trade_date, symbol_clean) VALUES (?1, ?2)",
+            params![trade_date, symbol],
+        )?;
+        Ok(())
     }
 
     /// 查詢指定個股與交易日之券商分點買賣超彙總（依淨買賣張數絕對值降冪排序）
@@ -920,13 +941,13 @@ mod tests {
     #[test]
     fn test_get_distinct_symbols() {
         let repo = MarketRepository::open_in_memory().unwrap();
-        let quotes = vec![
-            make_quote("2330", "2024-01-02", 500.0),
-            make_quote("1101", "2024-01-02", 30.0),
-        ];
+        let mut tpex_quote = make_quote("1234", "2024-01-02", 30.0);
+        tpex_quote.market_code = "TPEX".into();
+        let quotes = vec![make_quote("2330", "2024-01-02", 500.0), tpex_quote];
         repo.upsert_core_batch(&quotes).unwrap();
         let symbols = repo.get_distinct_symbols().unwrap();
         assert_eq!(symbols.len(), 2);
+        assert_eq!(repo.get_twse_symbols().unwrap(), vec!["2330"]);
     }
 
     #[test]
@@ -1238,5 +1259,22 @@ mod tests {
         assert_eq!(summary_2330[0].total_buy, 13018);
         assert_eq!(summary_2330[0].total_sell, 8);
         assert_eq!(summary_2330[0].net_shares, 13010);
+    }
+
+    #[test]
+    fn broker_fetch_status_tracks_success_without_trade_rows() {
+        let repo = MarketRepository::open_in_memory().unwrap();
+        repo.mark_broker_fetch_completed("2026-10-08", "2330")
+            .unwrap();
+        assert!(
+            repo.get_broker_completed_symbols("2026-10-08")
+                .unwrap()
+                .contains("2330")
+        );
+        assert!(
+            repo.get_broker_trades("2330", "2026-10-08")
+                .unwrap()
+                .is_empty()
+        );
     }
 }

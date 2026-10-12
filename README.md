@@ -11,7 +11,7 @@
 - **桌面應用**：純 Rust + GPU 加速桌面端（基於 GPUI-Kit，支援 K 線、布林通道、均線、成交量、RSI 與三大法人圖表，並提供自選股清單）
 - **布林擠壓選股**：以 bandwidth 門檻篩選 squeezed 標的，支援成交量與商品類型過濾
 - **技術指標**：SMA / EMA / Bollinger Bands / RSI / MACD（Rust 純函式計算，含單元測試）
-- **CLI 工具**：`stock-cli` 支援 fetch、screen、sync 子指令
+- **CLI 工具**：`stock-cli` 支援 fetch、screen、sync 與券商日報表 `fetch-broker` 子指令；券商日報表來源只提供當日盤後資料（臺北時間 16:00 後）
 - **跨平台打包**：Linux 與 Windows 原生發行二進位檔
 
 ---

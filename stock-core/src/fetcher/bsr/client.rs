@@ -20,6 +20,8 @@ pub enum BsrClientError {
     Captcha(#[from] CaptchaError),
     #[error("驗證碼重試已達上限 ({0} 次)")]
     CaptchaExceededRetries(u32),
+    #[error("BSR 查詢回應未確認成功")]
+    QueryNotConfirmed,
 }
 
 /// ASP.NET WebForm 表單狀態資訊
@@ -116,7 +118,7 @@ impl BsrClient {
     pub async fn fetch_form_state(&self) -> Result<BsrFormState, BsrClientError> {
         let menu_url = format!("{}/bsMenu.aspx", self.base_url);
         let resp = self.client.get(&menu_url).send().await?;
-        let html = resp.text().await?;
+        let html = resp.error_for_status()?.text().await?;
         Self::parse_form_state_from_html(&html)
     }
 
@@ -136,7 +138,7 @@ impl BsrClient {
             .send()
             .await?;
 
-        let bytes = resp.bytes().await?;
+        let bytes = resp.error_for_status()?.bytes().await?;
         Ok(bytes.to_vec())
     }
 
@@ -169,7 +171,7 @@ impl BsrClient {
             .send()
             .await?;
 
-        let html = resp.text().await?;
+        let html = resp.error_for_status()?.text().await?;
 
         if html.contains("驗證碼不符") || html.contains("驗證碼錯誤") {
             Ok(BsrQueryResult::CaptchaError)
@@ -179,8 +181,10 @@ impl BsrClient {
             || html.contains("股票代號不存在")
         {
             Ok(BsrQueryResult::NoData)
-        } else {
+        } else if html.contains("bsContent.aspx") {
             Ok(BsrQueryResult::Success)
+        } else {
+            Err(BsrClientError::QueryNotConfirmed)
         }
     }
 
@@ -196,7 +200,7 @@ impl BsrClient {
             .send()
             .await?;
 
-        let raw_bytes = resp.bytes().await?;
+        let raw_bytes = resp.error_for_status()?.bytes().await?;
 
         // 先檢查是否已為有效 UTF-8 且包含關鍵字
         if let Ok(utf8_str) = std::str::from_utf8(&raw_bytes)
@@ -356,5 +360,27 @@ mod tests {
         let csv_text = report.unwrap();
         assert!(csv_text.contains("2330"));
         assert!(csv_text.contains("券商"));
+    }
+
+    #[tokio::test]
+    async fn unknown_query_response_is_not_treated_as_success() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/bsMenu.aspx"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("<html>系統忙碌</html>"))
+            .mount(&server)
+            .await;
+        let client = BsrClient::with_base_url(&server.uri()).unwrap();
+        let state = BsrFormState {
+            viewstate: "VS".into(),
+            viewstate_generator: "GEN".into(),
+            event_validation: "EV".into(),
+            captcha_url: "CaptchaImage.aspx?guid=test".into(),
+        };
+
+        assert!(matches!(
+            client.submit_query(&state, "2330", "ABCDE").await,
+            Err(BsrClientError::QueryNotConfirmed)
+        ));
     }
 }

@@ -52,3 +52,38 @@
 ## 修正追蹤
 
 - [Issue #43](https://github.com/cookeyholder/Taiwan_Stocks_Crawler/issues/43)
+
+---
+
+# PR #44、#45 程式碼審查報告
+
+## 審查範圍
+
+審查已合併 PR #44、#45 的差異與目前 `main` 分支呼叫路徑。PR #44 未發現可重現的安全性或邏輯問題；PR #45 的券商日報表流程發現以下問題。
+
+## 發現事項
+
+### P1_HIGH
+
+1. **指定日期未用於 BSR 查詢，資料可能被標記成錯誤日期** — `stock-core/src/fetcher/bsr/client.rs` 的查詢只送出股票代號，`stock-core/src/pipeline/broker.rs` 卻把使用者日期寫入 CSV 路徑與資料庫。使用 `--date 2020-01-01` 仍會取得 BSR 當日報表並錯標成 2020-01-01。BSR 提案已說明來源不提供歷史回溯；應拒絕非當日日期。
+2. **未確認查詢成功可能沿用前一檔報表** — `stock-core/src/fetcher/bsr/client.rs` 原先把未命中少數錯誤字串的任何 HTML 都當成成功；`stock-core/src/fetcher/bsr/parser.rs` 有代號提示時不核對 CSV 標頭。查詢頁失敗而 Session 保留舊 CSV 時，舊資料可能被標記為目前股票並入庫。
+
+### P2_MEDIUM
+
+3. **CSV 錯誤列會被靜默略過** — `stock-core/src/fetcher/bsr/parser.rs` 原先忽略 CSV 剖析器回報的列錯誤，仍將其餘資料當成完整報表入庫。應讓任一結構錯誤使整份報表失敗。
+4. **全市場名單可能混入上櫃股票** — `stock-core/src/pipeline/broker.rs` 原先丟棄證券清單的市場欄位，只按代碼格式篩選，因此 TPEX 四碼股票也會送往 TWSE BSR。
+5. **盤中無資料結果不可標記為完成** — BSR 報表約於 15:30–16:00 更新；若盤中 `Ok(None)` 立刻寫入完成狀態，盤後重跑會略過該股票並永久漏資料。系統只在 16:00 後將無資料結果記錄為完成；盤中無資料會保留供重試。
+6. **CLI 批次失敗仍以成功退出碼結束** — `stock-cli/src/main.rs` 原先只輸出錯誤訊息後正常返回，排程器會把部分失敗或整批失敗視為成功。
+7. **日期字串可穿越 CSV 儲存路徑** — `stock-core/src/pipeline/broker.rs` 原先將未驗證的日期字串直接交給 `PathBuf::join`；輸入 `../../../../tmp/out` 可使輸出檔案離開預設資料目錄。
+8. **驗證碼測試只驗證輸出格式，分類器字元涵蓋不完整** — `stock-core/src/fetcher/bsr/captcha.rs` 的規則分類器只會輸出少數英數字元，既有測試只檢查五字元格式，無法確認辨識正確率。此項需以有標籤的 CAPTCHA 樣本驗證涵蓋範圍，避免將格式正確誤當辨識成功。
+9. **自訂股票清單未驗證市場別** — 即使全市場名單限定 TWSE，CLI 的自訂代號仍只依格式過濾；四碼 TPEX 代號也可能送往 TWSE BSR。自訂名單應與資料庫 TWSE 證券清單比對。
+
+## PR #44 結論
+
+唯讀檢視 PR #44 的主要差異與相關呼叫路徑，未發現可確認且可重現的問題。
+
+## 修正追蹤
+
+- [PR #44](https://github.com/cookeyholder/Taiwan_Stocks_Crawler/pull/44)
+- [PR #45](https://github.com/cookeyholder/Taiwan_Stocks_Crawler/pull/45)
+- [Issue #46](https://github.com/cookeyholder/Taiwan_Stocks_Crawler/issues/46)
