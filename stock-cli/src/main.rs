@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use std::io::Write;
 use stock_core::db::MarketRepository;
 use stock_core::fetcher::{HttpClient, HttpPolicy};
 use stock_core::models::OhlcvRecord;
@@ -368,12 +369,19 @@ async fn main() {
                     println!("抓取失敗: {}", summary.failed_count);
                     if summary.cancelled {
                         println!("執行狀態: 已由使用者手動中斷（下次執行將自中斷點續傳）");
+                        let _ = std::io::stdout().flush();
+                        std::process::exit(1);
+                    } else if summary.failed_count > 0 {
+                        println!("執行狀態: 批次含失敗項目");
+                        let _ = std::io::stdout().flush();
+                        std::process::exit(1);
                     } else {
                         println!("執行狀態: 全部作業順利完成");
                     }
                 }
                 Err(e) => {
                     eprintln!("批次下載失敗: {}", e);
+                    std::process::exit(1);
                 }
             }
         }

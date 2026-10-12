@@ -9,6 +9,8 @@ pub enum BsrParserError {
     EmptyContent,
     #[error("找不到股票代號")]
     MissingSymbol,
+    #[error("CSV 股票代號 {actual} 與查詢代號 {expected} 不符")]
+    SymbolMismatch { expected: String, actual: String },
     #[error("無效的資料格式: {0}")]
     InvalidFormat(String),
 }
@@ -118,10 +120,19 @@ pub fn parse_bsr_csv(
         return Err(BsrParserError::EmptyContent);
     }
 
+    let header_symbol =
+        extract_symbol_from_header(csv_content).ok_or(BsrParserError::MissingSymbol)?;
     let resolved_symbol = if !symbol_hint.trim().is_empty() {
-        symbol_hint.trim().to_string()
+        let expected = symbol_hint.trim();
+        if header_symbol != expected {
+            return Err(BsrParserError::SymbolMismatch {
+                expected: expected.to_string(),
+                actual: header_symbol,
+            });
+        }
+        expected.to_string()
     } else {
-        extract_symbol_from_header(csv_content).ok_or(BsrParserError::MissingSymbol)?
+        header_symbol
     };
 
     let mut rdr = csv::ReaderBuilder::new()
@@ -137,7 +148,7 @@ pub fn parse_bsr_csv(
     for result in rdr.records() {
         let record = match result {
             Ok(r) => r,
-            Err(_) => continue,
+            Err(error) => return Err(BsrParserError::InvalidFormat(error.to_string())),
         };
 
         line_index += 1;
@@ -149,6 +160,20 @@ pub fn parse_bsr_csv(
         let fields: Vec<String> = record.iter().map(|s| s.to_string()).collect();
         if fields.is_empty() {
             continue;
+        }
+        if fields.len() < 5 && fields.iter().any(|field| !field.trim().is_empty()) {
+            return Err(BsrParserError::InvalidFormat(format!(
+                "第 {} 列欄位不足",
+                line_index
+            )));
+        }
+        if (6..11).contains(&fields.len())
+            && fields[6..].iter().any(|field| !field.trim().is_empty())
+        {
+            return Err(BsrParserError::InvalidFormat(format!(
+                "第 {} 列右側欄位不完整",
+                line_index
+            )));
         }
 
         // 解析左側（第 0 ~ 4 欄）
@@ -298,5 +323,24 @@ mod tests {
 ";
         let res = parse_bsr_csv(invalid, "2330", "2026-10-08");
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_symbol_hint_must_match_csv_header() {
+        let content =
+            "券商買賣股票成交價量資訊\n股票代碼,=\"2330\"\n序號,券商,價格,買進股數,賣出股數\n";
+        assert!(matches!(
+            parse_bsr_csv(content, "2317", "2026-10-08"),
+            Err(BsrParserError::SymbolMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn test_malformed_csv_row_fails_entire_report() {
+        let content = "券商買賣股票成交價量資訊\n股票代碼,=\"2330\"\n序號,券商,價格,買進股數,賣出股數\n\"1,broken\n";
+        assert!(matches!(
+            parse_bsr_csv(content, "2330", "2026-10-08"),
+            Err(BsrParserError::InvalidFormat(_))
+        ));
     }
 }

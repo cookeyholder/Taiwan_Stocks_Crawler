@@ -7,6 +7,7 @@ use crate::db::MarketRepository;
 use crate::fetcher::bsr::client::{BsrClient, BsrClientError};
 use crate::fetcher::bsr::parser::parse_bsr_csv;
 use crate::pipeline::filter_twse_common_stock_symbols;
+use chrono::NaiveDate;
 use rand::Rng;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -22,6 +23,28 @@ pub enum BrokerPipelineError {
     Client(#[from] BsrClientError),
     #[error("無有效之上市普通股標的")]
     NoTargetSymbols,
+    #[error("BSR 僅提供當日盤後資料，須於今日 16:00 後以 YYYY-MM-DD 日期查詢")]
+    UnsupportedTradeDate,
+}
+
+fn validate_bsr_trade_date(
+    trade_date: &str,
+    today: NaiveDate,
+) -> Result<NaiveDate, BrokerPipelineError> {
+    let date = NaiveDate::parse_from_str(trade_date, "%Y-%m-%d")
+        .map_err(|_| BrokerPipelineError::UnsupportedTradeDate)?;
+    if date.format("%Y-%m-%d").to_string() != trade_date || date != today {
+        return Err(BrokerPipelineError::UnsupportedTradeDate);
+    }
+    Ok(date)
+}
+
+fn bsr_report_is_ready(now: chrono::NaiveTime) -> bool {
+    now >= chrono::NaiveTime::from_hms_opt(16, 0, 0).unwrap()
+}
+
+fn taipei_now() -> chrono::NaiveDateTime {
+    chrono::Utc::now().naive_utc() + chrono::Duration::hours(8)
 }
 
 /// 批次抓取組態選項
@@ -121,16 +144,19 @@ impl BrokerFetchPipeline {
     {
         let opts = options.unwrap_or_default();
 
+        let parsed_date = validate_bsr_trade_date(trade_date, taipei_now().date())?;
+        let safe_trade_date = parsed_date.format("%Y-%m-%d").to_string();
+
         // 1. 決定目標股票清單（嚴格限定 TWSE 普通股：4 碼純數字且非 0 開頭）
+        let twse_symbols = self.repo.get_twse_symbols()?;
         let raw_symbols: Vec<String> = match target_symbols {
-            Some(syms) => syms,
-            None => self
-                .repo
-                .get_distinct_symbols()
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(s, _, _)| s)
-                .collect(),
+            Some(syms) => {
+                let twse_set: HashSet<&str> = twse_symbols.iter().map(String::as_str).collect();
+                syms.into_iter()
+                    .filter(|symbol| twse_set.contains(symbol.trim()))
+                    .collect()
+            }
+            None => twse_symbols,
         };
 
         let symbols = filter_twse_common_stock_symbols(&raw_symbols);
@@ -181,25 +207,25 @@ impl BrokerFetchPipeline {
                 .await
             {
                 Ok(Some(csv_content)) => {
-                    // 若指定保存目錄，同步儲存原始 CSV 檔
-                    if let Some(base_dir) = &opts.save_csv_dir {
-                        let day_dir = base_dir.join(trade_date);
-                        if let Err(e) = std::fs::create_dir_all(&day_dir) {
-                            log::warn!("建立券商日報表保存目錄失敗: {}", e);
-                        } else {
-                            let file_path = day_dir.join(format!("{}.csv", symbol));
-                            if let Err(e) = std::fs::write(&file_path, &csv_content) {
-                                log::warn!("寫入券商日報表 CSV 檔案失敗: {}", e);
-                            }
-                        }
-                    }
-
                     // 剖析雙欄 CSV
                     match parse_bsr_csv(&csv_content, symbol, trade_date) {
                         Ok(report) => {
+                            // 僅保存已通過格式與股票代號驗證的 CSV
+                            if let Some(base_dir) = &opts.save_csv_dir {
+                                let day_dir = base_dir.join(&safe_trade_date);
+                                if let Err(e) = std::fs::create_dir_all(&day_dir) {
+                                    log::warn!("建立券商日報表保存目錄失敗: {}", e);
+                                } else {
+                                    let file_path = day_dir.join(format!("{}.csv", symbol));
+                                    if let Err(e) = std::fs::write(&file_path, &csv_content) {
+                                        log::warn!("寫入券商日報表 CSV 檔案失敗: {}", e);
+                                    }
+                                }
+                            }
                             if !report.records.is_empty() {
                                 self.repo.upsert_broker_trades_batch(&report.records)?;
                             }
+                            self.repo.mark_broker_fetch_completed(trade_date, symbol)?;
                             success_count += 1;
                             progress_cb(BrokerProgress {
                                 current_index: idx + 1,
@@ -231,6 +257,9 @@ impl BrokerFetchPipeline {
                 }
                 Ok(None) => {
                     // 當日無交易
+                    if bsr_report_is_ready(taipei_now().time()) {
+                        self.repo.mark_broker_fetch_completed(trade_date, symbol)?;
+                    }
                     success_count += 1;
                     progress_cb(BrokerProgress {
                         current_index: idx + 1,
@@ -299,11 +328,67 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    fn make_test_quote(symbol: &str, market_code: &str) -> crate::models::CanonicalQuote {
+        crate::models::CanonicalQuote {
+            trade_date: taipei_now().format("%Y-%m-%d").to_string(),
+            market_code: market_code.into(),
+            symbol_raw: symbol.into(),
+            symbol_clean: symbol.into(),
+            security_name: None,
+            instrument_type: "stock".into(),
+            instrument_subtype: None,
+            isin_code: None,
+            cfi_code: None,
+            section_label: None,
+            open_price: None,
+            high_price: None,
+            low_price: None,
+            close_price: None,
+            volume_shares: None,
+            turnover_value: None,
+            trade_count: None,
+            change_sign: None,
+            change_value: None,
+            last_bid_price: None,
+            last_bid_qty_raw: None,
+            last_ask_price: None,
+            last_ask_qty_raw: None,
+            pe_ratio: None,
+            issued_shares: None,
+            next_limit_up: None,
+            next_limit_down: None,
+            source_file: "test".into(),
+            source_encoding: "utf-8".into(),
+            source_line_no: 0,
+            ingest_run_id: "test".into(),
+            ingested_at: "test".into(),
+            extension: Default::default(),
+        }
+    }
+
+    #[test]
+    fn bsr_trade_date_must_be_canonical_and_current() {
+        let today = NaiveDate::from_ymd_opt(2026, 10, 12).unwrap();
+        let after_publish = chrono::NaiveTime::from_hms_opt(16, 0, 0).unwrap();
+        assert_eq!(validate_bsr_trade_date("2026-10-12", today).unwrap(), today);
+        assert!(validate_bsr_trade_date("../../tmp", today).is_err());
+        assert!(validate_bsr_trade_date("2026-10-11", today).is_err());
+        assert!(!bsr_report_is_ready(
+            chrono::NaiveTime::from_hms_opt(15, 59, 59).unwrap()
+        ));
+        assert!(bsr_report_is_ready(after_publish));
+    }
+
     #[tokio::test]
     async fn test_broker_pipeline_resume_and_cancellation() {
         let repo = MarketRepository::open_in_memory().unwrap();
-
-        let trade_date = "2026-10-08";
+        let trade_date = taipei_now().format("%Y-%m-%d").to_string();
+        let symbols = vec![
+            make_test_quote("2330", "TWSE"),
+            make_test_quote("2317", "TWSE"),
+            make_test_quote("1234", "TPEX"),
+        ];
+        repo.upsert_core_batch(&symbols).unwrap();
 
         // 先寫入 2330 當日資料以模擬斷點續傳
         let pre_record = BrokerTradeRecord {
@@ -347,7 +432,10 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/bsMenu.aspx"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("<html>OK</html>"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"<html><a href="bsContent.aspx">下載</a></html>"#),
+            )
             .mount(&mock_server)
             .await;
 
@@ -363,7 +451,7 @@ mod tests {
 
         let pipeline = BrokerFetchPipeline::new(client, repo).with_cancel_flag(cancel_flag.clone());
 
-        let target_symbols = vec!["2330".to_string(), "2317".to_string()];
+        let target_symbols = vec!["2330".to_string(), "2317".to_string(), "1234".to_string()];
         let temp_csv_dir = tempfile::tempdir().unwrap();
         let opts = BrokerPipelineOptions {
             delay_min_ms: 1,
@@ -377,7 +465,7 @@ mod tests {
         let logs_clone = progress_logs.clone();
 
         let summary = pipeline
-            .fetch_date(trade_date, Some(target_symbols), Some(opts), move |p| {
+            .fetch_date(&trade_date, Some(target_symbols), Some(opts), move |p| {
                 logs_clone.lock().unwrap().push(p);
             })
             .await
@@ -389,7 +477,10 @@ mod tests {
         assert!(!summary.cancelled);
 
         // 驗證 2317 確實入庫
-        let res_2317 = pipeline.repo.get_broker_trades("2317", trade_date).unwrap();
+        let res_2317 = pipeline
+            .repo
+            .get_broker_trades("2317", &trade_date)
+            .unwrap();
         assert_eq!(res_2317.len(), 1);
         assert_eq!(res_2317[0].price, 200.0);
 
