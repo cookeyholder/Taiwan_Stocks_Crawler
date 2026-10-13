@@ -2,7 +2,7 @@
 
 - [ ] 1.1 實作一致性 SQLite 備份及完整性驗證；以含行情/自選資料的測試資料庫驗證備份可重開。
 - [ ] 1.2 建立受驗證網站備份下載與離線 `stock-web-maintenance restore` 命令；端對端確認下載受登入保護，停服後命令可還原備份。
-- [ ] 1.3 還原前在同卷暫存副本執行 integrity check、migration 與 WAL checkpoint，再原子切換並保存原 DB；測試損壞檔、migration 失敗和切換失敗均不破壞現況。
+- [ ] 1.3 還原前在同卷暫存副本執行 integrity check、migration 與 WAL checkpoint，驗證現有 DB 保護副本後以單次原子替換覆蓋主檔；測試不支援原子替換、損壞檔、migration 失敗和替換失敗均不移動或破壞主資料庫。
 - [ ] 1.4 寫明備份檔複製到 VPS 外的定期步驟並做異地檔還原演練；驗證異地備份可讀且資料完整。
 
 ## 2. 健康檢查與記錄
