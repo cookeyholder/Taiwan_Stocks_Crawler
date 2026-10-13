@@ -51,8 +51,8 @@ Web 服務 SHALL 使用既有 `stock-core` 資料模型與 migration，並將 SQ
 ### Requirement: Axum 僅供 Caddy 內部連線
 Docker Compose SHALL 僅將 Caddy 的 HTTP/HTTPS 連接埠發布至主機；Axum SHALL 僅連接 Compose 內部網路，不得發布主機連接埠。容器內健康檢查 SHALL 直接探測 Axum，不得為健康檢查開放外部連線。
 
-#### Scenario: 從主機直接連線 Axum
-- **WHEN** 部署完成後從 VPS 主機或外部網路連線 Axum 服務連接埠
+#### Scenario: 從外部網路直接連線 Axum
+- **WHEN** 部署完成後從 VPS 外部網路連線 Axum 服務連接埠
 - **THEN** 連線無法建立，對外 HTTP/HTTPS 請求只能經過 Caddy 驗證與路由
 
 #### Scenario: 容器健康檢查 Axum

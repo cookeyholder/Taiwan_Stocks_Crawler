@@ -1,7 +1,7 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
-### Requirement: 靜態網站與 API 健康檢查
-基礎平台 SHALL 提供 `/health/live` 與 `/health/ready` 端點供容器內部探測。`/health/live` SHALL 只表示程序仍存活，不檢查 SQLite；`/health/ready` SHALL 在 API 可服務且資料庫可用時回報成功。既有 `/api/v1/health` SHALL 保留為 `/health/ready` 的相容別名。Caddy SHALL 不將未驗證的外部請求轉送至健康端點；Compose 的 Web 健康檢查 SHALL 使用 readiness，程序存活探測 SHALL 使用 liveness。
+### Requirement: 分離程序存活與服務就緒探測
+部署 SHALL 提供 `/health/live` 與 `/health/ready` 端點供容器內部探測。`/health/live` SHALL 只表示程序仍存活，不檢查 SQLite；`/health/ready` SHALL 在 API 可服務且資料庫可用時回報成功。既有 `/api/v1/health` SHALL 保留為 `/health/ready` 的相容別名。Caddy SHALL 不將未驗證的外部請求轉送至健康端點；Compose 的 Web 健康檢查 SHALL 使用 readiness，程序存活探測 SHALL 使用 liveness。
 
 #### Scenario: 健康檢查成功
 - **WHEN** 容器或維運者於容器網路內檢查 liveness 與 readiness
