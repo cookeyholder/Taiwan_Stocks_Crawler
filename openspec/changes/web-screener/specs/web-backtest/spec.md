@@ -16,7 +16,7 @@
 - **THEN** API 回傳明確錯誤或空結果，不偽造績效數字
 
 ### Requirement: 回測績效呈現
-回測頁 SHALL 呈現訊號、交易明細、每日權益曲線與核心績效欄位。服務 SHALL 依序使用 `BacktestEngine::run_range` 產生訊號、`PortfolioSimulator::simulate` 產生交易/權益曲線，再由 `calculate_metrics` 計算績效。流程 SHALL 與 CLI 相同：訊號依收盤價成交，每筆買入以當時可用現金買進可購買的整股，不計交易成本，未平倉部位以區間內收盤價估值。年化報酬與 Sharpe 採核心既有 252 交易日年化方式；勝率、報酬與回撤 SHALL 以明確單位呈現。
+回測頁 SHALL 呈現訊號、交易明細、每日權益曲線與核心績效欄位。服務 SHALL 依序使用單次 `BacktestEngine::run_range` 產生訊號、`PortfolioSimulator::simulate` 產生交易/權益曲線，再由 `calculate_metrics` 計算績效。核心引擎 SHALL 在保留既有股票優先訊號遍歷順序下，每最多十個交易日檢查取消；不得為取消而分塊呼叫 `run_range`、合併或重排訊號。流程 SHALL 與 CLI 相同：訊號依收盤價成交，每筆買入以當時可用現金買進可購買的整股，不計交易成本，未平倉部位以區間內收盤價估值。年化報酬與 Sharpe 採核心既有 252 交易日年化方式；勝率、報酬與回撤 SHALL 以明確單位呈現。
 
 #### Scenario: 檢視回測結果
 - **WHEN** 回測成功完成
@@ -33,3 +33,7 @@
 #### Scenario: 回測失敗
 - **WHEN** API 回報回測失敗
 - **THEN** 頁面顯示錯誤原因並保留使用者輸入，不顯示前次結果為本次結果
+
+#### Scenario: 取消長區間回測
+- **WHEN** 使用者取消正在執行的長區間回測
+- **THEN** 核心在最多十個交易日的檢查點停止單次回測，維持原訊號遍歷順序，丟棄不完整結果且不呼叫投資組合模擬器

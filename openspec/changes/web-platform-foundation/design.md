@@ -14,7 +14,7 @@
 - Caddy 提供前端靜態檔並反向代理 `/api/v1/*` 至 Axum，維持瀏覽器同源請求；前端使用原生 HTML、CSS、JavaScript。
 - 以單一管理者密碼的 Caddy 驗證作為個人 VPS 的最小入口保護；憑證以部署環境提供，HTTPS 由 Caddy 處理。不得把明文密碼或雜湊寫入版本庫。
 - Axum 對所有非安全方法的 API 驗證 `Origin` 與設定的公開來源完全相符；拒絕缺少 Origin 的瀏覽器狀態變更請求。這是 Caddy Basic Auth 之外的 CSRF 防線，後續不得繞過 middleware。
-- Docker Compose 只需 Caddy 與 Axum 兩個服務；SQLite 由 Axum 單一程序存取並使用 named volume。避免多個 API replica 共寫同一 SQLite 檔案。
+- Docker Compose 只需 Caddy 與 Axum 兩個服務；只有 Caddy 發布主機 HTTP/HTTPS 連接埠，Axum 僅接 Compose 內部網路，由容器內健康檢查探測。SQLite 由 Axum 單一程序存取並使用 named volume。避免多個 API replica 共寫同一 SQLite 檔案。
 - API 固定使用 `/api/v1` 前綴，錯誤 DTO 至少包含穩定錯誤代碼與面向使用者的訊息；之後各階段沿用。
 
 ## Risks / Trade-offs

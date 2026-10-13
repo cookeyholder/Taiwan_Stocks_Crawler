@@ -48,6 +48,17 @@ Web 服務 SHALL 使用既有 `stock-core` 資料模型與 migration，並將 SQ
 - **WHEN** Web 服務啟動時收到資料庫路徑設定
 - **THEN** 服務使用該路徑開啟資料庫並執行既有 migrations
 
+### Requirement: Axum 僅供 Caddy 內部連線
+Docker Compose SHALL 僅將 Caddy 的 HTTP/HTTPS 連接埠發布至主機；Axum SHALL 僅連接 Compose 內部網路，不得發布主機連接埠。容器內健康檢查 SHALL 直接探測 Axum，不得為健康檢查開放外部連線。
+
+#### Scenario: 從主機直接連線 Axum
+- **WHEN** 部署完成後從 VPS 主機或外部網路連線 Axum 服務連接埠
+- **THEN** 連線無法建立，對外 HTTP/HTTPS 請求只能經過 Caddy 驗證與路由
+
+#### Scenario: 容器健康檢查 Axum
+- **WHEN** Docker 執行 Axum 容器健康檢查
+- **THEN** 探測在容器內或 Compose 內部網路完成，不發布 Axum 主機連接埠
+
 ### Requirement: 靜態網站與 API 健康檢查
 部署 SHALL 提供基本健康檢查，並讓反向代理將 API 請求交給 Web 服務、其他網站路徑交給靜態檔案服務。
 

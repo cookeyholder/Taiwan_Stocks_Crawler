@@ -14,7 +14,7 @@
 ## 3. Docker 部署
 
 - [ ] 3.1 建立 Web 多階段 Dockerfile 與 Compose 服務；以 `docker compose config` 確認設定有效。
-- [ ] 3.2 掛載 SQLite named volume 並設定健康檢查；重建容器後確認測試資料仍存在。
+- [ ] 3.2 掛載 SQLite named volume 並設定容器內健康檢查；確認 Compose 只有 Caddy 發布主機連接埠、Axum 無法從主機直接連線，且重建容器後測試資料仍存在。
 - [ ] 3.3 撰寫本機啟動與 VPS 環境變數說明；依文件啟動 Compose 並成功呼叫健康 API。
 
 ## 4. 整合驗證
